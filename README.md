@@ -1,6 +1,6 @@
 # Airbnb (Yahoo Mail) → Google Calendar
 
-Script en Python que lee los correos de Airbnb **directamente de Yahoo Mail** y mantiene el calendario de Google de Julien con las entradas y salidas de cada reserva: alojamiento, fechas, número de personas, horas de llegada y salida, sofá cama y cuna. Si un huésped pide algo especial, envía un aviso a su Yahoo.
+Script en Python que lee los correos de Airbnb **directamente de Yahoo Mail** y mantiene el calendario de Google del anfitrión con las entradas y salidas de cada reserva: alojamiento, fechas, número de personas, horas de llegada y salida, sofá cama y cuna. Si un huésped pide algo especial, envía un aviso a su Yahoo.
 
 Se ejecuta solo, cada 30 minutos, en **GitHub Actions**. Coste 0 € y sin servidores.
 
@@ -15,7 +15,7 @@ Yahoo Mail ──IMAP/TLS, solo lectura──▶ sincronizar.py (GitHub Actions,
 
 ## Cómo funciona
 
-- **No toca el buzón.** Abre las carpetas en solo lectura y descarga con `BODY.PEEK[]`, así que nada se marca como leído. Julien sigue viendo sus correos como siempre, y el script no depende de si los ha abierto o no.
+- **No toca el buzón.** Abre las carpetas en solo lectura y descarga con `BODY.PEEK[]`, así que nada se marca como leído. El anfitrión sigue viendo sus correos como siempre, y el script no depende de si los ha abierto o no.
 - **No duplica nada.** Cada correo se identifica por `carpeta:UIDVALIDITY:UID` (único en IMAP) y queda registrado en `estado.json`. Cada reserva se encuentra en el calendario por su código, guardado como propiedad privada del evento.
 - **Una reserva = dos eventos** de 30 min: `🟢 Check-in · Tirso · 3 pers · llega 18:00 · 🍼 cuna` y `🔴 Check-out · …`. Si se cancela: `❌ CANCELADA`, en gris.
 - **Mensajes de los huéspedes.** Gemini (gratis) extrae la hora de llegada y salida, la cuna, el sofá cama y otras peticiones. Si Gemini falla, se usan palabras clave.
@@ -33,14 +33,14 @@ Yahoo Mail ──IMAP/TLS, solo lectura──▶ sincronizar.py (GitHub Actions,
 
 ### 1. Contraseña de aplicación de Yahoo
 
-En la cuenta de Yahoo de Julien: **Información de la cuenta → Seguridad de la cuenta → Generar contraseña de aplicación** (nombre: «Airbnb Calendar»). Copia las 16 letras. Se puede revocar cuando se quiera sin cambiar la contraseña principal.
+En la cuenta de Yahoo del anfitrión: **Información de la cuenta → Seguridad de la cuenta → Generar contraseña de aplicación** (nombre: «Airbnb Calendar»). Copia las 16 letras. Se puede revocar cuando se quiera sin cambiar la contraseña principal.
 
 ### 2. Cuenta de servicio de Google (gratis)
 
 1. https://console.cloud.google.com → crea un proyecto («airbnb-calendar»).
 2. **APIs y servicios → Biblioteca → Google Calendar API → Habilitar**.
 3. **IAM y administración → Cuentas de servicio → Crear** (sin roles). Abre la cuenta → **Claves → Agregar clave → JSON**. Se descarga un archivo `.json`: es el secreto `GOOGLE_SERVICE_ACCOUNT_JSON`. No lo subas al repositorio.
-4. En Google Calendar, abre la configuración del calendario de Julien → **Compartir con determinadas personas** → añade el email de la cuenta de servicio (`…@….iam.gserviceaccount.com`) con permiso **«Hacer cambios en eventos»**.
+4. En Google Calendar, abre la configuración del calendario del anfitrión → **Compartir con determinadas personas** → añade el email de la cuenta de servicio (`…@….iam.gserviceaccount.com`) con permiso **«Hacer cambios en eventos»**.
 5. En esa misma página, copia el **ID del calendario** (sección «Integrar el calendario»).
 
 ### 3. Clave de Gemini
@@ -64,7 +64,7 @@ En **Settings → Secrets and variables → Actions → New repository secret**:
 
 | Secreto | Valor |
 | --- | --- |
-| `YAHOO_USUARIO` | correo de Yahoo de Julien |
+| `YAHOO_USUARIO` | correo de Yahoo del anfitrión |
 | `YAHOO_CLAVE_APP` | contraseña de aplicación (paso 1) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | contenido completo del `.json` (paso 2.3) |
 | `GEMINI_API_KEY` | clave de Gemini (paso 3) |
