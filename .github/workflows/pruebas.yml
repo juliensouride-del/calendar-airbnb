@@ -1,0 +1,22 @@
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+    paths: ["**.py", "config.toml", "requirements*.txt", ".github/workflows/pruebas.yml"]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - name: config.toml es válido
+        run: CALENDAR_ID=comprobacion python -c "from airbnb_calendar.config import cargar_config; c = cargar_config(); print(len(c.alojamientos), 'alojamientos')"

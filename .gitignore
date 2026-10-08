@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+estado/
+.env
+*.json.key
+service-account*.json

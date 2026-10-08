@@ -1,0 +1,74 @@
+name: Airbnb → Calendar
+
+on:
+  schedule:
+    # Cada 30 min (≈1 450 min/mes, dentro de los 2 000 gratis de un repositorio privado).
+    # Minutos 7 y 37 para evitar las horas en punto, cuando GitHub va más cargado.
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "Qué ejecutar"
+        type: choice
+        options: [sincronizar, comprobar, diagnosticar]
+        default: sincronizar
+
+permissions:
+  contents: write          # para guardar el registro en la rama `estado`
+
+concurrency:
+  group: airbnb-calendar   # nunca dos ejecuciones a la vez sobre el mismo registro
+  cancel-in-progress: false
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Recuperar el registro de correos procesados (rama estado)
+        run: |
+          mkdir -p estado
+          if git fetch --depth=1 origin estado 2>/dev/null; then
+            git show FETCH_HEAD:estado.json > estado/estado.json
+            echo "ESTADO_PADRE=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_ENV"
+          else
+            echo "Primera ejecución: sin registro previo."
+          fi
+
+      - name: Sincronizar
+        env:
+          YAHOO_USUARIO: ${{ secrets.YAHOO_USUARIO }}
+          YAHOO_CLAVE_APP: ${{ secrets.YAHOO_CLAVE_APP }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+          MODO: ${{ inputs.modo || 'sincronizar' }}
+        run: |
+          case "$MODO" in
+            comprobar)    python sincronizar.py --comprobar ;;
+            diagnosticar) python sincronizar.py --diagnosticar ;;
+            *)            python sincronizar.py ;;
+          esac
+
+      - name: Guardar el registro (aunque la ejecución haya fallado a medias)
+        if: always()
+        run: |
+          [ -f estado/estado.json ] || { echo "Nada que guardar."; exit 0; }
+          blob=$(git hash-object -w estado/estado.json)
+          tree=$(printf '100644 blob %s\testado.json\n' "$blob" | git mktree)
+          if [ -n "$ESTADO_PADRE" ] && [ "$(git rev-parse "$ESTADO_PADRE^{tree}")" = "$tree" ]; then
+            echo "Registro sin cambios."; exit 0
+          fi
+          export GIT_AUTHOR_NAME="github-actions[bot]" GIT_COMMITTER_NAME="github-actions[bot]"
+          export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          commit=$(git commit-tree "$tree" ${ESTADO_PADRE:+-p "$ESTADO_PADRE"} -m "Registro $(date -u +%Y-%m-%dT%H:%MZ)")
+          git push origin "$commit:refs/heads/estado"

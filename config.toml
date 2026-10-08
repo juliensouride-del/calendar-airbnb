@@ -1,0 +1,94 @@
+# ============================================================================
+#  Configuración (sin secretos: van en los Secrets del repositorio de GitHub)
+#    YAHOO_USUARIO, YAHOO_CLAVE_APP, GOOGLE_SERVICE_ACCOUNT_JSON, GEMINI_API_KEY
+# ============================================================================
+
+[yahoo]
+# Carpetas IMAP que se revisan. "INBOX" = Bandeja de entrada. Si algún correo de
+# Airbnb cae en Spam añade "Bulk"; si Julien archiva correos a mano antes de que
+# pase el script (cada 30 min), añade también "Archive".
+carpetas = ["INBOX"]
+# Dominios o direcciones de los remitentes de Airbnb.
+remitentes = ["airbnb.com"]
+# Días hacia atrás que revisa cada ejecución (margen si GitHub Actions se retrasa o falla).
+ventana_dias = 3
+# Fecha (yyyy-mm-dd) desde la que se procesan correos. "" = desde la primera ejecución
+# (no se cargan reservas antiguas).
+procesar_desde = ""
+
+[calendario]
+# Google Calendar → Configuración del calendario → Integrar el calendario → ID del calendario.
+# El calendario debe estar compartido con el email de la cuenta de servicio
+# ("Hacer cambios en eventos").
+id = "PEGA_AQUI_EL_ID_DEL_CALENDARIO"
+zona_horaria = "Europe/Madrid"
+duracion_evento_min = 30
+hora_entrada_por_defecto = "15:00"
+hora_salida_por_defecto = "11:00"
+# Si llega un mensaje de una reserva que no está en el calendario (anterior a la
+# instalación), ¿se crean sus eventos? false = no; solo se avisa si pide algo.
+crear_evento_desde_mensaje = false
+# Recordatorios de los eventos nuevos (minutos antes). Sin esta línea se usan los
+# del calendario; [] = sin recordatorios.
+# recordatorios_minutos = [60, 1440]
+
+[calendario.colores]
+# 1 Lavanda · 2 Salvia · 3 Uva · 4 Flamenco · 5 Plátano · 6 Mandarina
+# 7 Pavo real · 8 Grafito · 9 Arándano · 10 Albahaca · 11 Tomate
+entrada = "10"
+salida = "11"
+cancelada = "8"
+
+[reglas]
+# Si la reserva incluye bebés, marcar la cuna como probable aunque no la pidan.
+cuna_si_hay_bebes = true
+# Reintentos de un correo ante errores temporales antes de darlo por fallido.
+max_reintentos = 3
+
+[avisos]
+# Destinatario de los avisos. "" = la propia cuenta de Yahoo (se envían por SMTP de Yahoo).
+email = ""
+peticiones = true      # sofá cama, cuna y otras peticiones especiales
+horas = false          # también cuando el huésped indique hora de llegada/salida
+errores = true         # correos que no se pueden procesar, Gemini caído
+modificaciones = true  # modificaciones de reserva (se revisan a mano)
+
+[gemini]
+# false = solo palabras clave (sin horas de llegada/salida).
+usar = true
+modelo = "gemini-3.5-flash-lite"
+# Modelos que se prueban, en orden, si el principal falla.
+modelos_respaldo = ["gemini-3.8-flash"]
+# Solo Gemini 3 o posterior: cuánto "piensa" antes de responder ("" = lo del modelo).
+nivel_razonamiento = "low"
+timeout_s = 30
+
+# ----------------------------------------------------------------------------
+#  Alojamientos
+#   nombre:             título EXACTO del anuncio (sin distinguir mayúsculas ni tildes)
+#   alias:              nombre corto para el título del evento
+#   id_anuncio:         nº de airbnb.com/rooms/<nº> (lo más fiable)
+#   otros_nombres:      (opcional) otros títulos con los que aparece en los correos
+#   direccion:          (opcional) ubicación del evento
+#   capacidad_sin_sofa: (opcional) personas que caben SIN abrir el sofá cama; si la
+#                       reserva lo supera se marca "sofá cama" como probable
+# ----------------------------------------------------------------------------
+
+[[alojamientos]]
+nombre = "Espacioso y luminoso apartamento Corazón de Madrid"
+alias = "Buenavista"
+id_anuncio = "809290025626258590"
+capacidad_sin_sofa = 2
+
+[[alojamientos]]
+nombre = "Lavapies - Peaceful 2 bedrooms Fresh A/C"
+alias = "Torrecilla"
+id_anuncio = "1065868788427158053"
+capacidad_sin_sofa = 3
+
+[[alojamientos]]
+nombre = "Anton Martin Agradable, Anton Martin - Apartament."
+alias = "Tirso"
+id_anuncio = "1025328659441162105"
+otros_nombres = ["Apartamentos de Julian, Anton Martin - Apartament."]
+capacidad_sin_sofa = 2
