@@ -26,7 +26,8 @@ class ErrorDefinitivo(Exception):
 
 class Sincronizador:
     def __init__(self, cfg: Config, buzon, calendario, analizador, notificador, registro: Registro,
-                 ahora: datetime | None = None, desde: datetime | None = None):
+                 ahora: datetime | None = None, desde: datetime | None = None,
+                 hasta: datetime | None = None):
         self.cfg = cfg
         self.buzon = buzon
         self.cal = calendario
@@ -35,16 +36,21 @@ class Sincronizador:
         self.registro = registro
         self.ahora = ahora or datetime.now(timezone.utc)
         self.desde = desde      # carga manual: ignora la ventana y el inicio del registro
+        self.hasta = hasta
         self.tz = ZoneInfo(cfg.zona_horaria)
 
     def ejecutar(self) -> int:
         """Procesa los correos pendientes. Devuelve cuántos ha procesado."""
         inicio = self.registro.fecha_inicio(self.cfg.procesar_desde, self.ahora)
         desde = self.desde or max(inicio, self.ahora - timedelta(days=self.cfg.ventana_dias))
-        correos = self.buzon.correos_desde(desde, self.cfg.carpetas, self.cfg.remitentes, set(self.registro.procesados))
+        excluir = set(self.registro.procesados)
+        correos = (self.buzon.correos_desde(desde, self.cfg.carpetas, self.cfg.remitentes, excluir, hasta=self.hasta)
+                   if self.hasta else self.buzon.correos_desde(desde, self.cfg.carpetas, self.cfg.remitentes, excluir))
         log.info("%d correo(s) nuevo(s) desde %s", len(correos), desde.isoformat(timespec="minutes"))
-        for c in correos:
+        for i, c in enumerate(correos, 1):
             self.procesar_correo(c)
+            if i % 20 == 0:
+                self.registro.guardar()     # si la ejecución se corta, no se pierde lo avanzado
         self.registro.limpiar(self.ahora - timedelta(days=self.cfg.ventana_dias + 7))
         return len(correos)
 

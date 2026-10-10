@@ -16,6 +16,10 @@ on:
         description: "Solo sincronizar: procesar correos desde esta fecha (yyyy-mm-dd). Vacío = últimos días"
         type: string
         default: ""
+      hasta:
+        description: "Solo con desde: hasta esta fecha, sin incluirla (yyyy-mm-dd). Vacío = hoy"
+        type: string
+        default: ""
 
 permissions:
   contents: write          # para guardar el registro en la rama `estado`
@@ -27,7 +31,7 @@ concurrency:
 jobs:
   sincronizar:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -57,11 +61,12 @@ jobs:
           CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
           MODO: ${{ inputs.modo || 'sincronizar' }}
           DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
         run: |
           case "$MODO" in
             comprobar)    python sincronizar.py --comprobar ;;
             diagnosticar) python sincronizar.py --diagnosticar ;;
-            *)            python sincronizar.py ${DESDE:+--desde "$DESDE"} ;;
+            *)            python sincronizar.py ${DESDE:+--desde "$DESDE"} ${HASTA:+--hasta "$HASTA"} ;;
           esac
 
       - name: Guardar el registro (aunque la ejecución haya fallado a medias)

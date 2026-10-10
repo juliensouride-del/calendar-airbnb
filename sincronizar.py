@@ -34,6 +34,7 @@ def main() -> int:
     ap.add_argument("--config", default="config.toml")
     ap.add_argument("--estado", default="estado/estado.json", help="registro de correos procesados")
     ap.add_argument("--desde", help="yyyy-mm-dd: procesa los correos desde esa fecha (carga manual)")
+    ap.add_argument("--hasta", help="yyyy-mm-dd (excluida): límite de la carga manual")
     modo = ap.add_mutually_exclusive_group()
     modo.add_argument("--comprobar", action="store_true")
     modo.add_argument("--diagnosticar", action="store_true")
@@ -55,11 +56,19 @@ def main() -> int:
     notificador = NotificadorYahoo(sec.yahoo_usuario, sec.yahoo_clave_app, cfg.email_avisos)
     try:
         with BuzonYahoo(sec.yahoo_usuario, sec.yahoo_clave_app) as buzon:
-            desde = datetime.fromisoformat(args.desde).replace(tzinfo=timezone.utc) if args.desde else None
-            Sincronizador(cfg, buzon, calendario, analizador, notificador, registro, desde=desde).ejecutar()
+            fecha = lambda t: datetime.fromisoformat(t).replace(tzinfo=timezone.utc) if t else None   # noqa: E731
+            if args.desde:
+                notificador = NotificadorSilencioso()   # carga manual: no avisar de correos antiguos
+            Sincronizador(cfg, buzon, calendario, analizador, notificador, registro,
+                          desde=fecha(args.desde), hasta=fecha(args.hasta)).ejecutar()
     finally:
         registro.guardar()      # lo procesado hasta un posible fallo queda registrado
     return 0
+
+
+class NotificadorSilencioso:
+    def enviar(self, asunto: str, cuerpo: str) -> None:
+        log.info("Aviso omitido (carga manual): %s", asunto)
 
 
 def comprobar(cfg, sec, calendario, analizador) -> int:

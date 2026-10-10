@@ -60,7 +60,7 @@ class BuzonYahoo:
             pass
 
     def correos_desde(self, desde: datetime, carpetas: list[str], remitentes: list[str],
-                      excluir: set[str] = frozenset()) -> list[Correo]:
+                      excluir: set[str] = frozenset(), hasta: datetime | None = None) -> list[Correo]:
         """Correos de los remitentes llegados desde `desde`, sin los de `excluir`, del más antiguo al más nuevo."""
         res = []
         for carpeta in carpetas:
@@ -68,22 +68,24 @@ class BuzonYahoo:
             if typ != "OK":
                 raise RuntimeError(f'No se puede abrir la carpeta "{carpeta}" de Yahoo')
             validez = (self.imap.response("UIDVALIDITY")[1] or [b"0"])[0].decode()
-            uids = self._buscar(desde, remitentes)
+            uids = self._buscar(desde, remitentes, hasta)
             ids = {u: f"{carpeta}:{validez}:{u}" for u in uids}
             uids = [u for u in uids if ids[u] not in excluir]
             if not uids:
                 continue
             # SINCE solo compara el día: se afina con la hora exacta de llegada
             fechas = {u: f for u, f, _ in self._fetch(uids, "(UID INTERNALDATE)")}
-            nuevos = [u for u in uids if fechas.get(u) and fechas[u] >= desde]
+            nuevos = [u for u in uids if fechas.get(u) and fechas[u] >= desde and (not hasta or fechas[u] < hasta)]
             for i in range(0, len(nuevos), 20):
                 for uid, fecha, crudo in self._fetch(nuevos[i:i + 20], "(UID INTERNALDATE BODY.PEEK[])"):
                     remitente, asunto, texto = leer_eml(crudo)
                     res.append(Correo(ids[uid], fecha, remitente, asunto, texto))
         return sorted(res, key=lambda c: c.fecha)
 
-    def _buscar(self, desde: datetime, remitentes: list[str]) -> list[str]:
+    def _buscar(self, desde: datetime, remitentes: list[str], hasta: datetime | None = None) -> list[str]:
         criterio = ["SINCE", f"{desde.day}-{MESES_IMAP[desde.month - 1]}-{desde.year}"]
+        if hasta:
+            criterio += ["BEFORE", f"{hasta.day}-{MESES_IMAP[hasta.month - 1]}-{hasta.year}"]
         if remitentes:
             # OR a b  /  OR OR a b c ...
             de = ["FROM " + _citar(r) for r in remitentes]
