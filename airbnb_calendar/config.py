@@ -55,7 +55,10 @@ class Config:
     def alojamiento_por_nombre(self, nombre: str | None) -> Alojamiento | None:
         from .parser import clave_normalizada
         k = clave_normalizada(nombre)
-        return next((a for a in self.alojamientos if clave_normalizada(a.nombre) == k), None)
+        if not k:
+            return None
+        return next((a for a in self.alojamientos
+                     if any(clave_normalizada(n) == k for n in [a.nombre, *a.otros_nombres])), None)
 
 
 @dataclass
@@ -105,6 +108,12 @@ def cargar_config(ruta: str | Path = "config.toml") -> Config:
         gemini_nivel_razonamiento=g.get("nivel_razonamiento", "low"),
         gemini_timeout_s=g.get("timeout_s", 30),
     )
+    from .parser import normalizar_hora
+    for campo in ("hora_entrada_por_defecto", "hora_salida_por_defecto"):
+        hora = normalizar_hora(getattr(cfg, campo))
+        if not hora:
+            raise SystemExit(f"[calendario] {campo} no es una hora válida (formato HH:MM): {getattr(cfg, campo)!r}")
+        setattr(cfg, campo, hora)          # '9:00' → '09:00'
     if not cfg.calendar_id or "PEGA_AQUI" in cfg.calendar_id:
         raise SystemExit("Rellena [calendario] id en config.toml (o la variable CALENDAR_ID).")
     return cfg

@@ -19,7 +19,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from .config import Alojamiento, Config
-from .parser import clave_normalizada
+from .parser import clave_normalizada, normalizar_hora
 from .reglas import descripcion_evento, titulo_evento
 
 log = logging.getLogger(__name__)
@@ -66,7 +66,9 @@ class Calendario:
         candidatos = []
         if codigo:
             candidatos += self._listar({P_CODIGO: codigo})
-        if alojamiento and checkin:
+        # Fallback por alojamiento + entrada solo si falta algún evento (p. ej. creado desde un mensaje, sin código)
+        tipos = {_props(ev).get(P_TIPO) for ev in candidatos}
+        if alojamiento and checkin and not {"entrada", "salida"} <= tipos:
             candidatos += self._listar({P_ALOJAMIENTO: _hash(alojamiento), P_CHECKIN: checkin})
         for ev in candidatos:
             p = _props(ev)
@@ -94,6 +96,8 @@ class Calendario:
                 continue
             hora = (estado["hora_llegada"] or estado["hora_checkin"] or self.cfg.hora_entrada_por_defecto if tipo == "entrada"
                     else estado["hora_salida"] or estado["hora_checkout"] or self.cfg.hora_salida_por_defecto)
+            hora = normalizar_hora(hora) or (self.cfg.hora_entrada_por_defecto if tipo == "entrada"
+                                             else self.cfg.hora_salida_por_defecto)
             inicio = datetime.fromisoformat(f"{fecha}T{hora}")
             fin = inicio + timedelta(minutes=self.cfg.duracion_evento_min)
             cuerpo = {

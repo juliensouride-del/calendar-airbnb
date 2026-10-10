@@ -128,7 +128,7 @@ def leer_eml(crudo: bytes) -> tuple[str, str, str]:
         try:
             contenido = parte.get_content()
         except (LookupError, UnicodeError):           # charset desconocido o mal declarado
-            contenido = parte.get_payload(decode=True).decode("utf-8", "replace")
+            contenido = (parte.get_payload(decode=True) or b"").decode("utf-8", "replace")
         texto = contenido if tipo == "plain" else html_a_texto(contenido)
         if texto.strip():
             break
