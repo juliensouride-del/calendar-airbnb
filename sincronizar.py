@@ -33,6 +33,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="config.toml")
     ap.add_argument("--estado", default="estado/estado.json", help="registro de correos procesados")
+    ap.add_argument("--desde", help="yyyy-mm-dd: procesa los correos desde esa fecha (carga manual)")
     modo = ap.add_mutually_exclusive_group()
     modo.add_argument("--comprobar", action="store_true")
     modo.add_argument("--diagnosticar", action="store_true")
@@ -54,7 +55,8 @@ def main() -> int:
     notificador = NotificadorYahoo(sec.yahoo_usuario, sec.yahoo_clave_app, cfg.email_avisos)
     try:
         with BuzonYahoo(sec.yahoo_usuario, sec.yahoo_clave_app) as buzon:
-            Sincronizador(cfg, buzon, calendario, analizador, notificador, registro).ejecutar()
+            desde = datetime.fromisoformat(args.desde).replace(tzinfo=timezone.utc) if args.desde else None
+            Sincronizador(cfg, buzon, calendario, analizador, notificador, registro, desde=desde).ejecutar()
     finally:
         registro.guardar()      # lo procesado hasta un posible fallo queda registrado
     return 0
