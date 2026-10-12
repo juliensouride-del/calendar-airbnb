@@ -27,12 +27,14 @@ class ErrorDefinitivo(Exception):
 class Sincronizador:
     def __init__(self, cfg: Config, buzon, calendario, analizador, notificador, registro: Registro,
                  ahora: datetime | None = None, desde: datetime | None = None,
-                 hasta: datetime | None = None):
+                 hasta: datetime | None = None, notificador_tecnico=None):
         self.cfg = cfg
         self.buzon = buzon
         self.cal = calendario
         self.analizador = analizador
-        self.notificador = notificador
+        self.notificador = notificador                      # al anfitrión (Yahoo)
+        self.tecnico = notificador_tecnico or _SoloLog()    # al desarrollador (ntfy); nunca al cliente
+        self.resumen = {"correos": 0, "errores": [], "alertas_limpieza": []}
         self.registro = registro
         self.ahora = ahora or datetime.now(timezone.utc)
         self.desde = desde      # carga manual: ignora la ventana y el inicio del registro
@@ -43,7 +45,8 @@ class Sincronizador:
         """Procesa los correos pendientes. Devuelve cuántos ha procesado."""
         inicio = self.registro.fecha_inicio(self.cfg.procesar_desde, self.ahora)
         desde = self.desde or max(inicio, self.ahora - timedelta(days=self.cfg.ventana_dias))
-        excluir = set(self.registro.procesados)
+        # Carga manual (--desde): se reprocesa todo el tramo (p. ej. tras una purga); es idempotente
+        excluir = set() if self.desde else set(self.registro.procesados)
         correos = (self.buzon.correos_desde(desde, self.cfg.carpetas, self.cfg.remitentes, excluir, hasta=self.hasta)
                    if self.hasta else self.buzon.correos_desde(desde, self.cfg.carpetas, self.cfg.remitentes, excluir))
         log.info("%d correo(s) nuevo(s) desde %s", len(correos), desde.isoformat(timespec="minutes"))
@@ -52,6 +55,9 @@ class Sincronizador:
             if i % 20 == 0:
                 self.registro.guardar()     # si la ejecución se corta, no se pierde lo avanzado
         self.registro.limpiar(self.ahora - timedelta(days=self.cfg.ventana_dias + 7))
+        # Limpiezas de los próximos días, aunque no haya llegado ningún correo (cambios de fechas, migración…)
+        self.resumen["alertas_limpieza"] = self.cal.recalcular_limpiezas(self.ahora.astimezone(self.tz).date())
+        self.resumen["correos"] = len(correos)
         return len(correos)
 
     # ------------------------------------------------------------------ correo
@@ -77,6 +83,7 @@ class Sincronizador:
         except Exception as err:                         # noqa: BLE001 — un correo malo no para los demás
             definitivo = isinstance(err, ErrorDefinitivo) or self.registro.sumar_fallo(c.id) >= self.cfg.max_reintentos
             log.error('Error en "%s": %s (%s)', c.asunto, err, "definitivo" if definitivo else "se reintentará")
+            self.resumen["errores"].append(f"{c.asunto}: {err}")
             if definitivo:
                 self.registro.marcar_procesado(c.id, c.fecha)
                 if self.cfg.avisar_errores:
@@ -122,7 +129,7 @@ class Sincronizador:
 
     def _cancelacion(self, d: DatosCorreo) -> None:
         eventos = self._buscar(d)
-        if not eventos["entrada"] and not eventos["salida"]:
+        if not eventos["evento"]:
             log.info("  Cancelación de una reserva que no está en el calendario (%s).", d.codigo)
             return
         estado = leer_estado(eventos) or reglas.crear_estado(d)
@@ -132,7 +139,7 @@ class Sincronizador:
 
     def _mensaje(self, d: DatosCorreo, ctx: dict) -> None:
         eventos = self._buscar(d)
-        if eventos["entrada"] or eventos["salida"] or self.cfg.crear_evento_desde_mensaje:
+        if eventos["evento"] or self.cfg.crear_evento_desde_mensaje:
             return self._confirmacion_o_mensaje(d, ctx, eventos)
         # Reserva anterior a la instalación: no se crea, pero si el huésped pide algo se avisa.
         # (Sin reglas deterministas, para no repetir el aviso con cada mensaje.)
@@ -159,8 +166,8 @@ class Sincronizador:
         reglas.fusionar_analisis(estado, r.analisis, r.fuente, ctx["fecha_corta"])
         if r.error:
             estado["notas"] = (estado["notas"] + [{"f": ctx["fecha_corta"], "t": "⚠️ Mensaje sin analizar por la IA; revísalo en Yahoo Mail."}])[-5:]
-            if self.cfg.avisar_errores and self.registro.puede_avisar("gemini", self.ahora):
-                self.notificador.enviar("⚠️ Airbnb → Calendar: Gemini no responde",
+            if self.registro.puede_avisar("gemini", self.ahora):
+                self.tecnico.enviar("⚠️ Airbnb → Calendar: Gemini no responde",
                                         "Los mensajes se están analizando solo con palabras clave (sin horas de llegada/salida).\n\n"
                                         f"Error: {r.error}\n\nComprueba el secreto GEMINI_API_KEY y [gemini] modelo en config.toml.")
 
@@ -183,6 +190,11 @@ class Sincronizador:
             l += ["", "—— Mensaje del huésped ——", texto[:2000]]
         l += ["", "Correo en Yahoo Mail: " + ctx["ref"]]
         self.notificador.enviar(asunto, "\n".join(l))
+
+
+class _SoloLog:
+    def enviar(self, asunto: str, cuerpo: str) -> None:
+        log.warning("Aviso técnico: %s", asunto)
 
 
 def _texto_huesped(d: DatosCorreo) -> str:

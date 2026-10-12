@@ -13,7 +13,7 @@ import re
 from datetime import date
 
 from .config import Alojamiento, Config
-from .parser import DatosCorreo, clave_normalizada
+from .parser import DatosCorreo, clave_normalizada, normalizar_hora
 
 PRIORIDAD_FUENTE = {"regla": 1, "palabras": 2, "huesped": 3}   # lo que dice el huésped manda
 DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -168,27 +168,113 @@ def texto_fuente(e: dict, campo: str) -> str:
 # ----------------------------------------------------------------------------
 
 
-def titulo_evento(e: dict, tipo: str) -> str:
-    """'🟢 Check-in · Lavapiés · 3 pers · llega 17:30 · 🛋️ sofá cama · 🍼 cuna'"""
-    partes = ["🟢 Check-in" if tipo == "entrada" else "🔴 Check-out", e["alias"] or e["alojamiento"] or "Airbnb"]
+def hora_entrada(e: dict, cfg: Config) -> str:
+    """Hora real de entrada: la que dice el huésped, si no la del anuncio, si no la de config.toml."""
+    return normalizar_hora(e["hora_llegada"] or e["hora_checkin"]) or cfg.hora_entrada_por_defecto
+
+
+def hora_salida(e: dict, cfg: Config) -> str:
+    return normalizar_hora(e["hora_salida"] or e["hora_checkout"]) or cfg.hora_salida_por_defecto
+
+# ----------------------------------------------------------------------------
+#  Limpieza entre reservas (rotación)
+# ----------------------------------------------------------------------------
+
+
+def evaluar_limpieza(anterior: dict | None, e: dict, cfg: Config) -> dict | None:
+    """
+    Ventana de limpieza entre la salida de `anterior` y la entrada de `e` (mismo alojamiento).
+
+    Reglas: la limpieza dura `cfg.limpieza_duracion_min`; el equipo trabaja de
+    `cfg.limpieza_inicio` a `cfg.limpieza_fin` (solo mañanas) y entrega las llaves
+    en persona a la hora de entrada del huésped.
+    Devuelve None si no hay rotación (sin salida el mismo día ni el día anterior).
+    """
+    if not anterior or anterior.get("cancelada") or e["cancelada"] or not e["checkin"] or not anterior.get("checkout"):
+        return None
+    dias = (date.fromisoformat(e["checkin"]) - date.fromisoformat(anterior["checkout"])).days
+    if dias not in (0, 1):
+        return None
+    sale, entra = _min(hora_salida(anterior, cfg)), _min(hora_entrada(e, cfg))
+    ini_j, fin_j, dur = _min(cfg.limpieza_inicio), _min(cfg.limpieza_fin), cfg.limpieza_duracion_min
+    if dias == 0:      # mismo día: entre la salida y la entrada, dentro de la jornada
+        opciones = [(e["checkin"], max(sale, ini_j), min(entra, fin_j))]
+    else:              # salida ayer: la tarde de ayer (hasta el fin de jornada) o la mañana de hoy
+        opciones = [(anterior["checkout"], max(sale, ini_j), fin_j), (e["checkin"], ini_j, min(entra, fin_j))]
+    dia, desde, hasta = max(opciones, key=lambda o: o[2] - o[1])
+    ok = hasta - desde >= dur
+    r = {"ok": ok, "mismo_dia": dias == 0, "dia": dia, "salida": _hhmm(sale), "entrada": _hhmm(entra),
+         "desde": _hhmm(desde), "hasta": _hhmm(max(hasta, desde)), "margen_min": hasta - desde}
+    if not ok:
+        motivos = []
+        if dias == 0 and max(sale, ini_j) + dur > fin_j:
+            motivos.append(f"la salida ({_hhmm(sale)}) es demasiado tarde para acabar antes de las {cfg.limpieza_fin}")
+        if entra < (max(sale, ini_j) if dias == 0 else ini_j) + dur:
+            motivos.append(f"la entrada ({_hhmm(entra)}) no deja {dur // 60} h de limpieza")
+        r["motivo"] = "; ".join(motivos) or f"solo hay {max(hasta - desde, 0)} min"
+    return r
+
+
+def prefijo_limpieza(l: dict | None) -> str:
+    if not l:
+        return ""
+    return "[LIMPIEZA OK] " if l["ok"] else "[ALERTA LIMPIEZA / AJUSTE HORARIO] "
+
+
+def lineas_limpieza(l: dict | None, cfg: Config) -> list[str]:
+    if not l:
+        return []
+    cuando = "hoy mismo" if l["mismo_dia"] else "el día anterior"
+    lin = [f"🧹 LIMPIEZA ({'OK' if l['ok'] else 'ALERTA — AJUSTAR HORARIO'})",
+           f"   Huésped anterior sale {cuando} a las {l['salida']} · este huésped entra a las {l['entrada']}"]
+    if l["ok"]:
+        lin.append(f"   Ventana: {fecha_corta_es(l['dia'])} de {l['desde']} a {l['hasta']}"
+                   f" ({l['margen_min'] // 60} h {l['margen_min'] % 60:02d} min; hacen falta {cfg.limpieza_duracion_min // 60} h)")
+    else:
+        lin.append(f"   ⚠️ No caben {cfg.limpieza_duracion_min // 60} h de limpieza entre las {cfg.limpieza_inicio}"
+                   f" y las {cfg.limpieza_fin}: {l['motivo']}.")
+        lin.append("   Pide al huésped saliente que salga antes o al entrante que llegue más tarde.")
+    lin.append(f"   🔑 Entrega de llaves en persona a las {l['entrada']}")
+    return lin + [""]
+
+
+def _min(hhmm: str) -> int:
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _hhmm(minutos: int) -> str:
+    return f"{minutos // 60:02d}:{minutos % 60:02d}"
+
+# ----------------------------------------------------------------------------
+#  Formato de los eventos (un único evento por reserva: de la entrada a la salida)
+# ----------------------------------------------------------------------------
+
+
+def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
+    """'[LIMPIEZA OK] 🏠 Lavapiés · 3 pers · llega 17:30 · sale 10:00 · 🛋️ sofá cama · 🍼 cuna'"""
+    partes = ["🏠 " + (e["alias"] or e["alojamiento"] or "Airbnb")]
     if e["total"]:
         partes.append(f"{e['total']} pers")
-    hora = e["hora_llegada"] if tipo == "entrada" else e["hora_salida"]
-    if hora:
-        partes.append(("llega " if tipo == "entrada" else "sale ") + hora)
+    if e["hora_llegada"]:
+        partes.append("llega " + e["hora_llegada"])
+    if e["hora_salida"]:
+        partes.append("sale " + e["hora_salida"])
     if e["sofa"] and e["sofa"]["v"]:
         partes.append("🛋️ sofá cama")
     if e["cuna"] and e["cuna"]["v"]:
         partes.append("🍼 cuna")
     t = " · ".join(partes)
-    return "❌ CANCELADA · " + t if e["cancelada"] else t
+    return "❌ CANCELADA · " + t if e["cancelada"] else prefijo_limpieza(limpieza) + t
 
 
-def descripcion_evento(e: dict, actualizado_txt: str = "") -> str:
+def descripcion_evento(e: dict, actualizado_txt: str = "", limpieza: dict | None = None, cfg: Config | None = None) -> str:
     no = "No indicada"
     l = []
     if e["cancelada"]:
         l += ["❌ RESERVA CANCELADA", ""]
+    elif limpieza and cfg:
+        l += lineas_limpieza(limpieza, cfg)
     l.append("🏠 Alojamiento: " + (e["alojamiento"] or "?"))
     l.append("📅 Check-in: " + fecha_larga_es(e["checkin"]) + (" · desde " + e["hora_checkin"] if e["hora_checkin"] else ""))
     l.append("📅 Check-out: " + fecha_larga_es(e["checkout"]) + (" · hasta " + e["hora_checkout"] if e["hora_checkout"] else ""))

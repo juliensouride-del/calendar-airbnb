@@ -22,6 +22,8 @@ procesar_desde = ""
 # ("Hacer cambios en eventos").
 id = "PEGA_AQUI_EL_ID_DEL_CALENDARIO"
 zona_horaria = "Europe/Madrid"
+# Cada reserva es UN evento que va de la hora de entrada a la de salida.
+# duracion_evento_min solo se usa si falta la fecha de salida.
 duracion_evento_min = 30
 hora_entrada_por_defecto = "15:00"
 hora_salida_por_defecto = "11:00"
@@ -35,9 +37,17 @@ crear_evento_desde_mensaje = false
 [calendario.colores]
 # 1 Lavanda · 2 Salvia · 3 Uva · 4 Flamenco · 5 Plátano · 6 Mandarina
 # 7 Pavo real · 8 Grafito · 9 Arándano · 10 Albahaca · 11 Tomate
-entrada = "10"
-salida = "11"
+reserva = "10"
+alerta_limpieza = "6"   # reservas con [ALERTA LIMPIEZA / AJUSTE HORARIO]
 cancelada = "8"
+
+[limpieza]
+# Cuando un huésped sale el mismo día (o el anterior) en que entra el siguiente, el
+# evento del que entra lleva [LIMPIEZA OK] o [ALERTA LIMPIEZA / AJUSTE HORARIO] según
+# quepa la limpieza entre la salida y la entrada, dentro del horario del equipo.
+duracion_min = 120
+inicio = "08:00"
+fin = "15:00"           # el equipo solo trabaja por la mañana
 
 [reglas]
 # Si la reserva incluye bebés, marcar la cuna como probable aunque no la pidan.
@@ -50,7 +60,7 @@ max_reintentos = 3
 email = ""
 peticiones = true      # sofá cama, cuna y otras peticiones especiales
 horas = false          # también cuando el huésped indique hora de llegada/salida
-errores = true         # correos que no se pueden procesar, Gemini caído
+errores = true         # correos que no se pueden procesar (Gemini caído se avisa solo al desarrollador)
 modificaciones = true  # modificaciones de reserva (se revisan a mano)
 
 [gemini]

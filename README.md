@@ -17,9 +17,10 @@ Yahoo Mail ──IMAP/TLS, solo lectura──▶ sincronizar.py (GitHub Actions,
 
 - **No toca el buzón.** Abre las carpetas en solo lectura y descarga con `BODY.PEEK[]`, así que nada se marca como leído. El anfitrión sigue viendo sus correos como siempre, y el script no depende de si los ha abierto o no.
 - **No duplica nada.** Cada correo se identifica por `carpeta:UIDVALIDITY:UID` (único en IMAP) y queda registrado en `estado.json`. Cada reserva se encuentra en el calendario por su código, guardado como propiedad privada del evento.
-- **Una reserva = dos eventos** de 30 min: `🟢 Check-in · Tirso · 3 pers · llega 18:00 · 🍼 cuna` y `🔴 Check-out · …`. Si se cancela: `❌ CANCELADA`, en gris.
+- **Una reserva = un evento**, de la hora de entrada a la de salida: `🏠 Tirso · 3 pers · llega 18:00 · 🍼 cuna`. Si se cancela: `❌ CANCELADA`, en gris. Las reservas del formato anterior (check-in y check-out por separado) se unifican al llegar el siguiente correo de la reserva.
+- **Limpieza.** Si el huésped anterior del mismo piso sale ese día (o el anterior), el evento del que entra empieza por `[LIMPIEZA OK]` o, en naranja, `[ALERTA LIMPIEZA / AJUSTE HORARIO]`: se comprueba que caben 2 h de limpieza entre la salida y la entrada, dentro del horario del equipo (08:00–15:00, sección `[limpieza]` de `config.toml`). La descripción indica la ventana y la hora de entrega de llaves (la de entrada). Si cambia la hora de salida del anterior, se recalcula; además, cada ejecución revisa las limpiezas de los próximos 30 días, así que también se corrigen tras cambios de fechas o cancelaciones.
 - **Mensajes de los huéspedes.** Gemini (gratis) extrae la hora de llegada y salida, la cuna, el sofá cama y otras peticiones. Si Gemini falla, se usan palabras clave.
-- **Errores.** Un correo que falla se reintenta 3 veces y después se avisa. Si falla todo el script (Yahoo o Google caídos, contraseña revocada), la ejecución sale en rojo y GitHub envía un email. La siguiente ejecución recupera lo pendiente (revisa los últimos 3 días).
+- **Errores.** Un correo que falla se reintenta 3 veces y después se avisa. Si falla todo el script (Yahoo o Google caídos, contraseña revocada), la ejecución NO se pone en rojo (para que GitHub no envíe emails al propietario del repositorio): se marca con una anotación de error y se envía una notificación push solo al desarrollador por [ntfy.sh](https://ntfy.sh), al tema del secreto `ALERTA_NTFY_TOPIC`. La siguiente ejecución recupera lo pendiente (revisa los últimos 3 días).
 
 | Pieza | Plan gratuito | Uso |
 | --- | --- | --- |
@@ -68,6 +69,7 @@ En **Settings → Secrets and variables → Actions → New repository secret**:
 | `YAHOO_CLAVE_APP` | contraseña de aplicación (paso 1) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | contenido completo del `.json` (paso 2.3) |
 | `GEMINI_API_KEY` | clave de Gemini (paso 3) |
+| `ALERTA_NTFY_TOPIC` | (opcional) tema de ntfy.sh para los avisos de fallo al desarrollador: un nombre largo y aleatorio. Suscríbete a él en la app ntfy |
 | `CALENDAR_ID` | ID del calendario (Configuración del calendario → Integrar el calendario). Alternativa: ponerlo en `[calendario] id` de `config.toml` |
 
 ### 6. Puesta en marcha
@@ -95,7 +97,12 @@ Para ejecutarlo contra los servicios reales, define las mismas variables de ento
 
 ## Mantenimiento
 
-- **Contraseña de Yahoo revocada o cambiada:** la ejecución falla y GitHub envía un email. Genera otra contraseña de aplicación y actualiza el secreto `YAHOO_CLAVE_APP`.
+- **Pasar las reservas antiguas al formato nuevo** (un evento por reserva, con limpieza): en Actions, modo `migrar-simulacion` y luego `migrar`. En local: `python sincronizar.py --migrar [--dry-run]`.
+- **Resumen de cada ejecución** (correos, eventos, errores y alertas de limpieza): en la página de la ejecución en Actions.
+- **Avisos técnicos** (fallo de la ejecución, Gemini caído) llegan solo al desarrollador por ntfy (`ALERTA_NTFY_TOPIC`); el modo `comprobar` avisa si falta ese secreto. Al anfitrión solo le llegan las peticiones de huéspedes y los correos que hay que revisar a mano.
+- **Borrar todos los eventos del script** (solo los que llevan sus marcas privadas; los eventos personales no se tocan): en Actions, modo `purgar-simulacion` para ver la lista y `purgar` (hay que escribir BORRAR en el campo `confirmar`) para borrar. En local: `python sincronizar.py --purgar --dry-run` y `python sincronizar.py --purgar` (pide escribir BORRAR). Para volver a cargarlos: modo `sincronizar` con `desde`.
+
+- **Contraseña de Yahoo revocada o cambiada:** la ejecución falla y llega el aviso de ntfy. Genera otra contraseña de aplicación y actualiza el secreto `YAHOO_CLAVE_APP`.
 - **Correos en Spam o archivados a mano:** añade `"Bulk"` o `"Archive"` a `[yahoo] carpetas`.
 - **Airbnb cambia una plantilla:** llega el aviso «no se pudo procesar un correo». Los patrones están en `airbnb_calendar/parser.py` (`PATRONES`). Añade el correo nuevo a `ejemplos/`, escribe su prueba y ajusta el patrón.
 - **Registro:** la rama `estado` guarda `estado.json`, con un commit solo cuando cambia. Se puede consultar o borrar. Si se borra, la siguiente ejecución vuelve a empezar desde ese momento.

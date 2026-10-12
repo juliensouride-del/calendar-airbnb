@@ -32,9 +32,13 @@ class Config:
     duracion_evento_min: int = 30
     hora_entrada_por_defecto: str = "15:00"
     hora_salida_por_defecto: str = "11:00"
-    colores: dict[str, str] = field(default_factory=lambda: {"entrada": "10", "salida": "11", "cancelada": "8"})
+    colores: dict[str, str] = field(default_factory=lambda: {"reserva": "10", "alerta_limpieza": "6", "cancelada": "8"})
     recordatorios_minutos: list[int] | None = None    # None = los del calendario
     crear_evento_desde_mensaje: bool = False
+    # Limpieza entre reservas
+    limpieza_duracion_min: int = 120
+    limpieza_inicio: str = "08:00"      # el equipo solo trabaja por la mañana
+    limpieza_fin: str = "15:00"
     # Reglas
     alojamientos: list[Alojamiento] = field(default_factory=list)
     cuna_si_hay_bebes: bool = True
@@ -76,6 +80,12 @@ class Secretos:
         return cls(os.environ["YAHOO_USUARIO"], os.environ["YAHOO_CLAVE_APP"].replace(" ", ""),
                    os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"], os.environ.get("GEMINI_API_KEY", ""))
 
+    @staticmethod
+    def google_desde_entorno() -> str:
+        if not os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"):
+            raise SystemExit("Falta la variable de entorno GOOGLE_SERVICE_ACCOUNT_JSON")
+        return os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
+
 
 def cargar_config(ruta: str | Path = "config.toml") -> Config:
     with open(ruta, "rb") as f:
@@ -91,9 +101,12 @@ def cargar_config(ruta: str | Path = "config.toml") -> Config:
         duracion_evento_min=c.get("duracion_evento_min", 30),
         hora_entrada_por_defecto=c.get("hora_entrada_por_defecto", "15:00"),
         hora_salida_por_defecto=c.get("hora_salida_por_defecto", "11:00"),
-        colores={"entrada": "10", "salida": "11", "cancelada": "8", **c.get("colores", {})},
+        colores={"reserva": "10", "alerta_limpieza": "6", "cancelada": "8", **c.get("colores", {})},
         recordatorios_minutos=c.get("recordatorios_minutos"),
         crear_evento_desde_mensaje=c.get("crear_evento_desde_mensaje", False),
+        limpieza_duracion_min=t.get("limpieza", {}).get("duracion_min", 120),
+        limpieza_inicio=t.get("limpieza", {}).get("inicio", "08:00"),
+        limpieza_fin=t.get("limpieza", {}).get("fin", "15:00"),
         alojamientos=[Alojamiento(**a) for a in t.get("alojamientos", [])],
         cuna_si_hay_bebes=t.get("reglas", {}).get("cuna_si_hay_bebes", True),
         max_reintentos=t.get("reglas", {}).get("max_reintentos", 3),

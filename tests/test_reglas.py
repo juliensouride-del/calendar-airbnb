@@ -31,8 +31,7 @@ def analisis(**kw):
 def test_confirmacion_titulos_y_descripcion(r0, cfg):
     e = reglas.crear_estado(r0)
     reglas.aplicar_reglas(e, None, cfg)
-    assert reglas.titulo_evento(e, "entrada") == "🟢 Check-in · Corazón de Madrid · 2 pers"
-    assert reglas.titulo_evento(e, "salida") == "🔴 Check-out · Corazón de Madrid · 2 pers"
+    assert reglas.titulo_evento(e) == "🏠 Corazón de Madrid · 2 pers"
     d = reglas.descripcion_evento(e, "x")
     assert "📅 Check-in: jueves 26/11/2026 · desde 15:00" in d
     assert "📅 Check-out: miércoles 02/12/2026 · hasta 11:00" in d
@@ -56,7 +55,7 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     assert e["cuna"] == {"v": True, "f": "huesped"}
     assert reglas.avisos_pendientes(e, cfg) == ["📝 Entrada anticipada hacia las 12:00"]
     reglas.marcar_avisado(e)
-    assert reglas.titulo_evento(e, "entrada") == "🟢 Check-in · Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
+    assert reglas.titulo_evento(e) == "🏠 Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
     assert "🍼 Cuna: SÍ — lo indica el huésped" in reglas.descripcion_evento(e)
     assert "23/09: Llegan en una hora; agradecen la cuna." in reglas.descripcion_evento(e)
 
@@ -65,7 +64,7 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     assert len(e["peticiones"]) == 1
 
     reglas.fusionar_analisis(e, analisis(hora_salida="10:50"), "huesped", "27/09")
-    assert reglas.titulo_evento(e, "salida") == "🔴 Check-out · Antón Martín · 3 pers · sale 10:50 · 🍼 cuna"
+    assert reglas.titulo_evento(e) == "🏠 Antón Martín · 3 pers · llega 15:05 · sale 10:50 · 🍼 cuna"
     assert reglas.avisos_pendientes(e, cfg) == []
 
 
@@ -87,7 +86,7 @@ def test_sofa_cama_por_capacidad_del_alojamiento(cfg):
     e = reglas.crear_estado(r2)
     reglas.aplicar_reglas(e, Alojamiento("x", "x", capacidad_sin_sofa=2), cfg)
     assert e["sofa"] == {"v": True, "f": "regla"}
-    assert "🛋️ sofá cama" in reglas.titulo_evento(e, "entrada")
+    assert "🛋️ sofá cama" in reglas.titulo_evento(e)
     e2 = reglas.crear_estado(r2)
     reglas.aplicar_reglas(e2, Alojamiento("x", "x", capacidad_sin_sofa=4), cfg)
     assert e2["sofa"] is None
@@ -99,7 +98,7 @@ def test_cancelacion_titulo_marcado_y_sin_avisos(r0, cfg):
     reglas.fusionar_analisis(e, analisis(sofa_cama="si"), "huesped")
     reglas.actualizar_con_datos(e, r1)
     e["cancelada"] = True
-    assert reglas.titulo_evento(e, "entrada").startswith("❌ CANCELADA · 🟢 Check-in · Corazón de Madrid")
+    assert reglas.titulo_evento(e).startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
     assert reglas.descripcion_evento(e).startswith("❌ RESERVA CANCELADA")
     assert reglas.avisos_pendientes(e, cfg) == []
     assert e["huesped"] == "Imane Bensalah"      # "Sam" (más corto y distinto) no lo pisa
