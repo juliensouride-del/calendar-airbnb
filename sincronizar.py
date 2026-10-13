@@ -123,8 +123,14 @@ def migrar(calendario: Calendario, simulacion: bool) -> int:
 
 def recalcular(calendario: Calendario, simulacion: bool) -> int:
     alertas = calendario.recalcular_limpiezas(date.today(), dias=None, simulacion=simulacion)
-    log.info("✔ %d reserva(s) futura(s) %s · %d con alerta de limpieza", calendario.stats["limpiezas_recalculadas"],
-             "por actualizar (simulación)" if simulacion else "actualizadas", len(alertas))
+    log.info("✔ %d reserva(s) futura(s) revisada(s) · %d %s · %d con alerta de limpieza",
+             calendario.stats["reservas_revisadas"], calendario.stats["limpiezas_recalculadas"],
+             "por actualizar (simulación)" if simulacion else "actualizada(s)", len(alertas))
+    antiguos = [ev for ev in calendario.eventos_propios()
+                if (ev.get("extendedProperties") or {}).get("private", {}).get("airbnb_tipo") in ("entrada", "salida")]
+    if antiguos:
+        log.warning("Hay %d evento(s) del formato anterior (entrada y salida por separado) que no se recalculan:"
+                    " ejecuta antes el modo migrar", len(antiguos))
     return 0
 
 

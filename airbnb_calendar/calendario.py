@@ -233,9 +233,11 @@ class Calendario:
         evs = self._listar({P_TIPO: "reserva"}, **rango)
         reservas = [(ev, e) for ev in evs if (e := leer_estado({"evento": ev})) and e["checkin"]]
         alertas = []
+        self.stats["reservas_revisadas"] = 0
         for ev, e in reservas:
             if e["checkin"] < hoy.isoformat() or not e["alojamiento"]:
                 continue
+            self.stats["reservas_revisadas"] += 1
             mismas = [o for _, o in reservas if _hash(o["alojamiento"]) == _hash(e["alojamiento"])]
             limpieza = reglas.evaluar_limpieza(_anterior_en(mismas, e, self.cfg), e, self.cfg)
             if _props(ev).get(P_LIMPIEZA, "") != _huella(limpieza) or self._horario_distinto(ev, e):
