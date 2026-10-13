@@ -2,9 +2,9 @@ name: Airbnb → Calendar
 
 on:
   schedule:
-    # Cada 30 min (≈1 450 min/mes, dentro de los 2 000 gratis de un repositorio privado).
-    # Minutos 7 y 37 para evitar las horas en punto, cuando GitHub va más cargado.
-    - cron: "7,37 * * * *"
+    # Cada 2 h de día: 06:07–20:07 UTC = 08:07–22:07 en Madrid en verano (07:07–21:07 en invierno).
+    # ≈250 min/mes de los 2 000 gratis. Minuto 7 para evitar las horas en punto, cuando GitHub va más cargado.
+    - cron: "7 6-20/2 * * *"
   workflow_dispatch:
     inputs:
       modo:

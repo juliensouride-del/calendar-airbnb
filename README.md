@@ -2,10 +2,10 @@
 
 Script en Python que lee los correos de Airbnb **directamente de Yahoo Mail** y mantiene el calendario de Google del anfitrión con las entradas y salidas de cada reserva: alojamiento, fechas, número de personas, horas de llegada y salida, sofá cama y cuna. Si un huésped pide algo especial, envía un aviso a su Yahoo.
 
-Se ejecuta solo, cada 30 minutos, en **GitHub Actions**. Coste 0 € y sin servidores.
+Se ejecuta solo, cada 2 horas durante el día (8:00–22:00 aprox.), en **GitHub Actions**. Coste 0 € y sin servidores.
 
 ```
-Yahoo Mail ──IMAP/TLS, solo lectura──▶ sincronizar.py (GitHub Actions, cada 30 min)
+Yahoo Mail ──IMAP/TLS, solo lectura──▶ sincronizar.py (GitHub Actions, cada 2 h de día)
                                         ├─ parser.py       código, huésped, fechas, horas, personas
                                         ├─ gemini.py       mensajes del huésped: hora de llegada, cuna, sofá…
                                         ├─ calendario.py   crea, actualiza o cancela los eventos (API de Google)
@@ -78,7 +78,7 @@ En **Settings → Secrets and variables → Actions → New repository secret**:
 En **Actions → Airbnb → Calendar → Run workflow**:
 1. `comprobar`: verifica Yahoo, Google Calendar y Gemini sin escribir nada.
 2. `diagnosticar`: muestra lo que se extrae de los correos de Airbnb de los últimos 7 días, sin tocar el calendario.
-3. `sincronizar`: la primera ejecución anota la fecha de inicio. Desde ese momento se procesa cada correo nuevo. Después sigue sola cada 30 minutos.
+3. `sincronizar`: la primera ejecución anota la fecha de inicio. Desde ese momento se procesa cada correo nuevo. Después sigue sola cada 2 horas de día; lo que llega de noche se procesa por la mañana.
 
 Para cargar también reservas recientes, pon `procesar_desde = "2026-10-01"` en `config.toml` **antes** de la primera ejecución (con un máximo de 3 días hacia atrás, por `ventana_dias`).
 
