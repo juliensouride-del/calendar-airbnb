@@ -460,6 +460,53 @@ def test_L2_recalcular_corrige_el_horario_de_eventos_antiguos(tmp_path):
     assert cal.stats["limpiezas_recalculadas"] == 2
 
 
+def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    ev = s.cal.ev("ENTRA2")
+    assert "#entrada HH:MM" in ev["description"], "la descripción explica cómo fijar un acuerdo"
+
+    # Julien acuerda entrada a las 12:00 (deja 1 h de limpieza) y lo escribe en la web de Calendar (HTML)
+    ev["description"] = "#entrada 12h<br>" + ev["description"]
+    ev["start"]["dateTime"] = "2026-11-05T12:00:00"
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    ev = s.cal.ev("ENTRA2")
+    assert ev["start"]["dateTime"] == "2026-11-05T12:00:00", "no se devuelve a las 15:00"
+    assert ev["summary"].startswith("[ALERTA LIMPIEZA / AJUSTE HORARIO]") and "entra 12:00 ✅" in ev["summary"]
+    assert ev["description"].startswith("#entrada 12:00\n"), "la etiqueta se conserva al reescribir"
+
+    # Llega un correo nuevo de la reserva (p. ej. mensaje del huésped pidiendo las 10:00): el acuerdo sigue
+    from airbnb_calendar.calendario import leer_estado
+    eventos = cal.buscar_eventos_reserva("ENTRA2", None, None, None)
+    e = leer_estado(eventos)
+    e["hora_llegada"] = "10:00"
+    cal.guardar_reserva(e, eventos, None)
+    assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T12:00:00"
+
+    # Un acuerdo de salida tardía del huésped anterior también cuenta para la limpieza
+    sale = s.cal.ev("SALE1")
+    sale["description"] = "#salida 13:30\n" + sale["description"]
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert s.cal.ev("SALE1")["end"]["dateTime"] == "2026-11-05T13:30:00"
+
+    # Si Julien borra la etiqueta, vuelve el horario estándar
+    ev = s.cal.ev("ENTRA2")
+    ev["description"] = ev["description"].replace("#entrada 12:00\n", "")
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T15:00:00"
+
+
+def test_L4_leer_acuerdos():
+    from airbnb_calendar.reglas import leer_acuerdos
+    assert leer_acuerdos("#entrada 12:00\n#Salida: 13.30") == {"acuerdo_entrada": "12:00", "acuerdo_salida": "13:30"}
+    assert leer_acuerdos("<p>#entrada&nbsp;9h</p>") == {"acuerdo_entrada": "09:00", "acuerdo_salida": None}
+    assert leer_acuerdos("escribe: #entrada HH:MM o #salida HH:MM") == {"acuerdo_entrada": None, "acuerdo_salida": None}
+    assert leer_acuerdos(None) == {"acuerdo_entrada": None, "acuerdo_salida": None}
+
+
 def test_M_reglas_de_limpieza():
     from airbnb_calendar.reglas import evaluar_limpieza
     from conftest import config_prueba

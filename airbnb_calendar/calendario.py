@@ -12,8 +12,9 @@ origen (airbnb_origen) que permite borrarlos todos sin tocar otros eventos.
 Las reservas del formato anterior (dos eventos: entrada y salida) se convierten
 en un único evento la próxima vez que llega un correo suyo.
 
-⚠️ Si se edita a mano el título o la descripción de un evento, se sobrescribirán
-cuando llegue un nuevo correo de esa reserva.
+⚠️ Si se edita a mano el título, la descripción o la hora de un evento, se
+sobrescribirán. Para fijar una hora acordada con el huésped se escribe en la
+descripción '#entrada HH:MM' o '#salida HH:MM': esa hora manda y se conserva.
 """
 from __future__ import annotations
 
@@ -323,9 +324,14 @@ def leer_estado(eventos: dict) -> dict | None:
         if not n:
             continue
         try:
-            return json.loads("".join(p.get(f"{P_ESTADO}{i}") or "" for i in range(n)))
+            estado = json.loads("".join(p.get(f"{P_ESTADO}{i}") or "" for i in range(n)))
         except json.JSONDecodeError as e:
             log.warning("Estado ilegible en el evento %s: %s", ev.get("id"), e)
+            continue
+        # Los acuerdos de horario los escribe el anfitrión en la descripción: lo que pone ahí manda
+        # (si borra la etiqueta, el acuerdo desaparece)
+        estado.update(reglas.leer_acuerdos((eventos.get("evento") or ev).get("description")))
+        return estado
     return None
 
 

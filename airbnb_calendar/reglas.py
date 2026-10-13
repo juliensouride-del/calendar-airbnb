@@ -27,6 +27,7 @@ def crear_estado(datos: DatosCorreo | None = None) -> dict:
         "hora_checkin": None, "hora_checkout": None,        # horas oficiales del anuncio
         "adultos": None, "ninos": None, "bebes": None, "mascotas": None, "total": None,
         "hora_llegada": None, "hora_salida": None,          # lo que dice el huésped
+        "acuerdo_entrada": None, "acuerdo_salida": None,    # lo acordado por el anfitrión (#entrada / #salida)
         "sofa": None, "cuna": None,                          # {"v": bool, "f": "huesped"|"palabras"|"regla"}
         "peticiones": [],                                    # otras peticiones especiales
         "notas": [],                                         # [{"f": "dd/mm", "t": resumen}]
@@ -168,18 +169,41 @@ def texto_fuente(e: dict, campo: str) -> str:
 # ----------------------------------------------------------------------------
 
 
+ETIQUETA_ACUERDO = re.compile(r"#\s*(entrada|salida)\s*:?\s*(\d{1,2}(?:\s*[:.h]\s*\d{2})?)(?!\d)", re.I)
+
+
+def leer_acuerdos(descripcion: str | None) -> dict:
+    """
+    Horas acordadas por el anfitrión, escritas a mano en la descripción del evento:
+    '#entrada 12:00' / '#salida 13:30' (también '#entrada 12h', '#salida 13.30').
+    → {'acuerdo_entrada': 'HH:MM' | None, 'acuerdo_salida': 'HH:MM' | None}
+    """
+    texto = re.sub(r"<[^>]+>|&nbsp;", " ", descripcion or "")     # Calendar guarda HTML si se edita en la web
+    r = {"acuerdo_entrada": None, "acuerdo_salida": None}
+    for tipo, hora in ETIQUETA_ACUERDO.findall(texto):
+        h = normalizar_hora(re.sub(r"\s*[.h]\s*", ":", hora.replace(" ", "")))
+        if h:
+            r[f"acuerdo_{tipo.lower()}"] = h
+    return r
+
+
 def hora_entrada(e: dict, cfg: Config) -> str:
     """
-    Hora de entrada en el calendario. El horario estándar (config.toml) se respeta salvo acuerdo
-    expreso: si el huésped dice que llega más tarde se usa su hora; si pide llegar antes, no.
+    Hora de entrada en el calendario. Manda la acordada por el anfitrión (#entrada HH:MM), aunque no
+    deje tiempo de limpieza. Si no la hay, el horario estándar (config.toml): si el huésped dice que
+    llega más tarde se usa su hora; si pide llegar antes, no.
     """
+    if e.get("acuerdo_entrada"):
+        return e["acuerdo_entrada"]
     estandar = cfg.hora_entrada_por_defecto
     llegada = normalizar_hora(e["hora_llegada"])
     return max(llegada, estandar) if llegada else estandar
 
 
 def hora_salida(e: dict, cfg: Config) -> str:
-    """Hora de salida: la estándar, o la del huésped si sale antes (nunca más tarde)."""
+    """Hora de salida: la acordada (#salida HH:MM); si no, la estándar, o la del huésped si sale antes."""
+    if e.get("acuerdo_salida"):
+        return e["acuerdo_salida"]
     estandar = cfg.hora_salida_por_defecto
     salida = normalizar_hora(e["hora_salida"])
     return min(salida, estandar) if salida else estandar
@@ -264,9 +288,13 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
     partes = ["🏠 " + (e["alias"] or e["alojamiento"] or "Airbnb")]
     if e["total"]:
         partes.append(f"{e['total']} pers")
-    if e["hora_llegada"]:
+    if e.get("acuerdo_entrada"):
+        partes.append(f"entra {e['acuerdo_entrada']} ✅")
+    elif e["hora_llegada"]:
         partes.append("llega " + e["hora_llegada"])
-    if e["hora_salida"]:
+    if e.get("acuerdo_salida"):
+        partes.append(f"sale {e['acuerdo_salida']} ✅")
+    elif e["hora_salida"]:
         partes.append("sale " + e["hora_salida"])
     if e["sofa"] and e["sofa"]["v"]:
         partes.append("🛋️ sofá cama")
@@ -279,6 +307,10 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
 def descripcion_evento(e: dict, actualizado_txt: str = "", limpieza: dict | None = None, cfg: Config | None = None) -> str:
     no = "No indicada"
     l = []
+    # Las etiquetas de acuerdo van arriba y tal cual: se vuelven a leer en cada actualización
+    acuerdos = [f"#{t} {e[f'acuerdo_{t}']}" for t in ("entrada", "salida") if e.get(f"acuerdo_{t}")]
+    if acuerdos:
+        l += acuerdos + ["(horario acordado con el huésped: el script no lo cambia)", ""]
     if e["cancelada"]:
         l += ["❌ RESERVA CANCELADA", ""]
     elif limpieza and cfg:
@@ -300,6 +332,8 @@ def descripcion_evento(e: dict, actualizado_txt: str = "", limpieza: dict | None
     l += ["", "────────────"]
     l.append(f"Huésped: {e['huesped'] or '?'} · Código: {e['codigo'] or 'desconocido'}")
     l.append("Sincronizado desde Yahoo Mail" + (" · " + actualizado_txt if actualizado_txt else ""))
+    if not acuerdos and not e["cancelada"]:
+        l.append("Para fijar una hora acordada con el huésped, escribe al principio: #entrada HH:MM o #salida HH:MM")
     return "\n".join(l)
 
 
