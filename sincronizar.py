@@ -12,6 +12,8 @@ Airbnb (Yahoo Mail) → Google Calendar.
                                         Para volver a cargarlos: --desde yyyy-mm-dd
   python sincronizar.py --migrar [--dry-run] convierte las reservas del formato anterior (check-in y
                                         check-out por separado) en un único evento y recalcula limpiezas
+  python sincronizar.py --recalcular [--dry-run] aplica las reglas actuales (horario estándar, limpieza)
+                                        a todas las reservas que entran desde hoy, sin leer correos
 
 Secretos (variables de entorno): YAHOO_USUARIO, YAHOO_CLAVE_APP,
 GOOGLE_SERVICE_ACCOUNT_JSON y, opcionales, GEMINI_API_KEY y ALERTA_NTFY_TOPIC
@@ -50,13 +52,14 @@ def main() -> int:
     modo.add_argument("--diagnosticar", action="store_true")
     modo.add_argument("--purgar", action="store_true", help="borra los eventos creados por este script")
     modo.add_argument("--migrar", action="store_true", help="unifica las reservas del formato anterior")
-    ap.add_argument("--dry-run", action="store_true", help="con --purgar o --migrar: solo lista, no cambia nada")
+    modo.add_argument("--recalcular", action="store_true", help="aplica las reglas actuales a las reservas futuras")
+    ap.add_argument("--dry-run", action="store_true", help="con --purgar, --migrar o --recalcular: solo lista, no cambia nada")
     ap.add_argument("--si", action="store_true", help="con --purgar: no pide confirmación")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
 
     cfg = cargar_config(args.config)
-    sec = None if args.purgar or args.migrar else Secretos.desde_entorno()
+    sec = None if args.purgar or args.migrar or args.recalcular else Secretos.desde_entorno()
 
     if args.diagnosticar:
         return diagnosticar(cfg, sec)
@@ -66,6 +69,8 @@ def main() -> int:
                       simulacion=args.dry_run, confirmado=args.si)
     if args.migrar:
         return migrar(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run)
+    if args.recalcular:
+        return recalcular(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run)
 
     calendario = Calendario(cfg, sesion_cuenta_servicio(sec.google_service_account_json))
     analizador = AnalizadorMensajes(cfg, sec.gemini_api_key)
@@ -113,6 +118,13 @@ def migrar(calendario: Calendario, simulacion: bool) -> int:
     if not simulacion:
         calendario.recalcular_limpiezas(date.today())
     log.info("✔ %d reserva(s) del formato anterior %s", n, "por migrar (simulación)" if simulacion else "migradas")
+    return 0
+
+
+def recalcular(calendario: Calendario, simulacion: bool) -> int:
+    alertas = calendario.recalcular_limpiezas(date.today(), dias=None, simulacion=simulacion)
+    log.info("✔ %d reserva(s) futura(s) %s · %d con alerta de limpieza", calendario.stats["limpiezas_recalculadas"],
+             "por actualizar (simulación)" if simulacion else "actualizadas", len(alertas))
     return 0
 
 

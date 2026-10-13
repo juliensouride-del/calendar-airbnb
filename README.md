@@ -98,6 +98,7 @@ Para ejecutarlo contra los servicios reales, define las mismas variables de ento
 ## Mantenimiento
 
 - **Pasar las reservas antiguas al formato nuevo** (un evento por reserva, con limpieza): en Actions, modo `migrar-simulacion` y luego `migrar`. En local: `python sincronizar.py --migrar [--dry-run]`.
+- **Aplicar las reglas actuales a las reservas futuras** (p. ej. tras cambiar el horario estándar): en Actions, modo `recalcular-simulacion` y luego `recalcular`. En local: `python sincronizar.py --recalcular [--dry-run]`. Las reservas pasadas no se tocan.
 - **Resumen de cada ejecución** (correos, eventos, errores y alertas de limpieza): en la página de la ejecución en Actions.
 - **Avisos técnicos** (fallo de la ejecución, Gemini caído) llegan solo al desarrollador por ntfy (`ALERTA_NTFY_TOPIC`); el modo `comprobar` avisa si falta ese secreto. Al anfitrión solo le llegan las peticiones de huéspedes y los correos que hay que revisar a mano.
 - **Borrar todos los eventos del script** (solo los que llevan sus marcas privadas; los eventos personales no se tocan): en Actions, modo `purgar-simulacion` para ver la lista y `purgar` (hay que escribir BORRAR en el campo `confirmar`) para borrar. En local: `python sincronizar.py --purgar --dry-run` y `python sincronizar.py --purgar` (pide escribir BORRAR). Para volver a cargarlos: modo `sincronizar` con `desde`.

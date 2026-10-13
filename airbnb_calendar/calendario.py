@@ -118,16 +118,11 @@ class Calendario:
         if not estado["checkin"]:
             return eventos
         limpieza = reglas.evaluar_limpieza(self._reserva_anterior(estado), estado, self.cfg)
-        inicio = datetime.fromisoformat(f"{estado['checkin']}T{reglas.hora_entrada(estado, self.cfg)}")
-        fin = (datetime.fromisoformat(f"{estado['checkout']}T{reglas.hora_salida(estado, self.cfg)}")
-               if estado["checkout"] else inicio)
-        if fin <= inicio:
-            fin = inicio + timedelta(minutes=self.cfg.duracion_evento_min)
+        inicio, fin = self._horario(estado)
         ev = eventos.get("evento")
         cuerpo = {
             **self._contenido(estado, limpieza),
-            "start": {"dateTime": inicio.isoformat(), "timeZone": self.cfg.zona_horaria},
-            "end": {"dateTime": fin.isoformat(), "timeZone": self.cfg.zona_horaria},
+            **self._fechas(inicio, fin),
             "extendedProperties": {"private": self._propiedades(estado, limpieza, ev)},
         }
         if ev is None:
@@ -149,6 +144,30 @@ class Calendario:
         eventos["sobrantes"] = []
         self._actualizar_siguientes(estado)
         return eventos
+
+    def _horario(self, estado: dict) -> tuple[datetime, datetime]:
+        """Inicio y fin del evento según las reglas de horario actuales (hora local, sin zona)."""
+        inicio = datetime.fromisoformat(f"{estado['checkin']}T{reglas.hora_entrada(estado, self.cfg)}")
+        fin = (datetime.fromisoformat(f"{estado['checkout']}T{reglas.hora_salida(estado, self.cfg)}")
+               if estado["checkout"] else inicio)
+        if fin <= inicio:
+            fin = inicio + timedelta(minutes=self.cfg.duracion_evento_min)
+        return inicio, fin
+
+    def _fechas(self, inicio: datetime, fin: datetime) -> dict:
+        return {"start": {"dateTime": inicio.isoformat(), "timeZone": self.cfg.zona_horaria},
+                "end": {"dateTime": fin.isoformat(), "timeZone": self.cfg.zona_horaria}}
+
+    def _horario_distinto(self, ev: dict, estado: dict) -> bool:
+        """¿La hora del evento no es la que le toca con las reglas actuales?"""
+        def leer(campo):
+            t = (ev.get(campo) or {}).get("dateTime")
+            if not t:
+                return None
+            d = datetime.fromisoformat(t.replace("Z", "+00:00"))
+            return d if d.tzinfo else d.replace(tzinfo=self.tz)
+        inicio, fin = (d.replace(tzinfo=self.tz) for d in self._horario(estado))
+        return leer("start") != inicio or leer("end") != fin
 
     def borrar_evento(self, ev: dict) -> None:
         self._pedir("DELETE", f"{self.url}/{ev['id']}", ignorar=(404, 410))
@@ -187,12 +206,13 @@ class Calendario:
                 if _misma_reserva(sig, estado):
                     continue
                 limpieza = reglas.evaluar_limpieza(self._reserva_anterior(sig), sig, self.cfg)
-                if _props(ev).get(P_LIMPIEZA, "") == _huella(limpieza):
+                if _props(ev).get(P_LIMPIEZA, "") == _huella(limpieza) and not self._horario_distinto(ev, sig):
                     continue
                 self._escribir_limpieza(ev, sig, limpieza)
 
     def _escribir_limpieza(self, ev: dict, estado: dict, limpieza: dict | None) -> None:
-        cuerpo = {**self._contenido(estado, limpieza),
+        """Reescribe texto, color y horario del evento (el horario siempre con las reglas actuales)."""
+        cuerpo = {**self._contenido(estado, limpieza), **self._fechas(*self._horario(estado)),
                   "extendedProperties": {"private": {P_LIMPIEZA: _huella(limpieza)}}}
         self._pedir("PATCH", f"{self.url}/{ev['id']}", json=cuerpo)
         self.stats["limpiezas_recalculadas"] += 1
@@ -200,14 +220,16 @@ class Calendario:
 
     # ------------------------------------------------------- tareas periódicas
 
-    def recalcular_limpiezas(self, hoy: date, dias: int = 30) -> list[dict]:
+    def recalcular_limpiezas(self, hoy: date, dias: int | None = 30, simulacion: bool = False) -> list[dict]:
         """
-        Recalcula la limpieza de las reservas que entran entre hoy y dentro de `dias`, sin depender de
-        que llegue un correo (cambios de fechas, cancelaciones, reservas migradas). Una sola consulta.
-        Devuelve los estados de las reservas con alerta de limpieza.
+        Recalcula limpieza y horario de las reservas que entran entre hoy y dentro de `dias` (None = todas),
+        sin depender de que llegue un correo (cambios de fechas o de reglas, cancelaciones, reservas
+        migradas). Una sola consulta. Devuelve los estados de las reservas con alerta de limpieza.
         """
-        evs = self._listar({P_TIPO: "reserva"}, timeMin=f"{hoy - timedelta(days=2)}T00:00:00Z",
-                           timeMax=f"{hoy + timedelta(days=dias)}T00:00:00Z")
+        rango = {"timeMin": f"{hoy - timedelta(days=2)}T00:00:00Z"}
+        if dias is not None:
+            rango["timeMax"] = f"{hoy + timedelta(days=dias)}T00:00:00Z"
+        evs = self._listar({P_TIPO: "reserva"}, **rango)
         reservas = [(ev, e) for ev in evs if (e := leer_estado({"evento": ev})) and e["checkin"]]
         alertas = []
         for ev, e in reservas:
@@ -215,8 +237,14 @@ class Calendario:
                 continue
             mismas = [o for _, o in reservas if _hash(o["alojamiento"]) == _hash(e["alojamiento"])]
             limpieza = reglas.evaluar_limpieza(_anterior_en(mismas, e, self.cfg), e, self.cfg)
-            if _props(ev).get(P_LIMPIEZA, "") != _huella(limpieza):
-                self._escribir_limpieza(ev, e, limpieza)
+            if _props(ev).get(P_LIMPIEZA, "") != _huella(limpieza) or self._horario_distinto(ev, e):
+                if simulacion:
+                    inicio, fin = self._horario(e)
+                    log.info("Se actualizaría: %s → %s (%s → %s)", ev.get("summary"),
+                             reglas.titulo_evento(e, limpieza), inicio, fin)
+                    self.stats["limpiezas_recalculadas"] += 1
+                else:
+                    self._escribir_limpieza(ev, e, limpieza)
             if limpieza and not limpieza["ok"]:
                 alertas.append(e)
         return alertas

@@ -432,6 +432,34 @@ def test_L_rotacion_limpieza_ok_alerta_y_recalculo_al_cambiar_la_salida(tmp_path
     assert s.cal.ev("ENTRA2")["summary"] == "🏠 Lavapiés · 2 pers"
 
 
+def test_L2_recalcular_corrige_el_horario_de_eventos_antiguos(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="12:30"))
+    _guardar(cal, _reserva("SOLA3", "2026-12-01", "2026-12-04"))
+    # Eventos guardados con las reglas anteriores (llegada anticipada / salida tardía del huésped)
+    s.cal.ev("ENTRA2")["start"]["dateTime"] = "2026-11-05T12:30:00"
+    s.cal.ev("SOLA3")["end"]["dateTime"] = "2026-12-04T13:00:00"
+    s.cal.ev("SOLA3")["extendedProperties"]["private"]["airbnb_limpieza"] = ""
+
+    # Simulación: cuenta los cambios pero no escribe nada
+    cal.recalcular_limpiezas(date(2026, 10, 13), dias=None, simulacion=True)
+    assert cal.stats["limpiezas_recalculadas"] == 2
+    assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T12:30:00"
+
+    # Ejecución real (todas las reservas futuras, más allá de 30 días)
+    cal.stats["limpiezas_recalculadas"] = 0
+    cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
+    assert cal.stats["limpiezas_recalculadas"] == 2
+    assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T15:00:00"
+    assert s.cal.ev("SOLA3")["end"]["dateTime"] == "2026-12-04T11:00:00"
+    # Ya está todo al día: una segunda pasada no toca nada
+    cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
+    assert cal.stats["limpiezas_recalculadas"] == 2
+
+
 def test_M_reglas_de_limpieza():
     from airbnb_calendar.reglas import evaluar_limpieza
     from conftest import config_prueba
