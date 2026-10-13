@@ -169,12 +169,20 @@ def texto_fuente(e: dict, campo: str) -> str:
 
 
 def hora_entrada(e: dict, cfg: Config) -> str:
-    """Hora real de entrada: la que dice el huésped, si no la del anuncio, si no la de config.toml."""
-    return normalizar_hora(e["hora_llegada"] or e["hora_checkin"]) or cfg.hora_entrada_por_defecto
+    """
+    Hora de entrada en el calendario. El horario estándar (config.toml) se respeta salvo acuerdo
+    expreso: si el huésped dice que llega más tarde se usa su hora; si pide llegar antes, no.
+    """
+    estandar = cfg.hora_entrada_por_defecto
+    llegada = normalizar_hora(e["hora_llegada"])
+    return max(llegada, estandar) if llegada else estandar
 
 
 def hora_salida(e: dict, cfg: Config) -> str:
-    return normalizar_hora(e["hora_salida"] or e["hora_checkout"]) or cfg.hora_salida_por_defecto
+    """Hora de salida: la estándar, o la del huésped si sale antes (nunca más tarde)."""
+    estandar = cfg.hora_salida_por_defecto
+    salida = normalizar_hora(e["hora_salida"])
+    return min(salida, estandar) if salida else estandar
 
 # ----------------------------------------------------------------------------
 #  Limpieza entre reservas (rotación)

@@ -25,6 +25,8 @@ zona_horaria = "Europe/Madrid"
 # Cada reserva es UN evento que va de la hora de entrada a la de salida.
 # duracion_evento_min solo se usa si falta la fecha de salida.
 duracion_evento_min = 30
+# Horario estándar (salvo acuerdo expreso): nunca se entra antes ni se sale después.
+# Si el huésped llega más tarde o sale antes, el evento usa su hora.
 hora_entrada_por_defecto = "15:00"
 hora_salida_por_defecto = "11:00"
 # Si llega un mensaje de una reserva que no está en el calendario (anterior a la

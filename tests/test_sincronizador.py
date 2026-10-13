@@ -420,12 +420,12 @@ def test_L_rotacion_limpieza_ok_alerta_y_recalculo_al_cambiar_la_salida(tmp_path
     assert "🔑 Entrega de llaves en persona a las 15:00" in ev["description"]
     assert not s.cal.ev("SALE1")["summary"].startswith("["), "la reserva sin huésped anterior no lleva etiqueta"
 
-    # El huésped saliente avisa de que se va a las 13:30 → solo 1 h 30 min antes de las 15:00
+    # El huésped saliente dice que se va a las 13:30: sin acuerdo expreso se mantiene la salida estándar (11:00)
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", hora_salida="13:30"))
     ev = s.cal.ev("ENTRA2")
-    assert ev["summary"].startswith("[ALERTA LIMPIEZA / AJUSTE HORARIO]"), "se recalcula la reserva siguiente"
-    assert ev["colorId"] == s.cfg.colores["alerta_limpieza"]
-    assert "13:30" in ev["description"]
+    assert ev["summary"] == "[LIMPIEZA OK] 🏠 Lavapiés · 2 pers", "se recalcula y sigue OK"
+    assert "sale hoy mismo a las 11:00" in ev["description"]
+    assert s.cal.ev("SALE1")["end"]["dateTime"].startswith("2026-11-05T11:00")
 
     # Si cancela el que sale, ya no hay rotación
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", hora_salida="13:30", cancelada=True))
@@ -437,16 +437,17 @@ def test_M_reglas_de_limpieza():
     from conftest import config_prueba
     cfg = config_prueba()
     sale = _reserva("A", "2026-11-01", "2026-11-05")
-    assert evaluar_limpieza(sale, _reserva("B", "2026-11-05", "2026-11-09", hora_llegada="12:30"), cfg)["ok"] is False
-    assert evaluar_limpieza(sale, _reserva("B", "2026-11-05", "2026-11-09", hora_llegada="13:00"), cfg)["ok"] is True
+    # Pedir entrar antes de las 15:00 o salir después de las 11:00 no cambia el horario estándar
+    r = evaluar_limpieza(sale, _reserva("B", "2026-11-05", "2026-11-09", hora_llegada="12:30"), cfg)
+    assert r["ok"] and r["entrada"] == "15:00"
+    r = evaluar_limpieza(_reserva("A", "2026-11-01", "2026-11-05", hora_salida="14:00"), _reserva("B", "2026-11-05", "2026-11-09"), cfg)
+    assert r["ok"] and r["salida"] == "11:00"
+    # Salir antes de las 11:00 sí se respeta
+    assert evaluar_limpieza(_reserva("A", "2026-11-01", "2026-11-05", hora_salida="09:30"),
+                            _reserva("B", "2026-11-05", "2026-11-09"), cfg)["salida"] == "09:30"
     # Llega a las 18:00: el equipo igualmente tiene que acabar a las 15:00 (11:00–15:00 = 4 h)
     r = evaluar_limpieza(sale, _reserva("B", "2026-11-05", "2026-11-09", hora_llegada="18:00"), cfg)
     assert r["ok"] and r["hasta"] == "15:00" and r["entrada"] == "18:00"
-    # Salida el día anterior a las 14:00 y entrada a las 09:00: se limpia la mañana del día de entrada? 08–09 no basta,
-    # la tarde anterior 14–15 tampoco → alerta
-    r = evaluar_limpieza(_reserva("A", "2026-11-01", "2026-11-04", hora_salida="14:00"),
-                         _reserva("B", "2026-11-05", "2026-11-09", hora_llegada="09:00"), cfg)
-    assert r["ok"] is False and not r["mismo_dia"]
     # Con un día entero de margen, no hay rotación
     assert evaluar_limpieza(_reserva("A", "2026-11-01", "2026-11-03"), _reserva("B", "2026-11-05", "2026-11-09"), cfg) is None
 
