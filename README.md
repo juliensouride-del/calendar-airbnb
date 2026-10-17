@@ -54,7 +54,7 @@ La hora acordada manda sobre cualquier regla (si no deja tiempo de limpieza, el 
 ### Los cambios a mano se respetan
 
 - Lo que se escriba **encima** de la línea `—— Airbnb · automático ——` se conserva siempre.
-- Si se cambia a mano el **título, el color, la ubicación o las horas**, el script ya no toca ese campo.
+- Si se cambia a mano el **título, el color o las horas**, el script ya no toca ese campo.
 - Si se edita la parte **automática** de la descripción, la descripción pasa a ser del anfitrión y deja de actualizarse.
 
 ### Avisos por correo
@@ -106,7 +106,7 @@ Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cad
    3. En Google Calendar, configuración del calendario → *Compartir con determinadas personas* → el email de la cuenta de servicio (`…@….iam.gserviceaccount.com`) con permiso **«Hacer cambios en eventos»**.
    4. En la misma página, *Integrar el calendario* → **ID del calendario**.
 3. **Clave de Gemini:** https://aistudio.google.com → *Get API key*. Opcional: sin ella se usan palabras clave y no se detectan horas.
-4. **`config.toml`:** los `[[alojamientos]]` (nombre exacto del anuncio, `alias`, `id_anuncio`, `capacidad_sin_sofa`, `locker`, `direccion`), el horario estándar y el de limpieza.
+4. **`config.toml`:** los `[[alojamientos]]` (nombre exacto del anuncio, `alias`, `id_anuncio`, `capacidad_sin_sofa`, `locker`), el horario estándar y el de limpieza.
 5. **Secrets del repositorio** (*Settings → Secrets and variables → Actions*):
 
 | Secreto | Valor |

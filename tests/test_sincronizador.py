@@ -748,17 +748,6 @@ def test_L8_la_sugerencia_de_etiqueta_en_la_parte_automatica_no_es_un_acuerdo(tm
     assert s.cal.ev("ENTRA2")["start"]["dateTime"].startswith("2026-11-05T15:00")
 
 
-def test_L9_direccion_del_piso_como_ubicacion_del_evento(tmp_path):
-    s = Entorno(tmp_path)
-    s.cfg.alojamientos[1].direccion = "Calle Torrecilla del Leal 1, Madrid"
-    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
-    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
-    assert s.cal.ev("ENTRA2")["location"] == "Calle Torrecilla del Leal 1, Madrid"
-    s.cal.ev("ENTRA2")["location"] = "Portal B, 2º izq."               # cambiada a mano: se respeta
-    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="18:00"))
-    assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq."
-
-
 def test_L4_leer_acuerdos():
     from airbnb_calendar.reglas import leer_acuerdos
     assert leer_acuerdos("#entrada 12:00\n#Salida: 13.30") == {"acuerdo_entrada": "12:00", "acuerdo_salida": "13:30"}

@@ -82,7 +82,6 @@ timeout_s = 30
 #   alias:              nombre corto para el título del evento
 #   id_anuncio:         nº de airbnb.com/rooms/<nº> (lo más fiable)
 #   otros_nombres:      (opcional) otros títulos con los que aparece en los correos
-#   direccion:          (opcional) dirección del piso: ubicación del evento, con mapa en Calendar
 #   capacidad_sin_sofa: (opcional) personas que caben SIN abrir el sofá cama; si la
 #                       reserva lo supera se marca "sofá cama" como probable
 #   locker:             (opcional) enlace del locker de llaves (se añade a la descripción)

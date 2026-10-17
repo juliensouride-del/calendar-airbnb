@@ -162,17 +162,13 @@ class Calendario:
         inicio, fin = self._horario(estado)
         color = ("cancelada" if estado["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else "reserva")
-        alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
         nuevo = {"summary": formato.titulo_evento(estado, limpieza), "colorId": self.cfg.colores[color],
-                 "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(fin),
                  "auto": formato.descripcion_evento(estado, limpieza, self.cfg)}
         previo = _escrito(ev)
         actual, manual = self._leer_evento(ev)
         escrito, cuerpo = {}, {}
         for k, v in nuevo.items():
-            if v is None:
-                continue                            # sin valor (p. ej. piso sin dirección): no se toca
             if previo and k in previo and _h(actual.get(k)) != previo[k]:
                 escrito[k] = previo[k]              # cambiado a mano: se respeta (y lo seguirá siendo)
                 continue
@@ -204,7 +200,7 @@ class Calendario:
             texto = re.sub(r"<[^>]+>", "\n", desc)
             manual = "\n".join(m.group(0) for m in reglas.ETIQUETA_ACUERDO.finditer(texto))
             auto = desc
-        actual = {"summary": ev.get("summary"), "colorId": ev.get("colorId"), "location": ev.get("location"), "auto": auto,
+        actual = {"summary": ev.get("summary"), "colorId": ev.get("colorId"), "auto": auto,
                   "inicio": _local_evento(ev.get("start"), self.tz), "fin": _local_evento(ev.get("end"), self.tz)}
         return actual, manual
 
