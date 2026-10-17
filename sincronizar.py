@@ -17,9 +17,9 @@ Airbnb (Yahoo Mail) → Google Calendar.
   python sincronizar.py --recalcular [--dry-run] aplica las reglas actuales (horario estándar, limpieza)
                                         a todas las reservas que entran desde hoy, sin leer correos
 
-Secretos (variables de entorno): YAHOO_USUARIO, YAHOO_CLAVE_APP,
-GOOGLE_SERVICE_ACCOUNT_JSON y, opcionales, GEMINI_API_KEY y ALERTA_NTFY_TOPIC
-(avisos técnicos solo al desarrollador). En GitHub Actions se escribe un resumen
+Secretos (variables de entorno): YAHOO_USUARIO, YAHOO_CLAVE_APP, GOOGLE_SERVICE_ACCOUNT_JSON,
+CALENDAR_ID y, opcionales, GEMINI_API_KEY, ALERTA_EMAIL y ALERTA_NTFY_TOPIC (avisos técnicos
+solo al desarrollador). Con PRUEBAS=1 los avisos de peticiones van solo a ALERTA_EMAIL. En GitHub Actions se escribe un resumen
 de cada ejecución en GITHUB_STEP_SUMMARY.
 """
 from __future__ import annotations

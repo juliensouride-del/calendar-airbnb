@@ -1,117 +1,165 @@
-# Airbnb (Yahoo Mail) → Google Calendar
+# Airbnb → Google Calendar
 
-Script en Python que lee los correos de Airbnb **directamente de Yahoo Mail** y mantiene el calendario de Google del anfitrión con las entradas y salidas de cada reserva: alojamiento, fechas, número de personas, horas de llegada y salida, sofá cama y cuna. Si un huésped pide algo especial, envía un aviso a su Yahoo.
+Lee los correos de Airbnb **directamente de Yahoo Mail** y mantiene un calendario de Google con cada reserva: alojamiento, fechas, personas, horas de llegada y salida, sofá cama, cuna, peticiones del huésped, locker y limpieza entre reservas. Cuando un huésped pide algo (entrar antes, salir más tarde, cuna, sofá cama…), el anfitrión recibe un aviso por correo.
 
-Se ejecuta solo, cada 2 horas durante el día (8:00–22:00 aprox.), en **GitHub Actions**. Coste 0 € y sin servidores.
+Se ejecuta solo en **GitHub Actions** cada 2 horas de día (8:00–22:00 en Madrid), sin servidores y con coste 0 €.
+
+> ⚠️ **El repositorio es público.** No contiene secretos (están en los Secrets de GitHub) y los correos de `ejemplos/` están anonimizados, pero `config.toml` incluye los enlaces de los lockers y el historial de git conserva versiones anteriores de los ejemplos. Conviene hacerlo **privado** (Settings → General → Danger Zone → Change visibility): el uso de Actions (~250 min/mes) cabe en los 2 000 min gratuitos de un repositorio privado.
+
+---
+
+## 1. Para el anfitrión: cómo leer un evento
+
+Cada reserva es **un evento** que va de la hora de entrada a la de salida:
 
 ```
-Yahoo Mail ──IMAP/TLS, solo lectura──▶ sincronizar.py (GitHub Actions, cada 2 h de día)
-                                        ├─ parser.py       código, huésped, fechas, horas, personas
-                                        ├─ gemini.py       mensajes del huésped: hora de llegada, cuna, sofá…
-                                        ├─ calendario.py   crea, actualiza o cancela los eventos (API de Google)
-                                        ├─ yahoo.py        avisos por SMTP de Yahoo
-                                        └─ estado.json     correos ya procesados (rama `estado`)
+[LIMPIEZA OK] 🏠 Torrecilla · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🍼 cuna
 ```
 
-## Cómo funciona
+La descripción va de lo más urgente a lo menos:
 
-- **No toca el buzón.** Abre las carpetas en solo lectura y descarga con `BODY.PEEK[]`, así que nada se marca como leído. El anfitrión sigue viendo sus correos como siempre, y el script no depende de si los ha abierto o no.
-- **No duplica nada.** Cada correo se identifica por `carpeta:UIDVALIDITY:UID` (único en IMAP) y por su `Message-ID` (el mismo aunque se archive) y queda registrado en `estado.json`. La búsqueda en Yahoo se hace por semanas, porque Yahoo devuelve como mucho 1000 resultados por búsqueda y descarta el resto sin avisar. Cada reserva se encuentra en el calendario por su código, guardado como propiedad privada del evento.
-- **Una reserva = un evento**, de la hora de entrada a la de salida: `🏠 Tirso · 3 pers · llega 18:00 · 🍼 cuna`. Horario estándar **entrada 15:00 / salida 11:00**: si el huésped pide entrar antes o salir más tarde, el calendario mantiene el estándar (salvo acuerdo expreso); si llega más tarde o sale antes, se usa su hora. Si se cancela: `❌ CANCELADA`, en gris. Las reservas del formato anterior (check-in y check-out por separado) se unifican al llegar el siguiente correo de la reserva.
-- **Descripción corta, sin repetir nada.** Lo que ya está en el título o en las horas del evento (alojamiento, personas, horas, sofá cama, cuna, fechas) no se repite: solo la limpieza, el detalle de niños/bebés/mascotas, las peticiones, los avisos que hay que revisar y el huésped con su código. El nombre corto de cada piso sale siempre de `config.toml` (`alias`): si se cambia allí, todos los eventos futuros se corrigen en la siguiente ejecución (los pasados, con una recarga `--desde`).
-- **Manda lo último que dice el huésped.** Los correos se procesan en orden; un mensaje nuevo sustituye la hora de llegada/salida y puede pedir, cambiar o retirar la petición de entrar antes / salir después. Al recargar correos (`--desde`), cada reserva se reconstruye desde su confirmación, así que no quedan interpretaciones antiguas.
-- **Horario acordado con el huésped.** Si el anfitrión acuerda otra hora, mueve el evento en Calendar o escribe en la descripción, encima de la línea automática, `#entrada 12:00` o `#salida 13:30` (también vale `12h` o `13.30`). Esa hora manda sobre cualquier regla, aunque no deje tiempo de limpieza (en ese caso el evento sale con alerta). Con la etiqueta, para quitar el acuerdo basta borrar la línea.
-- **Los cambios a mano se respetan.** Si el anfitrión cambia en Calendar el título, el color o la hora de inicio o de fin, el script ya no toca ese campo. La descripción tiene una línea `—— Airbnb · automático ——`: lo que se escriba encima se conserva siempre y lo de debajo lo actualiza el script (si se edita lo de debajo, la descripción pasa a ser del anfitrión y deja de actualizarse).
-- **Lockers.** Cada piso tiene su enlace de locker en `config.toml` (`locker`), que aparece en la descripción. Torrecilla comparte locker con Buenavista: si los dos tienen entrada el mismo día, Torrecilla usa el locker alternativo (`locker_coincide_con` / `locker_si_coincide`).
-- **Limpieza.** Si el huésped anterior del mismo piso sale ese día (o el anterior), el evento del que entra empieza por `[LIMPIEZA OK]` o, en naranja, `[ALERTA LIMPIEZA / AJUSTE HORARIO]`: se comprueba que caben 2 h de limpieza entre la salida y la entrada, dentro del horario del equipo (08:00–15:00, sección `[limpieza]` de `config.toml`). La descripción indica la ventana de limpieza. Si cambia la hora de salida del anterior, se recalcula; además, cada ejecución revisa las limpiezas de los próximos 30 días, así que también se corrigen tras cambios de fechas o cancelaciones.
-- **Mensajes de los huéspedes.** Gemini (gratis) extrae la hora de llegada y salida, la cuna, el sofá cama y otras peticiones. Si el huésped **pide entrar antes o salir más tarde** (aunque solo lo pregunte, o diga que llega antes de las 15:00), se avisa siempre y el evento lo muestra (`⏰ pide entrar 12:00` / `⌛ pide salir después`) hasta que el anfitrión escriba `#entrada` / `#salida`. Si Gemini falla, se usan palabras clave (que también detectan estas peticiones, sin hora).
-- **Errores.** Un correo que falla se reintenta 3 veces y después se avisa. Si falla todo el script (Yahoo o Google caídos, contraseña revocada), la ejecución NO se pone en rojo (para que GitHub no envíe emails al propietario del repositorio): se marca con una anotación de error y se envía una notificación push solo al desarrollador por [ntfy.sh](https://ntfy.sh), al tema del secreto `ALERTA_NTFY_TOPIC`. La siguiente ejecución recupera lo pendiente (revisa los últimos 3 días).
+```
+—— Airbnb · automático (escribe tus notas encima de esta línea) ——
+⏰ PIDE ENTRAR ANTES (a las 12:00). Si lo aceptas, escribe arriba: #entrada 12:00
+
+🕒 Llegada: 18:30   ·   Salida: 11:00
+🛋️ Sofá cama: no
+🍼 Cuna: SÍ (lo indica el huésped)
+🧹 Limpieza: 05/11 de 11:00 a 15:00 (el huésped anterior sale ese día a las 11:00)
+
+📝 Peticiones:
+   • Guardar maletas por la mañana
+
+🔑 Locker: https://access.keynest.com/…
+
+👤 Laura Garcia · Código HMAAAA0002
+```
+
+- **Avisos arriba** (solo si los hay): limpieza que no cabe, petición de horario pendiente, mensajes que la IA no pudo analizar.
+- **Valores por defecto:** si el huésped no dice nada, llegada 15:00, salida 11:00, sin sofá cama ni cuna.
+- **🧹 Limpieza:** si el huésped anterior del mismo piso sale ese día (o el anterior), la ventana para limpiar dentro del horario del equipo (08:00–15:00). Si no caben las 2 h, el título empieza por `[ALERTA LIMPIEZA / AJUSTE HORARIO]` y el evento sale en naranja.
+- **🔑 Locker:** el de cada piso. Torrecilla comparte locker con Buenavista: si los dos tienen entrada el mismo día, Torrecilla usa el alternativo.
+- **Cancelada:** `❌ CANCELADA`, en gris.
+- **Creado desde un mensaje:** si llega un mensaje de una reserva cuya confirmación no se ha visto, se crea el evento con lo que haya y una nota al final; la nota desaparece cuando llega la confirmación.
+
+### Acordar otra hora con el huésped
+
+El horario estándar es **entrada 15:00 / salida 11:00**: si el huésped pide entrar antes o salir más tarde, se avisa, pero el calendario no cambia hasta que el anfitrión lo acuerde. Para fijar la hora acordada:
+
+- **mover el evento** en Calendar, o
+- escribir en la descripción, **encima de la línea automática**, `#entrada 12:00` o `#salida 13:30` (también vale `12h` o `13.30`). Para quitar el acuerdo, se borra la línea.
+
+La hora acordada manda sobre cualquier regla (si no deja tiempo de limpieza, el evento sale con alerta).
+
+### Los cambios a mano se respetan
+
+- Lo que se escriba **encima** de la línea `—— Airbnb · automático ——` se conserva siempre.
+- Si se cambia a mano el **título, el color, la ubicación o las horas**, el script ya no toca ese campo.
+- Si se edita la parte **automática** de la descripción, la descripción pasa a ser del anfitrión y deja de actualizarse.
+
+### Avisos por correo
+
+Al anfitrión solo le llegan las **peticiones de los huéspedes** (entrar antes, salir más tarde, sofá cama, cuna, otras peticiones) y las **modificaciones de reserva**, que se revisan a mano. Nunca se avisa de reservas que ya han terminado. Los errores técnicos van al desarrollador.
+
+---
+
+## 2. Cómo funciona
+
+```
+Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cada 2 h de día)
+                                   └─ airbnb_calendar/
+                                      ├─ yahoo.py        lee los correos (IMAP) y envía los avisos (SMTP)
+                                      ├─ parser.py       código, huésped, fechas, horas y personas de cada correo
+                                      ├─ gemini.py       mensajes del huésped: horas, sofá, cuna, peticiones (IA);
+                                      │                  sin IA: mensajes de cortesía y respaldo por palabras clave
+                                      ├─ reglas.py       estado de la reserva, fusión de mensajes, horario y limpieza
+                                      ├─ formato.py      título y descripción de los eventos
+                                      ├─ avisos.py       qué novedades hay que avisar al anfitrión
+                                      ├─ calendario.py   Google Calendar: crea, actualiza, respeta cambios a mano
+                                      ├─ sincronizador.py  el flujo completo de cada correo
+                                      ├─ registro.py     correos ya procesados (estado.json, rama `estado`)
+                                      ├─ config.py       config.toml + secretos
+                                      └─ ntfy.py         avisos técnicos (ntfy y correo al desarrollador)
+```
+
+- **No toca el buzón.** Abre las carpetas en solo lectura (`INBOX` y `Archive`) y descarga con `BODY.PEEK[]`: nada se marca como leído.
+- **No duplica nada.** Cada correo se identifica por su UID de IMAP y su `Message-ID` (el mismo aunque se archive) y queda registrado. Cada reserva se encuentra en el calendario por su código, guardado como propiedad privada del evento, junto con su estado completo (JSON).
+- **Yahoo por semanas.** Yahoo devuelve como mucho 1 000 resultados por búsqueda y descarta el resto sin avisar: se busca por tramos de una semana.
+- **Manda lo último que dice el huésped.** Los correos se procesan en orden: un mensaje nuevo sustituye la hora de llegada o salida y puede pedir, cambiar o retirar la petición de horario. Llegar entre las 00:00 y las 06:00 cuenta como llegar tarde.
+- **Gemini, con cabeza.** Los mensajes que son solo cortesía («Thanks!», «Vale, perfecto», «👍») no se envían a la IA: todas sus palabras deben ser de cortesía, sin números ni preguntas. Si Gemini falla en el día a día, se usan palabras clave (detectan sofá, cuna y peticiones de horario, sin horas). En una recarga, si Gemini no responde ni esperando, la recarga se detiene en lugar de guardar un análisis peor.
+- **Errores.** Un correo que falla se reintenta en las siguientes ejecuciones y, tras 3 intentos, se avisa al desarrollador. Si el calendario no es accesible (ID o permisos), la ejecución se detiene sin contar fallos. La ejecución nunca se pone en rojo en GitHub (para que GitHub no envíe correos al propietario del repositorio): el aviso llega por correo (`ALERTA_EMAIL`) y por [ntfy.sh](https://ntfy.sh).
 
 | Pieza | Plan gratuito | Uso |
 | --- | --- | --- |
-| GitHub Actions (repositorio **privado**) | 2 000 min/mes | ≈ 1 450 min/mes (48 ejecuciones al día de < 1 min) |
+| GitHub Actions | 2 000 min/mes en privado (ilimitado en público) | ~8 ejecuciones al día de < 1 min |
 | Google Calendar API | 1 000 000 peticiones/día | unas decenas al día |
-| Gemini API | plan gratuito de AI Studio | un análisis por mensaje de huésped |
+| Gemini API | cuota diaria gratuita de AI Studio | un análisis por mensaje de huésped (no los de cortesía) |
 
-> El cron de GitHub no es exacto: en horas de mucha carga una ejecución puede retrasarse unos minutos. Para un calendario de limpiezas y llegadas es suficiente.
+---
 
-## Instalación (una vez, unos 20 minutos)
+## 3. Instalación (una vez, unos 20 minutos)
 
-### 1. Contraseña de aplicación de Yahoo
-
-En la cuenta de Yahoo del anfitrión: **Información de la cuenta → Seguridad de la cuenta → Generar contraseña de aplicación** (nombre: «Airbnb Calendar»). Copia las 16 letras. Se puede revocar cuando se quiera sin cambiar la contraseña principal.
-
-### 2. Cuenta de servicio de Google (gratis)
-
-1. https://console.cloud.google.com → crea un proyecto («airbnb-calendar»).
-2. **APIs y servicios → Biblioteca → Google Calendar API → Habilitar**.
-3. **IAM y administración → Cuentas de servicio → Crear** (sin roles). Abre la cuenta → **Claves → Agregar clave → JSON**. Se descarga un archivo `.json`: es el secreto `GOOGLE_SERVICE_ACCOUNT_JSON`. No lo subas al repositorio.
-4. En Google Calendar, abre la configuración del calendario del anfitrión → **Compartir con determinadas personas** → añade el email de la cuenta de servicio (`…@….iam.gserviceaccount.com`) con permiso **«Hacer cambios en eventos»**.
-5. En esa misma página, copia el **ID del calendario** (sección «Integrar el calendario»).
-
-### 3. Clave de Gemini
-
-https://aistudio.google.com → **Get API key**. Es opcional: sin ella se usan palabras clave y no se detectan horas.
-
-### 4. Configuración
-
-En `config.toml`:
-- `[calendario] id` → el ID del paso 2.5.
-- `[[alojamientos]]` → nombre, alias e `id_anuncio` de cada piso (el número de `airbnb.com/rooms/<nº>`).
-
-### 5. Repositorio de GitHub (privado)
-
-```powershell
-git init; git add .; git commit -m "Airbnb → Calendar"
-gh repo create airbnb-calendar --private --source . --push
-```
-
-En **Settings → Secrets and variables → Actions → New repository secret**:
+1. **Contraseña de aplicación de Yahoo.** En la cuenta del anfitrión: Información de la cuenta → Seguridad → *Generar contraseña de aplicación*. Se puede revocar sin cambiar la contraseña principal.
+2. **Cuenta de servicio de Google.**
+   1. https://console.cloud.google.com → nuevo proyecto → *APIs y servicios → Biblioteca → Google Calendar API → Habilitar*.
+   2. *IAM y administración → Cuentas de servicio → Crear* (sin roles) → *Claves → Agregar clave → JSON*. Ese archivo es el secreto `GOOGLE_SERVICE_ACCOUNT_JSON` (no lo subas al repositorio).
+   3. En Google Calendar, configuración del calendario → *Compartir con determinadas personas* → el email de la cuenta de servicio (`…@….iam.gserviceaccount.com`) con permiso **«Hacer cambios en eventos»**.
+   4. En la misma página, *Integrar el calendario* → **ID del calendario**.
+3. **Clave de Gemini:** https://aistudio.google.com → *Get API key*. Opcional: sin ella se usan palabras clave y no se detectan horas.
+4. **`config.toml`:** los `[[alojamientos]]` (nombre exacto del anuncio, `alias`, `id_anuncio`, `capacidad_sin_sofa`, `locker`, `direccion`), el horario estándar y el de limpieza.
+5. **Secrets del repositorio** (*Settings → Secrets and variables → Actions*):
 
 | Secreto | Valor |
 | --- | --- |
 | `YAHOO_USUARIO` | correo de Yahoo del anfitrión |
 | `YAHOO_CLAVE_APP` | contraseña de aplicación (paso 1) |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | contenido completo del `.json` (paso 2.3) |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | contenido completo del `.json` (paso 2.2) |
+| `CALENDAR_ID` | ID del calendario (paso 2.4) |
 | `GEMINI_API_KEY` | clave de Gemini (paso 3) |
-| `ALERTA_NTFY_TOPIC` | (opcional) tema de ntfy.sh para los avisos de fallo al desarrollador: un nombre largo y aleatorio. Suscríbete a él en la app ntfy |
-| `CALENDAR_ID` | ID del calendario (Configuración del calendario → Integrar el calendario). Alternativa: ponerlo en `[calendario] id` de `config.toml` |
+| `ALERTA_EMAIL` | correo del desarrollador para los avisos técnicos |
+| `ALERTA_NTFY_TOPIC` | (opcional) tema de ntfy.sh para notificaciones push de fallos: un nombre largo y aleatorio |
+| `CALENDAR_ID_PRUEBAS` | (opcional) ID del calendario de pruebas |
+| `GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS` | (opcional) `.json` de la cuenta de servicio con acceso al calendario de pruebas |
 
-### 6. Puesta en marcha
+6. **Puesta en marcha** (*Actions → Airbnb → Calendar → Run workflow*): `comprobar` (verifica Yahoo, Calendar y Gemini sin escribir nada) y después `recargar` con `desde` = la fecha desde la que cargar reservas. A partir de ahí sigue sola.
 
-En **Actions → Airbnb → Calendar → Run workflow**:
-1. `comprobar`: verifica Yahoo, Google Calendar y Gemini sin escribir nada.
-2. `diagnosticar`: muestra lo que se extrae de los correos de Airbnb de los últimos 7 días, sin tocar el calendario.
-3. `sincronizar`: la primera ejecución anota la fecha de inicio. Desde ese momento se procesa cada correo nuevo. Después sigue sola cada 2 horas de día; lo que llega de noche se procesa por la mañana.
+---
 
-Para cargar también reservas recientes, pon `procesar_desde = "2026-10-01"` en `config.toml` **antes** de la primera ejecución (con un máximo de 3 días hacia atrás, por `ventana_dias`).
+## 4. Operación
 
-## Desarrollo local
+Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
+
+| Modo | Qué hace |
+| --- | --- |
+| `sincronizar` | lo mismo que las ejecuciones automáticas: procesa los correos nuevos |
+| `recargar` | con `desde` (y opcionalmente `hasta`): vuelve a procesar todos los correos del tramo en orden, sin avisos al anfitrión, y al final pone al día todas las reservas futuras. Cada reserva se reconstruye desde su confirmación. Hasta ~5,5 h por ejecución |
+| `comprobar` | verifica Yahoo, Google Calendar, Gemini y los avisos, sin escribir nada |
+| `diagnosticar` | muestra lo que se extrae de los correos de los últimos 7 días, sin tocar el calendario |
+| `recalcular-simulacion` / `recalcular` | aplica las reglas actuales (horario, limpieza, formato, lockers) a todas las reservas futuras, sin leer correos |
+| `purgar-simulacion` / `purgar` | lista / borra todos los eventos creados por el script (escribiendo `BORRAR` en `confirmar`); los eventos personales no se tocan |
+
+**Entorno de pruebas.** Con `entorno = pruebas` se usa el calendario de pruebas (`CALENDAR_ID_PRUEBAS` y `GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS`; si faltan, no se ejecuta y nunca toca el calendario real), el registro va en la rama `estado-pruebas` y los avisos de peticiones van solo a `ALERTA_EMAIL` con `[PRUEBAS]`. Las ejecuciones programadas son siempre de producción.
+
+**Qué hacer si…**
+
+- **Llega «la ejecución ha fallado»:** abre el enlace del aviso. Si es la contraseña de Yahoo, genera otra y actualiza `YAHOO_CLAVE_APP`; si es un 404 de Calendar, revisa `CALENDAR_ID` y que el calendario esté compartido con la cuenta de servicio.
+- **Llega «no se pudo procesar un correo»:** probablemente Airbnb ha cambiado una plantilla. Los patrones están en `airbnb_calendar/parser.py` (`PATRONES`): añade el correo (anonimizado) a `ejemplos/`, escribe su prueba y ajusta el patrón.
+- **Una recarga se detiene por Gemini:** se ha agotado la cuota diaria gratuita (se renueva hacia las 9:00 de Madrid). Vuelve a lanzarla con `desde` = la fecha que indica el error; es idempotente.
+- **Correos de Airbnb en Spam:** añade `"Bulk"` a `[yahoo] carpetas` en `config.toml`.
+- **Cambiar el nombre corto de un piso, el horario o un locker:** edita `config.toml`; las reservas futuras se corrigen en la siguiente ejecución (todas, con `recalcular`).
+- **Registro:** la rama `estado` guarda `estado.json` (correos procesados de los últimos días). Si se borra, la siguiente ejecución empieza desde ese momento.
+- **Plantillas en inglés:** el parser espera los correos de Airbnb en inglés; no cambies el idioma de la cuenta de Airbnb.
+
+---
+
+## 5. Desarrollo
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q          # 36 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 92 pruebas, sin red
+.venv\Scripts\ruff check .             # estilo del código
 ```
 
-Las pruebas usan los correos reales de `ejemplos/` e incluyen:
-- un servidor IMAP falso para probar el cliente de Yahoo;
-- una imitación de la API REST de Google Calendar;
-- la simulación completa de varias ejecuciones seguidas, con el registro persistente.
+Las pruebas usan los correos (anonimizados) de `ejemplos/` e incluyen un servidor IMAP falso, una imitación de la API de Google Calendar y de Gemini, y la simulación completa de varias ejecuciones seguidas con el registro persistente. En cada push, GitHub Actions ejecuta `ruff` y las pruebas (`.github/workflows/pruebas.yml`).
 
 Para ejecutarlo contra los servicios reales, define las mismas variables de entorno que los secretos y lanza `python sincronizar.py --comprobar`.
-
-## Mantenimiento
-
-- **Pasar las reservas antiguas al formato nuevo** (un evento por reserva, con limpieza): en Actions, modo `migrar-simulacion` y luego `migrar`. En local: `python sincronizar.py --migrar [--dry-run]`.
-- **Aplicar las reglas actuales a las reservas futuras** (p. ej. tras cambiar el horario estándar): en Actions, modo `recalcular-simulacion` y luego `recalcular`. En local: `python sincronizar.py --recalcular [--dry-run]`. Las reservas pasadas no se tocan.
-- **Resumen de cada ejecución** (correos, eventos, errores y alertas de limpieza): en la página de la ejecución en Actions.
-- **Eventos desde mensajes.** Si llega un mensaje de una reserva que no está en el calendario (p. ej. su confirmación es anterior a lo cargado), se crea el evento con lo que traiga el mensaje y una nota al final («creado a partir de un mensaje… pueden faltar datos»), que desaparece si después llega la confirmación. Solo para los alojamientos de `config.toml` (`crear_evento_desde_mensaje`).
-- **Entorno de pruebas.** Al lanzar el workflow a mano se puede elegir `entorno = pruebas`: usa los secretos `CALENDAR_ID_PRUEBAS` y `GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS` (si faltan, no se ejecuta; nunca toca el calendario real), guarda su registro en la rama `estado-pruebas` y los avisos de peticiones van solo a `ALERTA_EMAIL` con `[PRUEBAS]` en el asunto. Las ejecuciones programadas son siempre de producción.
-- **Avisos técnicos** (correos que no se pueden procesar, fallo de la ejecución, Gemini caído) llegan solo al desarrollador: por correo al secreto `ALERTA_EMAIL` (se envía desde la cuenta de Yahoo) y por ntfy (`ALERTA_NTFY_TOPIC`). Nunca se avisa de peticiones de reservas que ya han terminado; el modo `comprobar` avisa si falta ese secreto. Al anfitrión solo le llegan las peticiones de huéspedes y los correos que hay que revisar a mano.
-- **Borrar todos los eventos del script** (solo los que llevan sus marcas privadas; los eventos personales no se tocan): en Actions, modo `purgar-simulacion` para ver la lista y `purgar` (hay que escribir BORRAR en el campo `confirmar`) para borrar. En local: `python sincronizar.py --purgar --dry-run` y `python sincronizar.py --purgar` (pide escribir BORRAR). Para volver a cargarlos: modo `sincronizar` con `desde`.
-
-- **Contraseña de Yahoo revocada o cambiada:** la ejecución falla y llega el aviso de ntfy. Genera otra contraseña de aplicación y actualiza el secreto `YAHOO_CLAVE_APP`.
-- **Correos en Spam o archivados a mano:** añade `"Bulk"` o `"Archive"` a `[yahoo] carpetas` (por defecto se revisan `INBOX` y `Archive`; una carpeta que no existe se omite con un aviso en el log).
-- **Airbnb cambia una plantilla:** llega el aviso «no se pudo procesar un correo». Los patrones están en `airbnb_calendar/parser.py` (`PATRONES`). Añade el correo nuevo a `ejemplos/`, escribe su prueba y ajusta el patrón.
-- **Registro:** la rama `estado` guarda `estado.json`, con un commit solo cuando cambia. Se puede consultar o borrar. Si se borra, la siguiente ejecución vuelve a empezar desde ese momento.
-- **Plantillas en inglés:** el parser espera los correos de Airbnb en inglés. No cambies el idioma de la cuenta de Airbnb.
