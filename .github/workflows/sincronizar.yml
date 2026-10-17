@@ -15,14 +15,14 @@ on:
       modo:
         description: "Qué ejecutar"
         type: choice
-        options: [sincronizar, comprobar, diagnosticar, recalcular-simulacion, recalcular, purgar-simulacion, purgar]
+        options: [sincronizar, recargar, comprobar, diagnosticar, recalcular-simulacion, recalcular, purgar-simulacion, purgar]
         default: sincronizar
       desde:
-        description: "Solo sincronizar: procesar correos desde esta fecha (yyyy-mm-dd). Vacío = últimos días"
+        description: "Solo recargar: volver a procesar los correos desde esta fecha (yyyy-mm-dd), p. ej. 6 meses atrás"
         type: string
         default: ""
       hasta:
-        description: "Solo con desde: hasta esta fecha, sin incluirla (yyyy-mm-dd). Vacío = hoy"
+        description: "Solo recargar: hasta esta fecha, sin incluirla (yyyy-mm-dd). Vacío = hoy"
         type: string
         default: ""
       confirmar:
@@ -46,7 +46,8 @@ concurrency:
 jobs:
   sincronizar:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Una recarga de meses puede tardar horas (Gemini limita las peticiones por minuto)
+    timeout-minutes: ${{ inputs.modo == 'recargar' && 340 || 60 }}
     steps:
       - uses: actions/checkout@v5
 
@@ -107,7 +108,12 @@ jobs:
                 echo "::error::Para purgar escribe BORRAR en el campo confirmar. No se ha borrado nada."; exit 1
               fi
               python sincronizar.py --purgar --si ;;
-            *)            python sincronizar.py ${DESDE:+--desde "$DESDE"} ${HASTA:+--hasta "$HASTA"} ;;
+            recargar)
+              if [ -z "$DESDE" ]; then
+                echo "::error::Para recargar indica la fecha en el campo desde (yyyy-mm-dd)."; exit 1
+              fi
+              python sincronizar.py --desde "$DESDE" ${HASTA:+--hasta "$HASTA"} ;;
+            *)            python sincronizar.py ;;
           esac
 
       - name: Guardar el registro (aunque la ejecución haya fallado a medias)

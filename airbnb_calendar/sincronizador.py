@@ -58,6 +58,9 @@ class Sincronizador:
             self.procesar_correo(c)
             if i % 20 == 0:
                 self.registro.guardar()     # si la ejecución se corta, no se pierde lo avanzado
+            if i % 100 == 0:
+                log.info("── Progreso: %d de %d correos (hasta el %s)", i, len(correos),
+                         c.fecha.astimezone(self.tz).strftime("%d/%m/%Y"))
         self.registro.limpiar(self.ahora - timedelta(days=self.cfg.ventana_dias + 7))
         # Limpiezas de los próximos días, aunque no haya llegado ningún correo (cambios de fechas, migración…)
         self.resumen["alertas_limpieza"] = self.cal.recalcular_limpiezas(self.ahora.astimezone(self.tz).date())

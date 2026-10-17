@@ -3,6 +3,10 @@
 Airbnb (Yahoo Mail) → Google Calendar.
 
   python sincronizar.py                 procesa los correos nuevos (lo que ejecuta GitHub Actions)
+  python sincronizar.py --desde yyyy-mm-dd [--hasta yyyy-mm-dd]
+                                        recarga: vuelve a procesar los correos del tramo (en orden,
+                                        sin avisos al anfitrión) y al final pone al día todas las
+                                        reservas futuras
   python sincronizar.py --comprobar     comprueba Yahoo, Google Calendar y Gemini sin escribir nada
   python sincronizar.py --diagnosticar  muestra lo que se extrae de los correos de Airbnb de los
                                         últimos 7 días, SIN tocar el calendario ni el registro
@@ -89,6 +93,9 @@ def main() -> int:
                                    desde=fecha(args.desde), hasta=fecha(args.hasta),
                                    notificador_tecnico=notificador_tecnico(sec))
             sincro.ejecutar()
+            if args.desde:
+                # Recarga: además de los próximos 30 días, todas las reservas futuras con las reglas actuales
+                calendario.recalcular_limpiezas(date.today(), dias=None)
             escribir_resumen(sincro.resumen, calendario.stats)
     finally:
         registro.guardar()      # lo procesado hasta un posible fallo queda registrado
