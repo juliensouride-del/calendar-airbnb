@@ -294,7 +294,7 @@ def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
     ev = s.cal.ev("HMTSBCMZH9")
     assert ev["summary"] == "🏠 Tirso · 2 pers · entra 16:00 ✅"
-    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada: —   ·   Salida: —\n🛋️ Sofá cama: —\n🍼 Cuna: —\n\n👤 Imane Bensalah · Código HMTSBCMZH9", \
+    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada: 16:00   ·   Salida: 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Imane Bensalah · Código HMTSBCMZH9", \
         "del formato anterior solo se conservan las etiquetas de acuerdo"
     assert leer_estado({"evento": ev})["alias"] == "Tirso"
     escrituras = cal.stats["limpiezas_recalculadas"]

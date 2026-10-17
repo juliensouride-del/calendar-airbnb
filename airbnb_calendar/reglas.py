@@ -389,7 +389,10 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
             avisos.append("⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.")
         bloques.append(avisos)
 
-        datos = [f"🕒 Llegada: {e['hora_llegada'] or '—'}   ·   Salida: {e['hora_salida'] or '—'}",
+        # Sin información que diga otra cosa: horario estándar (o el acordado) y sin sofá cama ni cuna
+        llegada = e["hora_llegada"] or e.get("acuerdo_entrada") or (cfg.hora_entrada_por_defecto if cfg else "15:00")
+        salida = e["hora_salida"] or e.get("acuerdo_salida") or (cfg.hora_salida_por_defecto if cfg else "11:00")
+        datos = [f"🕒 Llegada: {llegada}   ·   Salida: {salida}",
                  "🛋️ Sofá cama: " + _texto_marca(e, "sofa"),
                  "🍼 Cuna: " + _texto_marca(e, "cuna")]
         if limpieza and cfg and limpieza["ok"]:
@@ -410,7 +413,7 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
 def _texto_marca(e: dict, campo: str) -> str:
     m = e[campo]
     if not m:
-        return "—"
+        return "no"
     return ("SÍ" if m["v"] else "no") + " (" + texto_fuente(e, campo) + ")"
 
 

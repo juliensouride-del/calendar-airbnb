@@ -34,7 +34,7 @@ def test_confirmacion_titulos_y_descripcion(r0, cfg):
     assert reglas.titulo_evento(e) == "🏠 Corazón de Madrid · 2 pers"
     d = reglas.descripcion_evento(e)
     # Siempre llegada/salida, sofá cama y cuna; nada de alojamiento ni fechas (ya están en el evento)
-    assert d == "🕒 Llegada: —   ·   Salida: —\n🛋️ Sofá cama: —\n🍼 Cuna: —\n\n👤 Imane Bensalah · Código HMTSBCMZH9"
+    assert d == "🕒 Llegada: 15:00   ·   Salida: 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Imane Bensalah · Código HMTSBCMZH9"
     assert reglas.avisos_pendientes(e, cfg) == []
 
 
@@ -53,7 +53,7 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     reglas.marcar_avisado(e)
     assert reglas.titulo_evento(e) == "🏠 Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
     d = reglas.descripcion_evento(e)
-    assert "🕒 Llegada: 15:05   ·   Salida: —" in d
+    assert "🕒 Llegada: 15:05   ·   Salida: 11:00" in d
     assert "🍼 Cuna: SÍ (lo indica el huésped)" in d
     assert "Llegan en una hora" not in d, "las notas de los mensajes no van en el evento"
     assert "👥" not in d, "niños y bebés ya se ven en sofá cama y cuna"
@@ -152,6 +152,17 @@ def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
     assert "escribe arriba" not in reglas.descripcion_evento(e)
 
 
+def test_valores_por_defecto_si_no_hay_informacion(r0, cfg):
+    e = reglas.crear_estado(r0)
+    d = reglas.descripcion_evento(e, None, cfg)
+    assert "🕒 Llegada: 15:00   ·   Salida: 11:00" in d
+    assert "🛋️ Sofá cama: no\n" in d and "🍼 Cuna: no" in d
+    e.update(acuerdo_salida="13:00", hora_llegada="19:00", sofa={"v": True, "f": "regla"})
+    d = reglas.descripcion_evento(e, None, cfg)
+    assert "🕒 Llegada: 19:00   ·   Salida: 13:00" in d, "lo que dice el huésped o lo acordado manda"
+    assert "🛋️ Sofá cama: SÍ (" in d
+
+
 def test_llegar_de_madrugada_es_llegar_tarde_no_entrar_antes(r0, cfg):
     e = reglas.crear_estado(r0)
     reglas.fusionar_analisis(e, analisis(hora_llegada="00:30"), "huesped", cfg=cfg)
@@ -166,7 +177,7 @@ def test_descripcion_ordenada_avisos_primero_locker_y_huesped_al_final(r0, cfg):
              sofa={"v": True, "f": "huesped"})
     d = reglas.descripcion_evento(e, None, cfg).split("\n\n")
     assert d[0] == "⏰ PIDE ENTRAR ANTES (a las 12:30). Si lo aceptas, escribe arriba: #entrada 12:30"
-    assert d[1].startswith("🕒 Llegada: 18:00   ·   Salida: —\n🛋️ Sofá cama: SÍ (lo indica el huésped)")
+    assert d[1].startswith("🕒 Llegada: 18:00   ·   Salida: 11:00\n🛋️ Sofá cama: SÍ (lo indica el huésped)")
     assert d[2] == "📝 Peticiones:\n   • Trona"
     assert d[3] == "🔑 Locker: https://k/1"
     assert d[4] == "👤 Imane Bensalah · Código HMTSBCMZH9"
