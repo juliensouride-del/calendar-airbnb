@@ -91,7 +91,7 @@ class Sincronizador:
             raise RuntimeError(f'Gemini no responde ({err}). Recarga detenida en "{c.asunto}" '
                                f"(recibido el {local:%Y-%m-%d}): vuelve a lanzarla más tarde con desde = esa fecha.") from None
         except Exception as err:                         # noqa: BLE001 — un correo malo no para los demás
-            definitivo = isinstance(err, ErrorDefinitivo) or self.registro.sumar_fallo(c.id) >= self.cfg.max_reintentos
+            definitivo = isinstance(err, ErrorDefinitivo) or self.registro.sumar_fallo(c.id, c.fecha) >= self.cfg.max_reintentos
             log.error('Error en "%s": %s (%s)', c.asunto, err, "definitivo" if definitivo else "se reintentará")
             self.resumen["errores"].append(f"{c.asunto}: {err}")
             if definitivo:
@@ -185,6 +185,9 @@ class Sincronizador:
     def _analizar_texto_huesped(self, estado: dict, d: DatosCorreo, ctx: dict) -> None:
         texto = _texto_huesped(d)
         if not texto:
+            return
+        if reglas.es_mensaje_de_cortesia(texto):
+            log.info("  Mensaje solo de cortesía (%r): no se analiza con la IA", texto[:60])
             return
         r = self.analizador.analizar(texto, {
             "alojamiento": estado["alojamiento"], "checkin": estado["checkin"], "checkout": estado["checkout"],

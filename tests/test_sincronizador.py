@@ -865,3 +865,14 @@ def test_T_ntfy_sin_tema_no_envia_y_con_tema_publica():
     assert enviados == []
     NotificadorNtfy("tema-secreto", sesion).enviar("Gemini no responde", "detalle")
     assert enviados[0][0] == "https://ntfy.sh/tema-secreto" and enviados[0][1]["params"]["title"] == "Gemini no responde"
+
+
+def test_U_registro_olvida_los_fallos_de_correos_fuera_de_la_ventana(tmp_path):
+    reg = Registro(tmp_path / "estado.json")
+    reg.fallos["viejo-sin-fecha"] = 2                   # de una versión anterior
+    reg.sumar_fallo("viejo", datetime(2026, 9, 1, tzinfo=timezone.utc))
+    reg.sumar_fallo("reciente", datetime(2026, 10, 7, tzinfo=timezone.utc))
+    reg.limpiar(datetime(2026, 9, 25, tzinfo=timezone.utc))
+    assert reg.fallos == {"reciente": 1}
+    reg.guardar()
+    assert Registro(tmp_path / "estado.json").fecha_fallos == {"reciente": "2026-10-07T00:00:00+00:00"}

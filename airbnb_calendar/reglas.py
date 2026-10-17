@@ -468,6 +468,31 @@ PALABRAS_SOFA = re.compile(r"\b(sofa[ -]?bed|sof[áa][ -]?cama|canap[ée][ -]?li
                            r"|canap[ée]|couch)\b", re.I)
 
 
+# Mensajes que son SOLO cortesía ("Thanks!", "Perfecto 👍", "Merci beaucoup") no necesitan la IA.
+# Criterio muy prudente: todas las palabras deben estar en esta lista, sin números, sin preguntas
+# y como mucho 8 palabras. Con cualquier otra palabra (un nombre, "llegamos", "maleta"...) se analiza.
+PALABRAS_CORTESIA = set("""
+thanks thank thx ty you so much very many lot a again in advance ok okay okey k perfect great super cool nice
+awesome wonderful amazing excellent good fine sounds lovely noted got it understood sure yes yeah alright all right
+hi hello hey see soon later bye cheers regards best kind welcome np no problem
+gracias muchas mil muchisimas muchísimas vale perfecto perfecta genial estupendo estupenda excelente bien bueno
+buena buenas buenos hola adios adiós hasta luego pronto saludos claro entendido de nada si sí ok igualmente
+merci beaucoup bien parfait super génial genial top bonjour bonsoir salut à a bientôt bientot oui daccord d'accord
+danke vielen schön schon super perfekt alles klar hallo tschüss bis bald ja
+grazie mille perfetto ciao presto si sì
+obrigado obrigada muito perfeito ótimo otimo olá ola até logo sim
+""".split())
+
+
+def es_mensaje_de_cortesia(texto: str) -> bool:
+    """True si el mensaje es solo un agradecimiento / saludo / emoji, sin ninguna información útil."""
+    t = str(texto or "").lower()
+    if re.search(r"[0-9?¿]", t):            # una hora, una fecha o una pregunta: siempre a la IA
+        return False
+    palabras = re.findall(r"[a-záéíóúüñçàèêëîïôûœäöß']+", t)
+    return len(palabras) <= 8 and all(p.strip("'") in PALABRAS_CORTESIA for p in palabras)
+
+
 def analisis_por_palabras_clave(texto: str) -> dict:
     t = str(texto or "")
     return {

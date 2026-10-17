@@ -252,3 +252,18 @@ def test_respuesta_gemini_se_valida_y_normaliza():
     assert sin_campos["entrada_anticipada"] == "si" and sin_campos["salida_tardia"] is None
     with pytest.raises(RuntimeError, match="SAFETY"):
         interpretar_respuesta({"promptFeedback": {"blockReason": "SAFETY"}})
+
+
+@pytest.mark.parametrize("texto", ["Thanks!", "Thank you so much 😊", "Perfecto, gracias!", "Merci beaucoup !", "👍",
+                                   "Ok", "Vale, perfecto", "Muchas gracias, hasta pronto"])
+def test_mensajes_solo_de_cortesia_no_van_a_la_ia(texto):
+    assert reglas.es_mensaje_de_cortesia(texto)
+
+
+@pytest.mark.parametrize("texto", ["Thank you Julian!", "Thanks, see you at 6", "Thanks! Is there a hair dryer?",
+                                   "Perfect, we land at 11am", "Gracias, llegaremos tarde", "Ok, we will need the sofa bed",
+                                   "Thank you, can we leave our bags?", "Merci, on arrive vers 18h",
+                                   "Great, early check-in possible?", "Thanks we are here",
+                                   "Perfect thanks, we are 3 people now", "We are planning to be out right before 11"])
+def test_cualquier_dato_o_pregunta_va_a_la_ia(texto):
+    assert not reglas.es_mensaje_de_cortesia(texto)

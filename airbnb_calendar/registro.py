@@ -20,6 +20,7 @@ class Registro:
         self.inicio: str | None = d.get("inicio")               # ISO; primera ejecución
         self.procesados: dict[str, str] = d.get("procesados", {})   # id → fecha ISO del correo
         self.fallos: dict[str, int] = d.get("fallos", {})           # id → nº de intentos fallidos
+        self.fecha_fallos: dict[str, str] = d.get("fecha_fallos", {})   # id → fecha ISO del correo que falla
         self.ultimo_aviso: dict[str, str] = d.get("ultimo_aviso", {})   # tipo → fecha ISO
 
     def fecha_inicio(self, procesar_desde: str, ahora: datetime) -> datetime:
@@ -33,9 +34,12 @@ class Registro:
     def marcar_procesado(self, id_: str, fecha: datetime) -> None:
         self.procesados[id_] = fecha.isoformat()
         self.fallos.pop(id_, None)
+        self.fecha_fallos.pop(id_, None)
 
-    def sumar_fallo(self, id_: str) -> int:
+    def sumar_fallo(self, id_: str, fecha: datetime | None = None) -> int:
         self.fallos[id_] = self.fallos.get(id_, 0) + 1
+        if fecha:
+            self.fecha_fallos[id_] = fecha.isoformat()
         return self.fallos[id_]
 
     def puede_avisar(self, tipo: str, ahora: datetime, cada=timedelta(days=1)) -> bool:
@@ -48,12 +52,15 @@ class Registro:
 
     def limpiar(self, antes_de: datetime) -> None:
         """Olvida los correos que ya quedan fuera de la ventana de búsqueda."""
-        # (los fallos no hace falta limpiarlos: tras max_reintentos el correo pasa a procesados)
         self.procesados = {k: v for k, v in self.procesados.items() if datetime.fromisoformat(v) >= antes_de}
+        # Fallos de correos que ya no se van a volver a leer (fuera de la ventana, o sin fecha: versión anterior)
+        self.fecha_fallos = {k: v for k, v in self.fecha_fallos.items()
+                             if k in self.fallos and datetime.fromisoformat(v) >= antes_de}
+        self.fallos = {k: v for k, v in self.fallos.items() if k in self.fecha_fallos}
 
     def guardar(self) -> None:
         datos = {"inicio": self.inicio, "procesados": dict(sorted(self.procesados.items(), key=lambda x: x[1])),
-                 "fallos": self.fallos, "ultimo_aviso": self.ultimo_aviso}
+                 "fallos": self.fallos, "fecha_fallos": self.fecha_fallos, "ultimo_aviso": self.ultimo_aviso}
         self.ruta.parent.mkdir(parents=True, exist_ok=True)
         # Escritura atómica: nunca queda un estado.json a medias
         fd, tmp = tempfile.mkstemp(dir=self.ruta.parent, suffix=".tmp")
