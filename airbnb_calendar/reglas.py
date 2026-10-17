@@ -401,6 +401,9 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
         if e.get("locker"):
             bloques.append(["🔑 Locker: " + e["locker"]])
     bloques.append([f"👤 {e['huesped'] or '?'} · Código {e['codigo'] or 'desconocido'}"])
+    if e.get("desde_mensaje"):
+        bloques.append(["ℹ️ Evento creado a partir de un mensaje del huésped: no se encontró la confirmación de "
+                        "la reserva, así que pueden faltar datos (código, nº de personas…). Se completará si llega."])
     return "\n\n".join("\n".join(b) for b in bloques if b)
 
 

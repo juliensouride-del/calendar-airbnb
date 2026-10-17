@@ -30,9 +30,11 @@ duracion_evento_min = 30
 # Si el huésped llega más tarde o sale antes, el evento usa su hora.
 hora_entrada_por_defecto = "15:00"
 hora_salida_por_defecto = "11:00"
-# Si llega un mensaje de una reserva que no está en el calendario (anterior a la
-# instalación), ¿se crean sus eventos? false = no; solo se avisa si pide algo.
-crear_evento_desde_mensaje = false
+# Si llega un mensaje de una reserva que no está en el calendario (p. ej. su confirmación es
+# anterior a lo cargado), se crea el evento con lo que traiga el mensaje y una nota al final
+# indicando que no se encontró la confirmación. Solo para alojamientos de esta configuración.
+# false = no se crea; solo se avisa si el huésped pide algo.
+crear_evento_desde_mensaje = true
 # Recordatorios de los eventos nuevos (minutos antes). Sin esta línea se usan los
 # del calendario; [] = sin recordatorios.
 # recordatorios_minutos = [60, 1440]

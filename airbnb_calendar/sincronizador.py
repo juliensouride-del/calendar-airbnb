@@ -137,7 +137,12 @@ class Sincronizador:
             # re-procesando correos (--desde). Se reconstruye todo lo deducido de los mensajes, en orden,
             # para que mande lo último que dijo el huésped y no queden interpretaciones antiguas.
             reglas.resetear_mensajes(estado)
-        estado = estado or reglas.crear_estado()
+        if estado is None:
+            estado = reglas.crear_estado()
+            # Sin evento previo y desde un mensaje: no se ha visto la confirmación (aviso en la descripción)
+            estado["desde_mensaje"] = d.tipo == "mensaje"
+        if d.tipo == "confirmacion":
+            estado["desde_mensaje"] = False
         reglas.actualizar_con_datos(estado, d)
         self._analizar_texto_huesped(estado, d, ctx)
         alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
@@ -161,16 +166,19 @@ class Sincronizador:
 
     def _mensaje(self, d: DatosCorreo, ctx: dict) -> None:
         eventos = self._buscar(d)
-        if eventos["evento"] or self.cfg.crear_evento_desde_mensaje:
+        # Sin evento (p. ej. la confirmación es anterior a lo cargado): se crea con lo que haya en el mensaje,
+        # solo si el alojamiento está en config.toml (los mensajes de otros anuncios no llenan el calendario)
+        if eventos["evento"] or (self.cfg.crear_evento_desde_mensaje and d.alojamiento_configurado):
             return self._confirmacion_o_mensaje(d, ctx, eventos)
-        # Reserva anterior a la instalación: no se crea, pero si el huésped pide algo se avisa.
+        # No se crea, pero si el huésped pide algo se avisa.
         # (Sin reglas deterministas, para no repetir el aviso con cada mensaje.)
         estado = reglas.crear_estado(d)
         self._analizar_texto_huesped(estado, d, ctx)
         novedades = reglas.avisos_pendientes(estado, self.cfg)
         if novedades and not self._terminada(estado):
             self._avisar_peticiones(estado, novedades, d, ctx, en_calendario=False)
-        log.info("  Mensaje de una reserva que no está en el calendario: no se crean eventos.")
+        log.info("  Mensaje de una reserva que no está en el calendario (alojamiento no configurado o "
+                 "crear_evento_desde_mensaje = false): no se crean eventos.")
 
     # ------------------------------------------------------------ huésped y avisos
 

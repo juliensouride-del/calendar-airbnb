@@ -350,7 +350,7 @@ def test_A7_calendario_inaccesible_detiene_la_ejecucion_sin_contar_fallos(tmp_pa
 
 
 def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):
-    s = Entorno(tmp_path)
+    s = Entorno(tmp_path, crear_evento_desde_mensaje=False)
     s.ahora = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
     ids = [s.buzon.recibir(c) for c in cargar_ejemplo("ej3.txt", "2026-09-22")]
     registro = s.ejecutar()
@@ -370,6 +370,31 @@ def test_B2_no_se_avisa_de_reservas_que_ya_han_terminado(tmp_path):
         s.buzon.recibir(c)
     s.ejecutar()
     assert s.avisos == []
+
+
+def test_B3_evento_creado_desde_mensaje_lleva_aviso_y_se_completa_con_la_confirmacion(tmp_path):
+    s = Entorno(tmp_path)                       # por defecto se crean eventos desde mensajes
+    s.buzon.recibir(MENSAJE_IMANE)
+    s.ejecutar()
+    assert len(s.cal.eventos) == 1
+    ev = next(iter(s.cal.eventos.values()))
+    assert ev["description"].endswith("Se completará si llega."), ev["description"]
+    assert "ℹ️ Evento creado a partir de un mensaje del huésped" in ev["description"]
+    # Llega la confirmación: es el mismo evento, se completa y desaparece el aviso
+    s.buzon.recibir(replace(CONF_IMANE, fecha_hora="2026-10-04 09:00", fecha_ref="2026-10-04"))
+    s.ejecutar()
+    assert len(s.cal.eventos) == 1
+    ev = s.cal.ev("HMTSBCMZH9")
+    assert "creado a partir de un mensaje" not in ev["description"]
+
+
+def test_B4_mensaje_de_un_anuncio_no_configurado_no_crea_evento(tmp_path):
+    s = Entorno(tmp_path)
+    s.buzon.recibir(replace(MENSAJE_IMANE, cuerpo=MENSAJE_IMANE.cuerpo.replace(
+        "Espacioso y luminoso apartamento Corazón de Madrid", "Great Studio"),
+        asunto="RE: Reservation for Great Studio, Nov 26 – Dec 2"))
+    s.ejecutar()
+    assert s.cal.eventos == {}
 
 
 def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
@@ -508,7 +533,9 @@ def test_J_remitente_que_no_es_de_airbnb_y_primera_ejecucion_sin_correos_antiguo
     s2.buzon.recibir(replace(MENSAJE_IMANE, fecha_hora="2026-10-08 15:00"))     # posterior: sí
     s2.ahora += timedelta(hours=2)
     s2.ejecutar()
-    assert len(s2.avisos) == 1 and "NO está en el calendario" in s2.avisos[0][1]
+    assert len(s2.avisos) == 1 and "NO está en el calendario" not in s2.avisos[0][1]
+    assert len(s2.cal.eventos) == 1, "el mensaje crea el evento aunque la confirmación sea anterior"
+    assert "creado a partir de un mensaje" in next(iter(s2.cal.eventos.values()))["description"]
 
 
 def test_K_estado_largo_se_trocea_y_al_acortarse_se_borran_los_trozos_sobrantes(tmp_path):
