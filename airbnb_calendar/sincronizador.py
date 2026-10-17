@@ -10,10 +10,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import reglas
+from . import avisos, formato, reglas
 from .calendario import CalendarioInaccesible, leer_estado
 from .config import Config
-from .gemini import GeminiAgotado
+from .gemini import GeminiAgotado, es_mensaje_de_cortesia
 from .parser import DatosCorreo, parsear_correo
 from .registro import Registro
 from .yahoo import Correo, es_remitente
@@ -150,11 +150,11 @@ class Sincronizador:
         self._analizar_texto_huesped(estado, d, ctx)
         alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
         reglas.aplicar_reglas(estado, alojamiento, self.cfg)
-        novedades = reglas.avisos_pendientes(estado, self.cfg)
+        novedades = avisos.avisos_pendientes(estado, self.cfg)
         # Primero el aviso: si después fallara el guardado se reintenta (mejor un aviso repetido que uno perdido)
         if novedades and not self._terminada(estado):
             self._avisar_peticiones(estado, novedades, d, ctx, en_calendario=True)
-        reglas.marcar_avisado(estado)
+        avisos.marcar_avisado(estado)
         self.cal.guardar_reserva(estado, eventos, alojamiento)
 
     def _cancelacion(self, d: DatosCorreo) -> None:
@@ -177,7 +177,7 @@ class Sincronizador:
         # (Sin reglas deterministas, para no repetir el aviso con cada mensaje.)
         estado = reglas.crear_estado(d)
         self._analizar_texto_huesped(estado, d, ctx)
-        novedades = reglas.avisos_pendientes(estado, self.cfg)
+        novedades = avisos.avisos_pendientes(estado, self.cfg)
         if novedades and not self._terminada(estado):
             self._avisar_peticiones(estado, novedades, d, ctx, en_calendario=False)
         log.info("  Mensaje de una reserva que no está en el calendario (alojamiento no configurado o "
@@ -189,17 +189,17 @@ class Sincronizador:
         texto = _texto_huesped(d)
         if not texto:
             return
-        if reglas.es_mensaje_de_cortesia(texto):
+        if es_mensaje_de_cortesia(texto):
             log.info("  Mensaje solo de cortesía (%r): no se analiza con la IA", texto[:60])
             return
         r = self.analizador.analizar(texto, {
             "alojamiento": estado["alojamiento"], "checkin": estado["checkin"], "checkout": estado["checkout"],
             "hora_checkin": estado["hora_checkin"], "hora_checkout": estado["hora_checkout"],
-            "personas": reglas.texto_personas(estado), "enviado_el": ctx["fecha_hora"],
+            "personas": formato.texto_personas(estado), "enviado_el": ctx["fecha_hora"],
             "peticiones_previas": estado["peticiones"],
         })
         log.info("  Análisis (%s): %s", r.fuente, r.analisis)
-        reglas.fusionar_analisis(estado, r.analisis, r.fuente, ctx["fecha_corta"], self.cfg)
+        reglas.fusionar_analisis(estado, r.analisis, r.fuente, self.cfg)
         if r.error:
             estado["sin_analizar"] = True
             if self.registro.puede_avisar("gemini", self.ahora):
@@ -217,13 +217,13 @@ class Sincronizador:
                                     ("🍼", "cuna"), ("📝", "petición"), ("🕒", "horario"))
                      if any(x.startswith(p) for x in novedades)]
         asunto = (f"🔔 Airbnb · {estado['alias'] or estado['alojamiento']} · "
-                  f"{reglas.fecha_corta_es(estado['checkin'])}–{reglas.fecha_corta_es(estado['checkout'])} · {', '.join(etiquetas)}")
+                  f"{formato.fecha_corta_es(estado['checkin'])}–{formato.fecha_corta_es(estado['checkout'])} · {', '.join(etiquetas)}")
         l = ["Novedades detectadas en la reserva:", ""]
         l += ["  • " + n for n in novedades]
         l += ["", "—— Reserva ——",
               "🏠 " + (estado["alojamiento"] or "?"),
-              f"📅 Check-in: {reglas.fecha_larga_es(estado['checkin'])}   Check-out: {reglas.fecha_larga_es(estado['checkout'])}",
-              f"👥 {reglas.texto_personas(estado)}   ·   Huésped: {estado['huesped'] or '?'}",
+              f"📅 Check-in: {formato.fecha_larga_es(estado['checkin'])}   Check-out: {formato.fecha_larga_es(estado['checkout'])}",
+              f"👥 {formato.texto_personas(estado)}   ·   Huésped: {estado['huesped'] or '?'}",
               f"🕒 Llegada prevista: {estado['hora_llegada'] or 'no indicada'}   ·   Salida prevista: {estado['hora_salida'] or 'no indicada'}"]
         if not en_calendario:
             l += ["", "⚠️ Esta reserva NO está en el calendario (es anterior a la instalación)."]

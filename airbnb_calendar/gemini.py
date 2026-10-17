@@ -16,7 +16,6 @@ from dataclasses import dataclass
 import requests
 
 from .config import Config
-from .reglas import analisis_por_palabras_clave
 
 log = logging.getLogger(__name__)
 
@@ -207,3 +206,68 @@ def _normalizar_hora(h) -> str | None:
         return None
     hh, mm = int(m.group(1)), int(m.group(2))
     return f"{hh:02d}:{mm:02d}" if hh <= 23 and mm <= 59 else None
+
+# ----------------------------------------------------------------------------
+#  Sin IA: mensajes de cortesía y respaldo por palabras clave (sin horas)
+# ----------------------------------------------------------------------------
+
+
+PALABRAS_CUNA = re.compile(r"\b(crib|cot|cuna|berceau|lit (?:pour |de )?b[ée]b[ée]|lit parapluie|baby ?bed|travel cot"
+                           r"|babybett|kinderbett|reisebett|culla|lettino)\b", re.I)
+
+
+# Entrada anticipada / salida tardía (en, es, fr, de, it, pt)
+PALABRAS_ENTRADA = re.compile(
+    r"early\s*check[- ]?in|check[- ]?in\s+(?:a\s+(?:bit|little)\s+)?(?:early|earlier|sooner)"
+    r"|arriv\w*\s+(?:a\s+(?:bit|little)\s+)?(?:early|earlier|sooner)|(?:drop|leave)\s+(?:off\s+)?(?:our|the|my)?\s*(?:luggage|bags|suitcases)"
+    r"|(?:entrada|check[- ]?in|llegada)\s+(?:anticipad[ao]|temprano|antes)|(?:llegar|entrar)\s+(?:m[áa]s\s+)?(?:antes|temprano|pronto)"
+    r"|dejar\s+(?:las\s+)?(?:maletas|equipaje)|(?:arriv\w+|check[- ]?in|entr\w+)\s+plus\s+t[ôo]t"
+    r"|fr[üu]her\s+(?:einchecken|ankommen|anreisen)|fr[üu]hes?\s+check[- ]?in|(?:arrivare|entrare)\s+prima|chegar\s+mais\s+cedo", re.I)
+
+
+PALABRAS_SALIDA = re.compile(
+    r"late\s*check[- ]?out|check[- ]?out\s+(?:a\s+(?:bit|little)\s+)?later|leave\s+(?:a\s+(?:bit|little)\s+)?later"
+    r"|(?:salida|check[- ]?out)\s+(?:tard[íi]a|m[áa]s\s+tarde)|salir\s+m[áa]s\s+tarde|(?:partir|d[ée]part)\s+plus\s+tard"
+    r"|sp[äa]te[rs]?\s+(?:auschecken|check[- ]?out|abreisen)|(?:uscire|partire)\s+pi[ùu]\s+tardi|sair\s+mais\s+tarde", re.I)
+
+
+PALABRAS_SOFA = re.compile(r"\b(sofa[ -]?bed|sof[áa][ -]?cama|canap[ée][ -]?lit|schlafsofa|divano letto|sof[áa]"
+                           r"|canap[ée]|couch)\b", re.I)
+
+
+# Mensajes que son SOLO cortesía ("Thanks!", "Perfecto 👍", "Merci beaucoup") no necesitan la IA.
+# Criterio muy prudente: todas las palabras deben estar en esta lista, sin números, sin preguntas
+# y como mucho 8 palabras. Con cualquier otra palabra (un nombre, "llegamos", "maleta"...) se analiza.
+PALABRAS_CORTESIA = set("""
+thanks thank thx ty you so much very many lot a again in advance ok okay okey k perfect great super cool nice
+awesome wonderful amazing excellent good fine sounds lovely noted got it understood sure yes yeah alright all right
+hi hello hey see soon later bye cheers regards best kind welcome np no problem
+gracias muchas mil muchisimas muchísimas vale perfecto perfecta genial estupendo estupenda excelente bien bueno
+buena buenas buenos hola adios adiós hasta luego pronto saludos claro entendido de nada si sí ok igualmente
+merci beaucoup bien parfait super génial genial top bonjour bonsoir salut à a bientôt bientot oui daccord d'accord
+danke vielen schön schon super perfekt alles klar hallo tschüss bis bald ja
+grazie mille perfetto ciao presto si sì
+obrigado obrigada muito perfeito ótimo otimo olá ola até logo sim
+""".split())
+
+
+def es_mensaje_de_cortesia(texto: str) -> bool:
+    """True si el mensaje es solo un agradecimiento / saludo / emoji, sin ninguna información útil."""
+    t = str(texto or "").lower()
+    if re.search(r"[0-9?¿]", t):            # una hora, una fecha o una pregunta: siempre a la IA
+        return False
+    palabras = re.findall(r"[a-záéíóúüñçàèêëîïôûœäöß']+", t)
+    return len(palabras) <= 8 and all(p.strip("'") in PALABRAS_CORTESIA for p in palabras)
+
+
+def analisis_por_palabras_clave(texto: str) -> dict:
+    t = str(texto or "")
+    return {
+        "hora_llegada": None,
+        "hora_salida": None,
+        "entrada_anticipada": "si" if PALABRAS_ENTRADA.search(t) else None,
+        "salida_tardia": "si" if PALABRAS_SALIDA.search(t) else None,
+        "sofa_cama": "si" if PALABRAS_SOFA.search(t) else "sin_mencion",
+        "cuna": "si" if PALABRAS_CUNA.search(t) else "sin_mencion",
+        "otras_peticiones": [],
+    }

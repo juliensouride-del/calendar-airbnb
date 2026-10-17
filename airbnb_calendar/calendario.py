@@ -28,7 +28,7 @@ from html import unescape
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from . import reglas
+from . import formato, reglas
 from .config import Alojamiento, Config
 from .parser import clave_normalizada
 
@@ -163,10 +163,10 @@ class Calendario:
         color = ("cancelada" if estado["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else "reserva")
         alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
-        nuevo = {"summary": reglas.titulo_evento(estado, limpieza), "colorId": self.cfg.colores[color],
+        nuevo = {"summary": formato.titulo_evento(estado, limpieza), "colorId": self.cfg.colores[color],
                  "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(fin),
-                 "auto": reglas.descripcion_evento(estado, limpieza, self.cfg)}
+                 "auto": formato.descripcion_evento(estado, limpieza, self.cfg)}
         previo = _escrito(ev)
         actual, manual = self._leer_evento(ev)
         escrito, cuerpo = {}, {}
@@ -317,7 +317,7 @@ class Calendario:
                 if simulacion:
                     inicio, fin = self._horario(e)
                     log.info("Se actualizaría: %s → %s (%s → %s)", ev.get("summary"),
-                             reglas.titulo_evento(e, limpieza), inicio, fin)
+                             formato.titulo_evento(e, limpieza), inicio, fin)
                     self.stats["limpiezas_recalculadas"] += 1
                 else:
                     self._escribir_limpieza(ev, e, limpieza, todas)
