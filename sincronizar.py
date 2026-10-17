@@ -80,6 +80,11 @@ def main() -> int:
 
     registro = Registro(args.estado)
     notificador = NotificadorYahoo(sec.yahoo_usuario, sec.yahoo_clave_app, cfg.email_avisos)
+    if os.environ.get("PRUEBAS"):
+        # Entorno de pruebas: los avisos de peticiones nunca llegan al anfitrión, solo al desarrollador
+        email = os.environ.get("ALERTA_EMAIL", "").strip()
+        notificador = (ConPrefijo(NotificadorYahoo(sec.yahoo_usuario, sec.yahoo_clave_app, email), "[PRUEBAS] ")
+                       if email else NotificadorSilencioso())
     try:
         with BuzonYahoo(sec.yahoo_usuario, sec.yahoo_clave_app) as buzon:
             fecha = lambda t: datetime.fromisoformat(t).replace(tzinfo=timezone.utc) if t else None   # noqa: E731
@@ -140,6 +145,14 @@ def recalcular(calendario: Calendario, simulacion: bool) -> int:
         log.warning("Hay %d evento(s) del formato anterior (entrada y salida por separado) que no se recalculan:"
                     " ejecuta antes el modo migrar", len(antiguos))
     return 0
+
+
+class ConPrefijo:
+    def __init__(self, notificador, prefijo: str):
+        self.notificador, self.prefijo = notificador, prefijo
+
+    def enviar(self, asunto: str, cuerpo: str) -> None:
+        self.notificador.enviar(self.prefijo + asunto, cuerpo)
 
 
 class NotificadorSilencioso:

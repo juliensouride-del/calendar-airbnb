@@ -7,6 +7,11 @@ on:
     - cron: "7 6-20/2 * * *"
   workflow_dispatch:
     inputs:
+      entorno:
+        description: "produccion = calendario real · pruebas = calendario de pruebas (secretos *_PRUEBAS, registro propio, avisos solo al desarrollador)"
+        type: choice
+        options: [produccion, pruebas]
+        default: produccion
       modo:
         description: "Qué ejecutar"
         type: choice
@@ -26,10 +31,16 @@ on:
         default: ""
 
 permissions:
-  contents: write          # para guardar el registro en la rama `estado`
+  contents: write          # para guardar el registro en la rama `estado` (o `estado-pruebas`)
+
+# Las ejecuciones programadas son siempre de producción. En pruebas, el registro va en otra rama para
+# que lo procesado en pruebas no se dé por procesado en producción (ni al revés).
+env:
+  ENTORNO: ${{ inputs.entorno || 'produccion' }}
+  RAMA_ESTADO: ${{ inputs.entorno == 'pruebas' && 'estado-pruebas' || 'estado' }}
 
 concurrency:
-  group: airbnb-calendar   # nunca dos ejecuciones a la vez sobre el mismo registro
+  group: airbnb-calendar-${{ inputs.entorno || 'produccion' }}   # nunca dos ejecuciones a la vez sobre el mismo registro
   cancel-in-progress: false
 
 jobs:
@@ -46,10 +57,10 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Recuperar el registro de correos procesados (rama estado)
+      - name: Recuperar el registro de correos procesados (rama estado / estado-pruebas)
         run: |
           mkdir -p estado
-          if git fetch --depth=1 origin estado 2>/dev/null; then
+          if git fetch --depth=1 origin "$RAMA_ESTADO" 2>/dev/null; then
             git show FETCH_HEAD:estado.json > estado/estado.json
             echo "ESTADO_PADRE=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_ENV"
           else
@@ -69,11 +80,22 @@ jobs:
           CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
           ALERTA_NTFY_TOPIC: ${{ secrets.ALERTA_NTFY_TOPIC }}
           ALERTA_EMAIL: ${{ secrets.ALERTA_EMAIL }}   # avisos de errores al desarrollador (no al anfitrión)
+          CALENDAR_ID_PRUEBAS: ${{ secrets.CALENDAR_ID_PRUEBAS }}
+          GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS }}
           CONFIRMAR: ${{ inputs.confirmar }}
           MODO: ${{ inputs.modo || 'sincronizar' }}
           DESDE: ${{ inputs.desde }}
           HASTA: ${{ inputs.hasta }}
         run: |
+          if [ "$ENTORNO" = pruebas ]; then
+            # Nunca se cae a los secretos de producción: sin los de pruebas, no se ejecuta
+            if [ -z "$CALENDAR_ID_PRUEBAS" ] || [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS" ]; then
+              echo "::error::Faltan los secretos CALENDAR_ID_PRUEBAS y/o GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS"; exit 1
+            fi
+            export CALENDAR_ID="$CALENDAR_ID_PRUEBAS" GOOGLE_SERVICE_ACCOUNT_JSON="$GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS" PRUEBAS=1
+            echo "::notice::Entorno de PRUEBAS: calendario de pruebas, registro en $RAMA_ESTADO, avisos solo al desarrollador"
+          fi
+          unset CALENDAR_ID_PRUEBAS GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS
           case "$MODO" in
             comprobar)    python sincronizar.py --comprobar ;;
             diagnosticar) python sincronizar.py --diagnosticar ;;
@@ -102,7 +124,7 @@ jobs:
           export GIT_AUTHOR_NAME="github-actions[bot]" GIT_COMMITTER_NAME="github-actions[bot]"
           export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
           commit=$(git commit-tree "$tree" ${ESTADO_PADRE:+-p "$ESTADO_PADRE"} -m "Registro $(date -u +%Y-%m-%dT%H:%MZ)")
-          git push origin "$commit:refs/heads/estado"
+          git push origin "$commit:refs/heads/$RAMA_ESTADO"
 
       # Aviso de fallo SOLO al desarrollador: notificación push con https://ntfy.sh (gratis, sin cuenta).
       # Secreto ALERTA_NTFY_TOPIC = nombre de tema largo y difícil de adivinar (es la "contraseña" del canal);
@@ -116,6 +138,6 @@ jobs:
         run: |
           echo "::error::La sincronización ha fallado: $URL_RUN"
           [ -n "$TOPIC" ] || { echo "Sin ALERTA_NTFY_TOPIC: no se envía aviso."; exit 0; }
-          curl -fsS -H "Title: Airbnb Calendar ha fallado" -H "Priority: high" -H "Tags: warning" \
-               -H "Click: $URL_RUN" -d "Modo $MODO: $URL_RUN" "https://ntfy.sh/$TOPIC" > /dev/null \
+          curl -fsS -H "Title: Airbnb Calendar ha fallado ($ENTORNO)" -H "Priority: high" -H "Tags: warning" \
+               -H "Click: $URL_RUN" -d "Modo $MODO ($ENTORNO): $URL_RUN" "https://ntfy.sh/$TOPIC" > /dev/null \
             || echo "::warning::No se pudo enviar el aviso a ntfy"
