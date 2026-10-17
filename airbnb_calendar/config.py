@@ -76,7 +76,7 @@ class Secretos:
     gemini_api_key: str = ""
 
     @classmethod
-    def desde_entorno(cls) -> "Secretos":
+    def desde_entorno(cls) -> Secretos:
         faltan = [k for k in ("YAHOO_USUARIO", "YAHOO_CLAVE_APP", "GOOGLE_SERVICE_ACCOUNT_JSON") if not os.environ.get(k)]
         if faltan:
             raise SystemExit("Faltan variables de entorno: " + ", ".join(faltan))

@@ -13,7 +13,7 @@ import logging
 import re
 import smtplib
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
@@ -105,7 +105,7 @@ class BuzonYahoo:
         UIDs de los correos entre las fechas. Se busca por tramos de una semana: Yahoo devuelve
         como mucho 1000 resultados por búsqueda y descarta el resto sin avisar.
         """
-        fin = (hasta or datetime.now(timezone.utc) + timedelta(days=1)).date()
+        fin = (hasta or datetime.now(UTC) + timedelta(days=1)).date()
         dia, uids = desde.date(), set()
         while dia < fin:
             sig = min(dia + timedelta(days=DIAS_POR_BUSQUEDA), fin)

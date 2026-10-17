@@ -7,7 +7,7 @@ inyectan, así que el flujo completo se prueba en local con imitaciones.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from . import avisos, formato, reglas
@@ -37,7 +37,7 @@ class Sincronizador:
         self.tecnico = notificador_tecnico or _SoloLog()    # al desarrollador (ntfy); nunca al cliente
         self.resumen = {"correos": 0, "errores": [], "alertas_limpieza": []}
         self.registro = registro
-        self.ahora = ahora or datetime.now(timezone.utc)
+        self.ahora = ahora or datetime.now(UTC)
         self.desde = desde      # carga manual: ignora la ventana y el inicio del registro
         self.hasta = hasta
         self.tz = ZoneInfo(cfg.zona_horaria)

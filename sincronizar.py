@@ -29,7 +29,7 @@ import logging
 import os
 import sys
 from dataclasses import asdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from airbnb_calendar.calendario import Calendario, sesion_cuenta_servicio
 from airbnb_calendar.config import Secretos, cargar_config
@@ -86,7 +86,7 @@ def main() -> int:
                        if email else NotificadorSilencioso())
     try:
         with BuzonYahoo(sec.yahoo_usuario, sec.yahoo_clave_app) as buzon:
-            fecha = lambda t: datetime.fromisoformat(t).replace(tzinfo=timezone.utc) if t else None   # noqa: E731
+            fecha = lambda t: datetime.fromisoformat(t).replace(tzinfo=UTC) if t else None   # noqa: E731
             if args.desde:
                 notificador = NotificadorSilencioso()   # carga manual: no avisar de correos antiguos
             sincro = Sincronizador(cfg, buzon, calendario, analizador, notificador, registro,
@@ -172,7 +172,7 @@ def purgar(calendario: Calendario, simulacion: bool, confirmado: bool) -> int:
 
 def comprobar(cfg, sec, calendario, analizador) -> int:
     with BuzonYahoo(sec.yahoo_usuario, sec.yahoo_clave_app) as buzon:
-        correos = buzon.correos_desde(datetime.now(timezone.utc) - timedelta(days=7), cfg.carpetas, cfg.remitentes)
+        correos = buzon.correos_desde(datetime.now(UTC) - timedelta(days=7), cfg.carpetas, cfg.remitentes)
     log.info("✔ Yahoo Mail: %d correo(s) de Airbnb en los últimos 7 días", len(correos))
     calendario.comprobar_acceso()
     log.info("✔ Google Calendar: acceso de escritura al calendario %s", cfg.calendar_id)
@@ -193,7 +193,7 @@ def comprobar(cfg, sec, calendario, analizador) -> int:
 
 def diagnosticar(cfg, sec) -> int:
     with BuzonYahoo(sec.yahoo_usuario, sec.yahoo_clave_app) as buzon:
-        correos = buzon.correos_desde(datetime.now(timezone.utc) - timedelta(days=7), cfg.carpetas, cfg.remitentes)
+        correos = buzon.correos_desde(datetime.now(UTC) - timedelta(days=7), cfg.carpetas, cfg.remitentes)
     for c in correos:
         if not es_remitente(c.remitente, cfg.remitentes):
             continue

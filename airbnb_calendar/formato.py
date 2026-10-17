@@ -10,7 +10,6 @@ from datetime import date
 from .config import Config
 from .reglas import es_hora_valida, personas_que_duermen
 
-
 DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 

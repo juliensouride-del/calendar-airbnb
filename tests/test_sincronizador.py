@@ -9,7 +9,7 @@ import itertools
 import json
 import re
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import requests
@@ -19,7 +19,6 @@ from airbnb_calendar.gemini import AnalizadorMensajes
 from airbnb_calendar.registro import Registro
 from airbnb_calendar.sincronizador import Sincronizador
 from airbnb_calendar.yahoo import Correo
-
 from conftest import cargar_ejemplo, cargar_eml, config_prueba
 
 # ---------------------------------------------------------------------------
@@ -139,7 +138,7 @@ class Entorno:
         self.avisos: list[tuple[str, str]] = []          # al anfitrión
         self.tecnicos: list[tuple[str, str]] = []        # al desarrollador (ntfy)
         self.ruta_estado = tmp_path / "estado.json"
-        self.ahora = datetime(2026, 10, 8, 12, tzinfo=timezone.utc)
+        self.ahora = datetime(2026, 10, 8, 12, tzinfo=UTC)
 
     def ejecutar(self, desde: datetime | None = None):
         """Una ejecución completa, como en GitHub Actions: carga el registro, procesa y lo guarda.
@@ -273,7 +272,7 @@ def test_A4_recarga_manual_reconstruye_la_reserva_con_lo_ultimo_del_huesped(tmp_
     cal.guardar_reserva(e, eventos, None)
     assert "llega 17:00" in s.cal.ev("HMTEST0002")["summary"]
 
-    s.ejecutar(desde=datetime(2026, 9, 1, tzinfo=timezone.utc))
+    s.ejecutar(desde=datetime(2026, 9, 1, tzinfo=UTC))
     ev = s.cal.ev("HMTEST0002")
     assert ev["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama", ev["summary"]
     assert "Petición antigua" not in ev["description"]
@@ -349,7 +348,7 @@ def test_A7_calendario_inaccesible_detiene_la_ejecucion_sin_contar_fallos(tmp_pa
 
 def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):
     s = Entorno(tmp_path, crear_evento_desde_mensaje=False)
-    s.ahora = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+    s.ahora = datetime(2026, 9, 22, 12, tzinfo=UTC)
     ids = [s.buzon.recibir(c) for c in cargar_ejemplo("ej3.txt", "2026-09-22")]
     registro = s.ejecutar()
     assert s.cal.eventos == {}
@@ -397,7 +396,7 @@ def test_B4_mensaje_de_un_anuncio_no_configurado_no_crea_evento(tmp_path):
 
 def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
     s = Entorno(tmp_path, crear_evento_desde_mensaje=True)
-    s.ahora = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+    s.ahora = datetime(2026, 9, 22, 12, tzinfo=UTC)
     for c in cargar_ejemplo("ej3.txt", "2026-09-22") + cargar_ejemplo("ej2.txt", "2026-10-01"):
         s.buzon.recibir(c)
     s.ejecutar()
@@ -417,7 +416,7 @@ def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
 
 def test_D_gemini_caido_palabras_clave_nota_y_un_solo_aviso_al_dia(tmp_path):
     s = Entorno(tmp_path, gemini="falla", crear_evento_desde_mensaje=True)
-    s.ahora = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+    s.ahora = datetime(2026, 9, 22, 12, tzinfo=UTC)
     for c in cargar_ejemplo("ej3.txt", "2026-09-22")[:2]:
         s.buzon.recibir(c)
     s.ejecutar()
@@ -817,7 +816,7 @@ def test_P_limpieza_con_salida_el_dia_anterior():
 
 def test_Q_cada_ejecucion_recalcula_limpiezas_sin_correos_nuevos(tmp_path):
     s = Entorno(tmp_path)
-    s.ahora = datetime(2026, 11, 1, 9, tzinfo=timezone.utc)
+    s.ahora = datetime(2026, 11, 1, 9, tzinfo=UTC)
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
@@ -870,9 +869,9 @@ def test_T_ntfy_sin_tema_no_envia_y_con_tema_publica():
 def test_U_registro_olvida_los_fallos_de_correos_fuera_de_la_ventana(tmp_path):
     reg = Registro(tmp_path / "estado.json")
     reg.fallos["viejo-sin-fecha"] = 2                   # de una versión anterior
-    reg.sumar_fallo("viejo", datetime(2026, 9, 1, tzinfo=timezone.utc))
-    reg.sumar_fallo("reciente", datetime(2026, 10, 7, tzinfo=timezone.utc))
-    reg.limpiar(datetime(2026, 9, 25, tzinfo=timezone.utc))
+    reg.sumar_fallo("viejo", datetime(2026, 9, 1, tzinfo=UTC))
+    reg.sumar_fallo("reciente", datetime(2026, 10, 7, tzinfo=UTC))
+    reg.limpiar(datetime(2026, 9, 25, tzinfo=UTC))
     assert reg.fallos == {"reciente": 1}
     reg.guardar()
     assert Registro(tmp_path / "estado.json").fecha_fallos == {"reciente": "2026-10-07T00:00:00+00:00"}

@@ -1,0 +1,16 @@
+# Estilo del código: se comprueba en cada push, junto a las pruebas (ruff check .)
+line-length = 150
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E741",   # "l" para listas de líneas, habitual en el código
+]
+
+[lint.per-file-ignores]
+# Las pruebas tienen correos de ejemplo largos y una imitación de Gemini compacta (una regla por línea)
+"tests/*" = ["E501", "E701", "B023"]
+
+[lint.isort]
+known-first-party = ["airbnb_calendar", "conftest"]

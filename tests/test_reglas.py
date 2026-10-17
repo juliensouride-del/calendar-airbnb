@@ -5,7 +5,6 @@ from airbnb_calendar import avisos, formato, gemini, reglas
 from airbnb_calendar.config import Alojamiento
 from airbnb_calendar.gemini import construir_peticion, interpretar_respuesta
 from airbnb_calendar.parser import parsear_correo
-
 from conftest import ALOJAMIENTOS_PRUEBA, cargar_ejemplo
 
 

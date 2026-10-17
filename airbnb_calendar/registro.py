@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -26,7 +26,7 @@ class Registro:
     def fecha_inicio(self, procesar_desde: str, ahora: datetime) -> datetime:
         """Desde cuándo se procesan correos: config.procesar_desde o la primera ejecución."""
         if procesar_desde:
-            return datetime.fromisoformat(procesar_desde).replace(tzinfo=timezone.utc)
+            return datetime.fromisoformat(procesar_desde).replace(tzinfo=UTC)
         if not self.inicio:
             self.inicio = ahora.isoformat()
         return datetime.fromisoformat(self.inicio)
