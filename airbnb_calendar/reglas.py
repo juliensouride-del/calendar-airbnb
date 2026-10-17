@@ -27,12 +27,14 @@ def crear_estado(datos: DatosCorreo | None = None) -> dict:
         "hora_checkin": None, "hora_checkout": None,        # horas oficiales del anuncio
         "adultos": None, "ninos": None, "bebes": None, "mascotas": None, "total": None,
         "hora_llegada": None, "hora_salida": None,          # lo que dice el huésped
+        "entrada_anticipada": None, "salida_tardia": None,  # lo que PIDE: 'HH:MM' o 'si' (sin hora concreta)
         "acuerdo_entrada": None, "acuerdo_salida": None,    # lo acordado por el anfitrión (#entrada / #salida)
         "sofa": None, "cuna": None,                          # {"v": bool, "f": "huesped"|"palabras"|"regla"}
         "peticiones": [],                                    # otras peticiones especiales
         "notas": [],                                         # [{"f": "dd/mm", "t": resumen}]
         "cancelada": False,
-        "avisado": {"sofa": False, "cuna": False, "peticiones": [], "hora_llegada": None, "hora_salida": None},
+        "avisado": {"sofa": False, "cuna": False, "peticiones": [], "hora_llegada": None, "hora_salida": None,
+                    "entrada_anticipada": None, "salida_tardia": None},
     }
     return actualizar_con_datos(e, datos) if datos else e
 
@@ -62,7 +64,7 @@ def actualizar_con_datos(e: dict, d: DatosCorreo) -> dict:
 def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "") -> dict:
     """
     Fusiona el análisis de un mensaje.
-    a: {hora_llegada, hora_salida, sofa_cama, cuna, otras_peticiones, resumen}
+    a: {hora_llegada, hora_salida, entrada_anticipada, salida_tardia, sofa_cama, cuna, otras_peticiones, resumen}
     fuente: 'huesped' (Gemini) | 'palabras' (respaldo por palabras clave)
     """
     if not a:
@@ -71,6 +73,8 @@ def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "")
         e["hora_llegada"] = a["hora_llegada"]
     if es_hora_valida(a.get("hora_salida")):
         e["hora_salida"] = a["hora_salida"]
+    for k in ("entrada_anticipada", "salida_tardia"):
+        e[k] = _fusionar_solicitud(e.get(k), a.get(k))
     e["sofa"] = _fusionar_marca(e["sofa"], a.get("sofa_cama"), fuente)
     e["cuna"] = _fusionar_marca(e["cuna"], a.get("cuna"), fuente)
 
@@ -83,6 +87,28 @@ def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "")
     resumen = str(a.get("resumen") or "").strip()
     if resumen:
         e["notas"] = (e["notas"] + [{"f": fecha_txt, "t": resumen[:200]}])[-5:]
+    return e
+
+
+def _fusionar_solicitud(actual: str | None, nueva) -> str | None:
+    """La última hora pedida manda; un 'si' sin hora no borra una hora pedida antes."""
+    if es_hora_valida(nueva):
+        return nueva
+    if nueva == "si":
+        return actual or "si"
+    return actual
+
+
+def deducir_solicitudes(e: dict, cfg: Config) -> dict:
+    """
+    Si el huésped dice que llega antes de la hora de entrada (o sale después de la de salida),
+    en la práctica está pidiendo entrar antes (salir después), aunque no lo pregunte.
+    """
+    llegada, salida = normalizar_hora(e.get("hora_llegada")), normalizar_hora(e.get("hora_salida"))
+    if llegada and llegada < cfg.hora_entrada_por_defecto and not es_hora_valida(e.get("entrada_anticipada")):
+        e["entrada_anticipada"] = llegada
+    if salida and salida > cfg.hora_salida_por_defecto and not es_hora_valida(e.get("salida_tardia")):
+        e["salida_tardia"] = salida
     return e
 
 
@@ -121,6 +147,13 @@ def avisos_pendientes(e: dict, cfg: Config) -> list[str]:
         return []
     av, av0 = [], e.get("avisado") or {}
     if cfg.avisar_peticiones:
+        # Entrar antes / salir después es una petición (aunque [avisos] horas esté desactivado)
+        if e.get("entrada_anticipada") and e["entrada_anticipada"] != av0.get("entrada_anticipada"):
+            av.append(f"⏰ Pide ENTRAR ANTES de las {cfg.hora_entrada_por_defecto}: "
+                      + _texto_solicitud(e["entrada_anticipada"]))
+        if e.get("salida_tardia") and e["salida_tardia"] != av0.get("salida_tardia"):
+            av.append(f"⌛ Pide SALIR DESPUÉS de las {cfg.hora_salida_por_defecto}: "
+                      + _texto_solicitud(e["salida_tardia"]))
         sofa, cuna = bool(e["sofa"] and e["sofa"]["v"]), bool(e["cuna"] and e["cuna"]["v"])
         if sofa and not av0.get("sofa"):
             av.append("🛋️ Sofá cama — " + texto_fuente(e, "sofa"))
@@ -148,8 +181,14 @@ def marcar_avisado(e: dict) -> dict:
         "peticiones": list(e["peticiones"]),
         "hora_llegada": e["hora_llegada"],
         "hora_salida": e["hora_salida"],
+        "entrada_anticipada": e.get("entrada_anticipada"),
+        "salida_tardia": e.get("salida_tardia"),
     }
     return e
+
+
+def _texto_solicitud(v: str) -> str:
+    return f"a las {v}" if es_hora_valida(v) else "sin hora concreta (pregunta si es posible)"
 
 
 def texto_fuente(e: dict, campo: str) -> str:
@@ -290,12 +329,18 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
         partes.append(f"{e['total']} pers")
     if e.get("acuerdo_entrada"):
         partes.append(f"entra {e['acuerdo_entrada']} ✅")
-    elif e["hora_llegada"]:
-        partes.append("llega " + e["hora_llegada"])
+    else:
+        if e["hora_llegada"]:
+            partes.append("llega " + e["hora_llegada"])
+        if e.get("entrada_anticipada"):
+            partes.append("⏰ pide entrar " + (e["entrada_anticipada"] if es_hora_valida(e["entrada_anticipada"]) else "antes"))
     if e.get("acuerdo_salida"):
         partes.append(f"sale {e['acuerdo_salida']} ✅")
-    elif e["hora_salida"]:
-        partes.append("sale " + e["hora_salida"])
+    else:
+        if e["hora_salida"]:
+            partes.append("sale " + e["hora_salida"])
+        if e.get("salida_tardia"):
+            partes.append("⌛ pide salir " + (e["salida_tardia"] if es_hora_valida(e["salida_tardia"]) else "después"))
     if e["sofa"] and e["sofa"]["v"]:
         partes.append("🛋️ sofá cama")
     if e["cuna"] and e["cuna"]["v"]:
@@ -321,6 +366,13 @@ def descripcion_evento(e: dict, actualizado_txt: str = "", limpieza: dict | None
     l.append("👥 Personas: " + texto_personas(e))
     l.append("🕒 Hora prevista de llegada: " + (e["hora_llegada"] or no))
     l.append("🕒 Hora prevista de salida: " + (e["hora_salida"] or no))
+    pendiente = " — sin acordar (si lo aceptas, escribe arriba {})"
+    if e.get("entrada_anticipada"):
+        l.append("⏰ Pide entrar antes: " + _texto_solicitud(e["entrada_anticipada"])
+                 + ("" if e.get("acuerdo_entrada") else pendiente.format("#entrada HH:MM")))
+    if e.get("salida_tardia"):
+        l.append("⌛ Pide salir después: " + _texto_solicitud(e["salida_tardia"])
+                 + ("" if e.get("acuerdo_salida") else pendiente.format("#salida HH:MM")))
     l.append("🛋️ Sofá cama: " + _texto_marca(e, "sofa"))
     l.append("🍼 Cuna: " + _texto_marca(e, "cuna"))
     if e["peticiones"]:
@@ -382,12 +434,23 @@ def es_hora_valida(h) -> bool:
     return isinstance(h, str) and bool(re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", h))
 
 # ----------------------------------------------------------------------------
-#  Respaldo sin IA: palabras clave (no detecta horas)
+#  Respaldo sin IA: palabras clave (sin horas; sí detecta si pide entrar antes / salir después)
 # ----------------------------------------------------------------------------
 
 
 PALABRAS_CUNA = re.compile(r"\b(crib|cot|cuna|berceau|lit (?:pour |de )?b[ée]b[ée]|lit parapluie|baby ?bed|travel cot"
                            r"|babybett|kinderbett|reisebett|culla|lettino)\b", re.I)
+# Entrada anticipada / salida tardía (en, es, fr, de, it, pt)
+PALABRAS_ENTRADA = re.compile(
+    r"early\s*check[- ]?in|check[- ]?in\s+(?:a\s+(?:bit|little)\s+)?(?:early|earlier|sooner)"
+    r"|arriv\w*\s+(?:a\s+(?:bit|little)\s+)?(?:early|earlier|sooner)|(?:drop|leave)\s+(?:off\s+)?(?:our|the|my)?\s*(?:luggage|bags|suitcases)"
+    r"|(?:entrada|check[- ]?in|llegada)\s+(?:anticipad[ao]|temprano|antes)|(?:llegar|entrar)\s+(?:m[áa]s\s+)?(?:antes|temprano|pronto)"
+    r"|dejar\s+(?:las\s+)?(?:maletas|equipaje)|(?:arriv\w+|check[- ]?in|entr\w+)\s+plus\s+t[ôo]t"
+    r"|fr[üu]her\s+(?:einchecken|ankommen|anreisen)|fr[üu]hes?\s+check[- ]?in|(?:arrivare|entrare)\s+prima|chegar\s+mais\s+cedo", re.I)
+PALABRAS_SALIDA = re.compile(
+    r"late\s*check[- ]?out|check[- ]?out\s+(?:a\s+(?:bit|little)\s+)?later|leave\s+(?:a\s+(?:bit|little)\s+)?later"
+    r"|(?:salida|check[- ]?out)\s+(?:tard[íi]a|m[áa]s\s+tarde)|salir\s+m[áa]s\s+tarde|(?:partir|d[ée]part)\s+plus\s+tard"
+    r"|sp[äa]te[rs]?\s+(?:auschecken|check[- ]?out|abreisen)|(?:uscire|partire)\s+pi[ùu]\s+tardi|sair\s+mais\s+tarde", re.I)
 PALABRAS_SOFA = re.compile(r"\b(sofa[ -]?bed|sof[áa][ -]?cama|canap[ée][ -]?lit|schlafsofa|divano letto|sof[áa]"
                            r"|canap[ée]|couch)\b", re.I)
 
@@ -397,6 +460,8 @@ def analisis_por_palabras_clave(texto: str) -> dict:
     return {
         "hora_llegada": None,
         "hora_salida": None,
+        "entrada_anticipada": "si" if PALABRAS_ENTRADA.search(t) else None,
+        "salida_tardia": "si" if PALABRAS_SALIDA.search(t) else None,
         "sofa_cama": "si" if PALABRAS_SOFA.search(t) else "sin_mencion",
         "cuna": "si" if PALABRAS_CUNA.search(t) else "sin_mencion",
         "otras_peticiones": [],

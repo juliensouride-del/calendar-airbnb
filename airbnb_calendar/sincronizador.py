@@ -65,7 +65,7 @@ class Sincronizador:
     def procesar_correo(self, c: Correo) -> None:
         if not es_remitente(c.remitente, self.cfg.remitentes):
             log.info("Ignorado (remitente %s): %s", c.remitente, c.asunto)
-            self.registro.marcar_procesado(c.id, c.fecha)
+            self._marcar_procesado(c)
             return
         local = c.fecha.astimezone(self.tz)
         ctx = {
@@ -79,19 +79,24 @@ class Sincronizador:
             for a in datos.avisos:
                 log.warning("  ⚠ %s", a)
             self._procesar_datos(datos, ctx)
-            self.registro.marcar_procesado(c.id, c.fecha)
+            self._marcar_procesado(c)
         except Exception as err:                         # noqa: BLE001 — un correo malo no para los demás
             definitivo = isinstance(err, ErrorDefinitivo) or self.registro.sumar_fallo(c.id) >= self.cfg.max_reintentos
             log.error('Error en "%s": %s (%s)', c.asunto, err, "definitivo" if definitivo else "se reintentará")
             self.resumen["errores"].append(f"{c.asunto}: {err}")
             if definitivo:
-                self.registro.marcar_procesado(c.id, c.fecha)
+                self._marcar_procesado(c)
                 if self.cfg.avisar_errores:
                     self.notificador.enviar(
                         "⚠️ Airbnb → Calendar: no se pudo procesar un correo",
                         f"Correo: {c.asunto}\n\nError: {err}\n\n"
                         "Revísalo a mano y actualiza el calendario si hace falta. No se volverá a intentar.\n\n"
                         f"Correo en Yahoo Mail: {ctx['ref']}")
+
+    def _marcar_procesado(self, c: Correo) -> None:
+        # También por Message-ID: si después se archiva (otra carpeta, otro UID) no se vuelve a procesar
+        for id_ in filter(None, (c.id, getattr(c, "id_mensaje", ""))):
+            self.registro.marcar_procesado(id_, c.fecha)
 
     def _procesar_datos(self, d: DatosCorreo, ctx: dict) -> None:
         if d.faltan:
@@ -164,6 +169,7 @@ class Sincronizador:
         })
         log.info("  Análisis (%s): %s", r.fuente, r.analisis)
         reglas.fusionar_analisis(estado, r.analisis, r.fuente, ctx["fecha_corta"])
+        reglas.deducir_solicitudes(estado, self.cfg)
         if r.error:
             estado["notas"] = (estado["notas"] + [{"f": ctx["fecha_corta"], "t": "⚠️ Mensaje sin analizar por la IA; revísalo en Yahoo Mail."}])[-5:]
             if self.registro.puede_avisar("gemini", self.ahora):
@@ -172,7 +178,8 @@ class Sincronizador:
                                         f"Error: {r.error}\n\nComprueba el secreto GEMINI_API_KEY y [gemini] modelo en config.toml.")
 
     def _avisar_peticiones(self, estado: dict, novedades: list[str], d: DatosCorreo, ctx: dict, en_calendario: bool) -> None:
-        etiquetas = [n for p, n in (("🛋️", "sofá cama"), ("🍼", "cuna"), ("📝", "petición"), ("🕒", "horario"))
+        etiquetas = [n for p, n in (("⏰", "entrar antes"), ("⌛", "salir después"), ("🛋️", "sofá cama"),
+                                    ("🍼", "cuna"), ("📝", "petición"), ("🕒", "horario"))
                      if any(x.startswith(p) for x in novedades)]
         asunto = (f"🔔 Airbnb · {estado['alias'] or estado['alojamiento']} · "
                   f"{reglas.fecha_corta_es(estado['checkin'])}–{reglas.fecha_corta_es(estado['checkout'])} · {', '.join(etiquetas)}")

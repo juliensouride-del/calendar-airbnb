@@ -24,6 +24,8 @@ log = logging.getLogger(__name__)
 
 IMAP_HOST, IMAP_PUERTO = "imap.mail.yahoo.com", 993
 SMTP_HOST, SMTP_PUERTO = "smtp.mail.yahoo.com", 465
+DIAS_POR_BUSQUEDA = 7            # tramos de búsqueda (ver BuzonYahoo._buscar)
+LIMITE_BUSQUEDA_YAHOO = 1000
 MESES_IMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
@@ -34,6 +36,7 @@ class Correo:
     remitente: str
     asunto: str
     texto: str
+    id_mensaje: str = ""     # "mid:<Message-ID>": el mismo en cualquier carpeta ("" si no lo trae)
 
 
 class BuzonYahoo:
@@ -61,39 +64,66 @@ class BuzonYahoo:
 
     def correos_desde(self, desde: datetime, carpetas: list[str], remitentes: list[str],
                       excluir: set[str] = frozenset(), hasta: datetime | None = None) -> list[Correo]:
-        """Correos de los remitentes llegados desde `desde`, sin los de `excluir`, del más antiguo al más nuevo."""
-        res = []
+        """
+        Correos de los remitentes llegados desde `desde`, sin los de `excluir`, del más antiguo al más nuevo.
+        Un mismo correo en dos carpetas (p. ej. archivado tras procesarlo) se reconoce por su Message-ID.
+        """
+        res, vistos, abiertas = [], set(excluir), 0
         for carpeta in carpetas:
             typ, _ = self.imap.select(_citar(carpeta), readonly=True)
             if typ != "OK":
-                raise RuntimeError(f'No se puede abrir la carpeta "{carpeta}" de Yahoo')
+                log.warning('No se puede abrir la carpeta "%s" de Yahoo: se omite', carpeta)
+                continue
+            abiertas += 1
             validez = (self.imap.response("UIDVALIDITY")[1] or [b"0"])[0].decode()
             uids = self._buscar(desde, remitentes, hasta)
             ids = {u: f"{carpeta}:{validez}:{u}" for u in uids}
-            uids = [u for u in uids if ids[u] not in excluir]
+            uids = [u for u in uids if ids[u] not in vistos]
             if not uids:
                 continue
             # SINCE solo compara el día: se afina con la hora exacta de llegada
-            fechas = {u: f for u, f, _ in self._fetch(uids, "(UID INTERNALDATE)")}
-            nuevos = [u for u in uids if fechas.get(u) and fechas[u] >= desde and (not hasta or fechas[u] < hasta)]
+            nuevos, msgids = [], {}
+            for i in range(0, len(uids), 200):
+                for u, f, cab in self._fetch(uids[i:i + 200], "(UID INTERNALDATE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"):
+                    mid = clave_message_id(cab)
+                    if f < desde or (hasta and f >= hasta) or (mid and mid in vistos):
+                        continue
+                    nuevos.append(u)
+                    if mid:
+                        msgids[u] = mid
+                        vistos.add(mid)
             for i in range(0, len(nuevos), 20):
                 for uid, fecha, crudo in self._fetch(nuevos[i:i + 20], "(UID INTERNALDATE BODY.PEEK[])"):
                     remitente, asunto, texto = leer_eml(crudo)
-                    res.append(Correo(ids[uid], fecha, remitente, asunto, texto))
+                    res.append(Correo(ids[uid], fecha, remitente, asunto, texto, msgids.get(uid, "")))
+        if carpetas and not abiertas:
+            raise RuntimeError(f"No se puede abrir ninguna carpeta de Yahoo ({', '.join(carpetas)})")
         return sorted(res, key=lambda c: c.fecha)
 
     def _buscar(self, desde: datetime, remitentes: list[str], hasta: datetime | None = None) -> list[str]:
-        criterio = ["SINCE", f"{desde.day}-{MESES_IMAP[desde.month - 1]}-{desde.year}"]
-        if hasta:
-            criterio += ["BEFORE", f"{hasta.day}-{MESES_IMAP[hasta.month - 1]}-{hasta.year}"]
-        if remitentes:
-            # OR a b  /  OR OR a b c ...
-            de = ["FROM " + _citar(r) for r in remitentes]
-            criterio.append(("(" + "OR " * (len(de) - 1) + " ".join(de) + ")") if len(de) > 1 else de[0])
-        typ, datos = self.imap.uid("SEARCH", None, *criterio)
-        if typ != "OK":
-            raise RuntimeError(f"Búsqueda IMAP fallida: {datos}")
-        return sorted({u.decode() for linea in datos if linea for u in linea.split()}, key=int)
+        """
+        UIDs de los correos entre las fechas. Se busca por tramos de una semana: Yahoo devuelve
+        como mucho 1000 resultados por búsqueda y descarta el resto sin avisar.
+        """
+        fin = (hasta or datetime.now(timezone.utc) + timedelta(days=1)).date()
+        dia, uids = desde.date(), set()
+        while dia < fin:
+            sig = min(dia + timedelta(days=DIAS_POR_BUSQUEDA), fin)
+            criterio = ["SINCE", _fecha_imap(dia), "BEFORE", _fecha_imap(sig)]
+            if remitentes:
+                # OR a b  /  OR OR a b c ...
+                de = ["FROM " + _citar(r) for r in remitentes]
+                criterio.append(("(" + "OR " * (len(de) - 1) + " ".join(de) + ")") if len(de) > 1 else de[0])
+            typ, datos = self.imap.uid("SEARCH", None, *criterio)
+            if typ != "OK":
+                raise RuntimeError(f"Búsqueda IMAP fallida: {datos}")
+            tramo = {u.decode() for linea in datos if linea for u in linea.split()}
+            if len(tramo) >= LIMITE_BUSQUEDA_YAHOO:
+                log.warning("La búsqueda IMAP del %s al %s devolvió %d correos: puede que falten algunos",
+                            dia, sig, len(tramo))
+            uids |= tramo
+            dia = sig
+        return sorted(uids, key=int)
 
     def _fetch(self, uids: list[str], partes: str):
         """[(uid, fecha, bytes del correo | None)]"""
@@ -135,6 +165,16 @@ def leer_eml(crudo: bytes) -> tuple[str, str, str]:
         if texto.strip():
             break
     return str(msg.get("From", "")), str(msg.get("Subject", "")), texto
+
+
+def clave_message_id(cabecera: bytes | None) -> str:
+    """b'Message-ID: <abc@x>' → 'mid:<abc@x>' ('' si no hay)."""
+    m = re.search(rb"^Message-ID:\s*(\S+)", cabecera or b"", re.I | re.M)
+    return "mid:" + m.group(1).decode("latin1").strip() if m else ""
+
+
+def _fecha_imap(d) -> str:
+    return f"{d.day}-{MESES_IMAP[d.month - 1]}-{d.year}"
 
 
 def parsear_internaldate(s: str) -> datetime:

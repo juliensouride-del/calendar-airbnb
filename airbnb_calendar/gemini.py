@@ -33,17 +33,27 @@ INSTRUCCIONES = "\n".join([
     "  Convierte expresiones relativas usando la fecha y hora de envío del mensaje",
     '  (p. ej. "estaremos allí en una hora" enviado a las 14:05 → "15:05").',
     '  Convierte aproximaciones a una hora concreta ("around 6pm" → "18:00", "not before 3pm" → "15:00").',
-    '  Si es vago ("por la tarde") o solo PREGUNTA si puede llegar antes sin decir cuándo llegará, devuelve null',
-    "  y, si es una petición, añádela a otras_peticiones. null si no lo indica.",
+    '  Si es vago ("por la tarde") o solo PREGUNTA o PIDE poder llegar antes ("¿podemos llegar antes de las 15:00?"),',
+    "  devuelve null: eso va en entrada_anticipada. null si no lo indica.",
     "- hora_salida: igual, para la hora a la que prevé dejar el apartamento el día de salida.",
+    "- entrada_anticipada: si el huésped pide, pregunta o sugiere entrar o dejar las maletas ANTES de la hora",
+    "  de check-in de la reserva (early check-in), aunque sea de forma condicional o indirecta",
+    '  ("avísame cuando esté listo por si puedo entrar antes", "can we arrive before 3pm?", "¿hay check-in temprano?").',
+    '  Devuelve la hora deseada en HH:MM (24 h) si la indica ("¿podemos entrar a las 12?" → "12:00"),',
+    '  o "si" si no da una hora concreta ("antes de las 15:00", "lo antes posible", "early check-in").',
+    "  null si no pide nada de esto. Cuenta también si es una petición repetida o con una hora distinta a la de antes.",
+    "- salida_tardia: igual, si pide salir o dejar las maletas DESPUÉS de la hora de check-out (late check-out):",
+    '  hora deseada HH:MM, "si" sin hora concreta, o null.',
     '- sofa_cama: "si" si indica que usarán o necesitan el sofá cama (o una cama extra para alguien);',
     '  "no" si dice que NO lo necesitan; "sin_mencion" en cualquier otro caso.',
     '- cuna: "si" si pide, necesita o confirma una cuna / cama de bebé (también si agradece que se la proporciones);',
     '  "no" si dice que ya no la necesita; "sin_mencion" en cualquier otro caso.',
     "- otras_peticiones: otras peticiones concretas que requieran preparar algo o una acción del anfitrión",
-    "  (entrada anticipada, salida tardía, guardar maletas, trona, parking, mascota, toallas extra...).",
-    "  Frases cortas en español. NO incluyas dudas generales, preguntas sobre cómo funciona algo del",
-    "  apartamento o del check-in, agradecimientos, ni peticiones que ya figuren como registradas.",
+    "  (guardar maletas, trona, parking, mascota, toallas extra...). La entrada anticipada y la salida tardía",
+    "  van en sus propios campos, no aquí. Frases cortas en español. NO incluyas dudas generales, preguntas",
+    "  sobre cómo funciona algo del apartamento o cómo se entra (llaves, código, dirección), agradecimientos,",
+    "  ni peticiones que ya figuren como registradas con los mismos detalles (si cambia la hora, la fecha o",
+    "  la cantidad, sí inclúyela).",
     "- resumen: una frase breve en español con lo relevante para preparar la estancia;",
     "  cadena vacía si el mensaje no aporta nada relevante para eso.",
 ])
@@ -53,13 +63,17 @@ ESQUEMA = {
     "properties": {
         "hora_llegada": {"type": "STRING", "nullable": True, "description": "HH:MM en 24 h o null"},
         "hora_salida": {"type": "STRING", "nullable": True, "description": "HH:MM en 24 h o null"},
+        "entrada_anticipada": {"type": "STRING", "nullable": True, "description": 'HH:MM en 24 h, "si" o null'},
+        "salida_tardia": {"type": "STRING", "nullable": True, "description": 'HH:MM en 24 h, "si" o null'},
         "sofa_cama": {"type": "STRING", "enum": ["si", "no", "sin_mencion"]},
         "cuna": {"type": "STRING", "enum": ["si", "no", "sin_mencion"]},
         "otras_peticiones": {"type": "ARRAY", "items": {"type": "STRING"}},
         "resumen": {"type": "STRING"},
     },
-    "required": ["hora_llegada", "hora_salida", "sofa_cama", "cuna", "otras_peticiones", "resumen"],
-    "propertyOrdering": ["hora_llegada", "hora_salida", "sofa_cama", "cuna", "otras_peticiones", "resumen"],
+    "required": ["hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa_cama", "cuna",
+                 "otras_peticiones", "resumen"],
+    "propertyOrdering": ["hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa_cama", "cuna",
+                         "otras_peticiones", "resumen"],
 }
 
 ESPERAS_REINTENTO_S = [2, 6]
@@ -150,11 +164,20 @@ def interpretar_respuesta(resp: dict) -> dict:
     return {
         "hora_llegada": _normalizar_hora(o.get("hora_llegada")),
         "hora_salida": _normalizar_hora(o.get("hora_salida")),
+        "entrada_anticipada": _solicitud(o.get("entrada_anticipada")),
+        "salida_tardia": _solicitud(o.get("salida_tardia")),
         "sofa_cama": tri(o.get("sofa_cama")),
         "cuna": tri(o.get("cuna")),
         "otras_peticiones": [x for x in peticiones if isinstance(x, str) and x.strip()] if isinstance(peticiones, list) else [],
         "resumen": o["resumen"].strip() if isinstance(o.get("resumen"), str) else "",
     }
+
+
+def _solicitud(v) -> str | None:
+    """'HH:MM' | 'si' | None (cualquier otra cosa no válida que no sea vacía/null/no cuenta como 'si')."""
+    if not isinstance(v, str) or v.strip().lower() in ("", "null", "none", "no", "sin_mencion"):
+        return None
+    return _normalizar_hora(v) or "si"
 
 
 def _normalizar_hora(h) -> str | None:

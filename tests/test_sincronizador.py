@@ -109,6 +109,8 @@ class GeminiFalso:
             r["hora_llegada"] = f"{int(enviado.group(1)) + 1:02d}:{enviado.group(2)}"
         if re.search(r"around noon", huesped, re.I): r["otras_peticiones"].append("Pregunta si puede entrar hacia las 12:00")
         if re.search(r"out right before 11", huesped, re.I): r["hora_salida"] = "11:00"
+        if re.search(r"before 5pm", huesped, re.I): r["hora_llegada"] = "17:00"
+        if re.search(r"check-in early", huesped, re.I): r["entrada_anticipada"] = "si"
         if r["cuna"] == "si" or r["sofa_cama"] == "si" or r["hora_llegada"] or r["hora_salida"]:
             r["resumen"] = "Resumen simulado."
         return Respuesta(200, {"candidates": [{"content": {"parts": [{"text": __import__("json").dumps(r)}]}}]})
@@ -223,6 +225,38 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     assert entrada["description"].startswith("❌ RESERVA CANCELADA")
     assert "Huésped: Imane Bensalah" in entrada["description"]
     assert len(s.cal.eventos) == 1 and len(s.avisos) == 1
+
+
+def _mensaje_imane(texto, fecha_hora):
+    return replace(MENSAJE_IMANE, fecha_hora=fecha_hora, fecha_ref=fecha_hora[:10],
+                   cuerpo=MENSAJE_IMANE.cuerpo.replace(
+                       "Hi! We will arrive around 6pm and we will need the sofa bed for my sister, thanks!", texto))
+
+
+def test_A2_segunda_peticion_de_entrar_antes_se_detecta_y_avisa(tmp_path):
+    """Caso real (Stina): primero llega 'antes de las 17:00'; después pregunta si puede entrar antes."""
+    s = Entorno(tmp_path)
+    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(_mensaje_imane("We will arrive before 5pm.", "2026-10-03 10:00"))
+    s.ejecutar()
+    assert s.avisos == [], "17:00 no es antes de la hora de entrada"
+    s.buzon.recibir(_mensaje_imane("Thank you Julian! Will you notify me when the apartment is ready, "
+                                   "so I know if it’s possible to check-in early? :)", "2026-10-05 12:00"))
+    s.ejecutar()
+    entrada = s.cal.ev("HMTSBCMZH9")
+    assert "⏰ pide entrar antes" in entrada["summary"], entrada["summary"]
+    assert "⏰ Pide entrar antes: sin hora concreta" in entrada["description"]
+    assert len(s.avisos) == 1 and "entrar antes" in s.asuntos[0], s.asuntos
+    assert "⏰ Pide ENTRAR ANTES de las 15:00" in s.avisos[0][1]
+    assert hora(entrada) == "2026-11-26 17:00", "sin acuerdo, el calendario no adelanta la entrada"
+
+
+def test_A3_sin_gemini_las_palabras_clave_detectan_la_entrada_anticipada(tmp_path):
+    s = Entorno(tmp_path, gemini="falla")
+    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(_mensaje_imane("Is it possible to check-in early?", "2026-10-03 10:00"))
+    s.ejecutar()
+    assert any("entrar antes" in a for a in s.asuntos), s.asuntos
 
 
 def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):

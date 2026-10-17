@@ -4,10 +4,11 @@
 # ============================================================================
 
 [yahoo]
-# Carpetas IMAP que se revisan. "INBOX" = Bandeja de entrada. Si algún correo de
-# Airbnb cae en Spam añade "Bulk"; si Julien archiva correos a mano antes de que
-# pase el script (cada 2 h de día), añade también "Archive".
-carpetas = ["INBOX"]
+# Carpetas IMAP que se revisan. "INBOX" = Bandeja de entrada; "Archive" = Archivo (si Julien
+# archiva un correo antes de que pase el script, cada 2 h de día, no se pierde; un correo
+# que ya se procesó en INBOX y se archiva después no se repite). Si algún correo de Airbnb
+# cae en Spam añade "Bulk". Una carpeta que no existe se omite (aviso en el log).
+carpetas = ["INBOX", "Archive"]
 # Dominios o direcciones de los remitentes de Airbnb.
 remitentes = ["airbnb.com"]
 # Días hacia atrás que revisa cada ejecución (margen si GitHub Actions se retrasa o falla).

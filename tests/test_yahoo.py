@@ -10,7 +10,7 @@ from airbnb_calendar.yahoo import BuzonYahoo, NotificadorYahoo, es_remitente, le
 
 from conftest import eml_crudo
 
-CORREO_8BIT = ("From: Airbnb <automated@airbnb.com>\r\nSubject: =?UTF-8?Q?Reserva_confirmada_=E2=80=93_Ana?=\r\n"
+CORREO_8BIT = ("Message-ID: <ana-8bit@airbnb.com>\r\nFrom: Airbnb <automated@airbnb.com>\r\nSubject: =?UTF-8?Q?Reserva_confirmada_=E2=80=93_Ana?=\r\n"
                "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n"
                "Check-in: Corazón de Madrid\r\n").encode()
 BUZON = {
@@ -20,7 +20,18 @@ BUZON = {
         {"uid": 12, "fecha": "07-Oct-2026 11:00:00 +0000", "de": "otro.com", "datos": b"Subject: x\r\n\r\nx"},
     ]},
     "Bulk": {"validez": 5, "correos": []},
+    # El correo 11 archivado (otro UID, mismo Message-ID) y uno que solo está en el archivo
+    "Archive": {"validez": 7, "correos": [
+        {"uid": 3, "fecha": "07-Oct-2026 10:31:07 +0200", "de": "airbnb.com", "datos": CORREO_8BIT},
+        {"uid": 4, "fecha": "07-Oct-2026 12:00:00 +0000", "de": "airbnb.com",
+         "datos": b"Message-ID: <archivado@airbnb.com>\r\nFrom: automated@airbnb.com\r\nSubject: Archivado\r\n\r\nx"},
+    ]},
 }
+
+
+def cabecera_message_id(datos: bytes) -> bytes:
+    cab = datos.split(b"\r\n\r\n", 1)[0]
+    return b"".join(l + b"\r\n" for l in cab.split(b"\r\n") if l.lower().startswith(b"message-id:")) + b"\r\n"
 
 
 class ServidorImapFalso(socketserver.StreamRequestHandler):
@@ -41,6 +52,9 @@ class ServidorImapFalso(socketserver.StreamRequestHandler):
                 ok = cmd == 'LOGIN yo@yahoo.es "clave-app"'
                 self.enviar(f"{tag} OK LOGIN completed\r\n" if ok else f"{tag} NO [AUTHENTICATIONFAILED] Invalid credentials\r\n")
             elif cmd.startswith("EXAMINE "):
+                if cmd[8:].strip('"') not in BUZON:
+                    self.enviar(f"{tag} NO [NONEXISTENT] Folder does not exist\r\n")
+                    continue
                 carpeta = BUZON[cmd[8:].strip('"')]
                 self.enviar(f"* {len(carpeta['correos'])} EXISTS\r\n* OK [UIDVALIDITY {carpeta['validez']}] ok\r\n"
                             f"{tag} OK [READ-ONLY] EXAMINE completed\r\n")
@@ -54,6 +68,11 @@ class ServidorImapFalso(socketserver.StreamRequestHandler):
                         self.enviar(f"* {n + 1} FETCH (UID {c['uid']} BODY[] {{{len(c['datos'])}}}\r\n")
                         self.enviar(c["datos"])
                         self.enviar(f' INTERNALDATE "{c["fecha"]}")\r\n')
+                    elif "HEADER.FIELDS" in cmd:
+                        cab = cabecera_message_id(c["datos"])
+                        self.enviar(f'* {n + 1} FETCH (UID {c["uid"]} INTERNALDATE "{c["fecha"]}" '
+                                    f'BODY[HEADER.FIELDS (MESSAGE-ID)] {{{len(cab)}}}\r\n')
+                        self.enviar(cab + b")\r\n")
                     else:
                         self.enviar(f'* {n + 1} FETCH (INTERNALDATE "{c["fecha"]}" UID {c["uid"]})\r\n')
                 self.enviar(f"* 3 FETCH (FLAGS (\\Seen))\r\n{tag} OK FETCH completed\r\n")
@@ -91,16 +110,45 @@ def test_lee_correos_de_airbnb_en_solo_lectura_y_en_orden(puerto):
     assert 'EXAMINE "INBOX"' in cmds, "la carpeta se abre en solo lectura"
     assert any(c.startswith("UID FETCH") and "BODY.PEEK[]" in c for c in cmds), "BODY.PEEK no marca como leído"
     assert not any(c.startswith(("STORE", "UID STORE", "COPY", "MOVE", "EXPUNGE")) for c in cmds), "no modifica el buzón"
-    assert 'UID SEARCH SINCE 6-Oct-2026 FROM "airbnb.com"' in cmds
+    assert any(c.startswith('UID SEARCH SINCE 6-Oct-2026 BEFORE 13-Oct-2026 FROM "airbnb.com"') for c in cmds)
+    assert correos[1].id_mensaje == "mid:<ana-8bit@airbnb.com>"
 
 
 def test_excluir_hora_exacta_varios_remitentes_y_carpetas(puerto):
     with buzon(puerto) as b:
         correos = b.correos_desde(datetime(2026, 10, 7, tzinfo=timezone.utc), ["INBOX", "Bulk"],
-                                  ["airbnb.com", "otro.com", "x.com"], excluir={"INBOX:1700000000:12"})
+                                  ["airbnb.com", "otro.com", "x.com"], excluir={"INBOX:1700000000:12"},
+                                  hasta=datetime(2026, 10, 8, tzinfo=timezone.utc))
     assert [c.id for c in correos] == ["INBOX:1700000000:11"], "el 10 llegó el día 6 y el 12 está excluido"
-    assert 'UID SEARCH SINCE 7-Oct-2026 (OR OR FROM "airbnb.com" FROM "otro.com" FROM "x.com")' in ServidorImapFalso.comandos
+    assert ('UID SEARCH SINCE 7-Oct-2026 BEFORE 8-Oct-2026 (OR OR FROM "airbnb.com" FROM "otro.com" FROM "x.com")'
+            in ServidorImapFalso.comandos)
     assert 'EXAMINE "Bulk"' in ServidorImapFalso.comandos
+
+
+def test_busqueda_por_tramos_semanales_para_no_chocar_con_el_limite_de_yahoo(puerto):
+    with buzon(puerto) as b:
+        b.correos_desde(datetime(2026, 9, 1, tzinfo=timezone.utc), ["INBOX"], ["airbnb.com"],
+                        hasta=datetime(2026, 9, 20, tzinfo=timezone.utc))
+    busquedas = [c for c in ServidorImapFalso.comandos if c.startswith("UID SEARCH")]
+    assert busquedas == ['UID SEARCH SINCE 1-Sep-2026 BEFORE 8-Sep-2026 FROM "airbnb.com"',
+                         'UID SEARCH SINCE 8-Sep-2026 BEFORE 15-Sep-2026 FROM "airbnb.com"',
+                         'UID SEARCH SINCE 15-Sep-2026 BEFORE 20-Sep-2026 FROM "airbnb.com"']
+
+
+def test_archivo_sin_duplicados_por_message_id_y_carpeta_inexistente_se_omite(puerto):
+    hasta = datetime(2026, 10, 8, tzinfo=timezone.utc)
+    with buzon(puerto) as b:
+        correos = b.correos_desde(datetime(2026, 10, 7, tzinfo=timezone.utc), ["INBOX", "NoExiste", "Archive"],
+                                  ["airbnb.com"], hasta=hasta)
+    assert [c.id for c in correos] == ["INBOX:1700000000:11", "Archive:7:4"], "el 3 es el 11 archivado"
+    # Ya procesado en una ejecución anterior (registro con su Message-ID) y archivado después: no se repite
+    with buzon(puerto) as b:
+        correos = b.correos_desde(datetime(2026, 10, 7, tzinfo=timezone.utc), ["Archive"], ["airbnb.com"],
+                                  excluir={"mid:<ana-8bit@airbnb.com>"}, hasta=hasta)
+    assert [c.id for c in correos] == ["Archive:7:4"]
+    with pytest.raises(RuntimeError, match="ninguna carpeta"):
+        with buzon(puerto) as b:
+            b.correos_desde(datetime(2026, 10, 7, tzinfo=timezone.utc), ["NoExiste"], ["airbnb.com"], hasta=hasta)
 
 
 def test_credenciales_incorrectas_error_claro(puerto):

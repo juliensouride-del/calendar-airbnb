@@ -111,6 +111,69 @@ def test_palabras_clave(r3):
     assert reglas.analisis_por_palabras_clave("Will the check in information come via e-mail?")["cuna"] == "sin_mencion"
 
 
+def test_palabras_clave_entrada_anticipada_y_salida_tardia():
+    pk = reglas.analisis_por_palabras_clave
+    # Mensaje real (Stina, 06/10): pregunta condicional, sin hora
+    assert pk("Will you notify me when the apartment is ready, so I know if it’s possible to check-in early? :)")[
+        "entrada_anticipada"] == "si"
+    assert pk("Can we arrive earlier, before 3pm?")["entrada_anticipada"] == "si"
+    assert pk("¿Podríamos llegar antes de las 15:00?")["entrada_anticipada"] == "si"
+    assert pk("Est-ce qu'on peut arriver plus tôt ?")["entrada_anticipada"] == "si"
+    assert pk("Is a late check-out possible?")["salida_tardia"] == "si"
+    assert pk("We will arrive around 6pm")["entrada_anticipada"] is None
+    assert pk("Thanks, see you!")["salida_tardia"] is None
+
+
+def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
+    """Caso real: primero 'llegaremos antes de las 17:00', después pide entrar antes de las 15:00."""
+    e = reglas.crear_estado(r0)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="17:00"), "huesped")
+    reglas.deducir_solicitudes(e, cfg)
+    assert e["entrada_anticipada"] is None, "17:00 es después de la hora de entrada: no pide nada"
+    reglas.marcar_avisado(e)
+
+    reglas.fusionar_analisis(e, analisis(entrada_anticipada="si"), "huesped")
+    av = reglas.avisos_pendientes(e, cfg)
+    assert av == ["⏰ Pide ENTRAR ANTES de las 15:00: sin hora concreta (pregunta si es posible)"]
+    assert "⏰ pide entrar antes" in reglas.titulo_evento(e)
+    assert "⏰ Pide entrar antes: sin hora concreta" in reglas.descripcion_evento(e)
+    reglas.marcar_avisado(e)
+    assert reglas.avisos_pendientes(e, cfg) == [], "no se repite"
+
+    # Luego concreta la hora: nuevo aviso; un 'si' posterior sin hora no la borra
+    reglas.fusionar_analisis(e, analisis(entrada_anticipada="12:30"), "huesped")
+    assert reglas.avisos_pendientes(e, cfg) == ["⏰ Pide ENTRAR ANTES de las 15:00: a las 12:30"]
+    reglas.marcar_avisado(e)
+    reglas.fusionar_analisis(e, analisis(entrada_anticipada="si"), "huesped")
+    assert e["entrada_anticipada"] == "12:30" and reglas.avisos_pendientes(e, cfg) == []
+
+    # Con acuerdo del anfitrión el título muestra el acuerdo, no la petición
+    e["acuerdo_entrada"] = "12:30"
+    assert "pide entrar" not in reglas.titulo_evento(e)
+
+
+def test_llegar_antes_o_salir_despues_del_horario_cuenta_como_peticion(r0, cfg):
+    e = reglas.crear_estado(r0)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="11:00", hora_salida="14:00"), "huesped")
+    reglas.deducir_solicitudes(e, cfg)
+    assert e["entrada_anticipada"] == "11:00" and e["salida_tardia"] == "14:00"
+    av = reglas.avisos_pendientes(e, cfg)       # [avisos] horas = false, pero esto es una petición
+    assert "⏰ Pide ENTRAR ANTES de las 15:00: a las 11:00" in av
+    assert "⌛ Pide SALIR DESPUÉS de las 11:00: a las 14:00" in av
+    assert reglas.hora_entrada(e, cfg) == "15:00", "sin acuerdo no se adelanta la entrada en el calendario"
+
+
+def test_estado_antiguo_sin_campos_nuevos(r0, cfg):
+    e = reglas.crear_estado(r0)
+    for k in ("entrada_anticipada", "salida_tardia"):
+        del e[k]
+        del e["avisado"][k]
+    assert reglas.avisos_pendientes(e, cfg) == []
+    reglas.titulo_evento(e), reglas.descripcion_evento(e)
+    reglas.fusionar_analisis(e, analisis(salida_tardia="si"), "palabras")
+    assert reglas.avisos_pendientes(e, cfg) == ["⌛ Pide SALIR DESPUÉS de las 11:00: sin hora concreta (pregunta si es posible)"]
+
+
 def test_peticion_gemini_incluye_contexto_esquema_y_texto():
     p = construir_peticion("We will be there in one hour", {
         "alojamiento": "X", "checkin": "2026-09-23", "checkout": "2026-09-27", "hora_checkin": "15:00",
@@ -130,9 +193,12 @@ def test_respuesta_gemini_se_valida_y_normaliza():
     a = interpretar_respuesta({"candidates": [{"content": {"parts": [
         {"text": "pensando...", "thought": True},
         {"text": '```json\n{"hora_llegada":"9:30","hora_salida":"25:00","sofa_cama":"SI","cuna":"si",'
+                 '"entrada_anticipada":"12:00","salida_tardia":"null",'
                  '"otras_peticiones":["Trona",""],"resumen":" ok "}\n```'},
     ]}}]})
-    assert a == {"hora_llegada": "09:30", "hora_salida": None, "sofa_cama": "sin_mencion", "cuna": "si",
-                 "otras_peticiones": ["Trona"], "resumen": "ok"}
+    assert a == {"hora_llegada": "09:30", "hora_salida": None, "entrada_anticipada": "12:00", "salida_tardia": None,
+                 "sofa_cama": "sin_mencion", "cuna": "si", "otras_peticiones": ["Trona"], "resumen": "ok"}
+    sin_campos = interpretar_respuesta({"candidates": [{"content": {"parts": [{"text": '{"entrada_anticipada":"si"}'}]}}]})
+    assert sin_campos["entrada_anticipada"] == "si" and sin_campos["salida_tardia"] is None
     with pytest.raises(RuntimeError, match="SAFETY"):
         interpretar_respuesta({"promptFeedback": {"blockReason": "SAFETY"}})
