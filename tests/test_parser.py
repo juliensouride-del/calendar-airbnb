@@ -16,10 +16,10 @@ def parsear(e, **cambios):
 def test_confirmacion_ej0():
     r = parsear(cargar_ejemplo("ej0.txt", "2026-10-01")[0])
     assert r.tipo == "confirmacion"
-    assert r.codigo == "HMTSBCMZH9"
+    assert r.codigo == "HMTEST0002"
     assert r.alojamiento == "Espacioso y luminoso apartamento Corazón de Madrid"
     assert r.alias == "Corazón de Madrid"
-    assert r.huesped == "Imane Bensalah"
+    assert r.huesped == "Lucia Romero"
     assert (r.checkin, r.checkout) == ("2026-11-26", "2026-12-02")
     assert (r.hora_checkin, r.hora_checkout) == ("15:00", "11:00")
     assert r.huespedes == Huespedes(adultos=2, ninos=0, bebes=0, mascotas=0, total=2)
@@ -37,8 +37,8 @@ def test_anio_deducido_aunque_el_correo_sea_de_diciembre_del_anio_anterior():
 def test_cancelacion_ej1():
     r = parsear(cargar_ejemplo("ej1.txt", "2026-10-01")[0])
     assert r.tipo == "cancelacion"
-    assert r.codigo == "HMCJH8BNX4"
-    assert r.huesped == "Sam"
+    assert r.codigo == "HMTEST0003"
+    assert r.huesped == "Marc"
     assert (r.checkin, r.checkout) == ("2027-02-01", "2027-02-04")
     assert r.huespedes.total == 1
     assert r.alojamiento == "Espacioso y luminoso apartamento Corazón de Madrid"
@@ -65,7 +65,7 @@ def test_mensajes_ej2():
         assert (r.checkin, r.checkout) == ("2026-10-09", "2026-10-13")
         assert (r.hora_checkin, r.hora_checkout) == ("15:00", "11:00")
         assert r.huespedes.total == 3
-        assert r.huesped == "Mike"
+        assert r.huesped == "Tom"
         assert r.faltan == []
     assert rs[0].mensajes[0].texto.startswith("Airbnb keeps telling me")
     assert "I do not think we arrive before 1500" in rs[1].mensajes[0].texto
@@ -85,7 +85,7 @@ def test_mensajes_ej3():
         assert r.alias == "Antón Martín"
         assert (r.checkin, r.checkout) == ("2026-09-23", "2026-09-27")
         assert r.huespedes == Huespedes(adultos=2, ninos=0, bebes=1, mascotas=0, total=3)
-        assert r.huesped == "Andreas"
+        assert r.huesped == "Peter"
     assert "providing a crib for our baby" in rs[0].mensajes[0].texto
     assert len(rs[3].mensajes) == 2
     assert rs[3].mensajes[0].texto.startswith("Sorry, I have a question")
@@ -100,9 +100,9 @@ def test_mensajes_ej3():
 def test_confirmed_eml_dos_columnas():
     r = parsear(cargar_eml("confirmed.eml"))
     assert r.tipo == "confirmacion"
-    assert r.codigo == "HMMW9HP8JC"
+    assert r.codigo == "HMTEST0001"
     assert r.alias == "Antón Martín"
-    assert r.huesped == "Jennifer Carter"
+    assert r.huesped == "Laura Garcia"
     assert (r.checkin, r.checkout) == ("2026-10-20", "2026-10-23")
     assert (r.hora_checkin, r.hora_checkout) == ("15:00", "11:00")
     assert r.huespedes == Huespedes(adultos=2, ninos=0, bebes=0, mascotas=0, total=2)
@@ -121,8 +121,8 @@ def test_cunasolicitud_eml_nombre_recortado_fecha_larga_y_bebe():
 
 def test_dos_columnas_con_mensaje_del_huesped():
     e = cargar_eml("confirmed.eml")
-    cuerpo = e.cuerpo.replace("England, United Kingdom",
-                              "England, United Kingdom\n\nHi! We will arrive around 8pm and need the sofa bed for my son")
+    cuerpo = e.cuerpo.replace("Bristol, United Kingdom",
+                              "Bristol, United Kingdom\n\nHi! We will arrive around 8pm and need the sofa bed for my son")
     r = parsear(e, cuerpo=cuerpo)
     assert len(r.mensajes) == 1 and "sofa bed" in r.mensajes[0].texto
     assert r.checkin == "2026-10-20"

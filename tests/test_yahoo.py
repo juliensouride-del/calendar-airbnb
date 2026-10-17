@@ -101,8 +101,8 @@ def test_lee_correos_de_airbnb_en_solo_lectura_y_en_orden(puerto):
     with buzon(puerto) as b:
         correos = b.correos_desde(datetime(2026, 10, 6, 12, tzinfo=timezone.utc), ["INBOX"], ["airbnb.com"])
     assert [c.id for c in correos] == ["INBOX:1700000000:10", "INBOX:1700000000:11"]
-    assert correos[0].asunto == "Reservation confirmed - Jennifer Carter arrives Oct 20"
-    assert "Jennifer" in correos[0].texto
+    assert correos[0].asunto == "Reservation confirmed - Laura Garcia arrives Oct 20"
+    assert "Laura" in correos[0].texto
     assert correos[1].fecha == datetime(2026, 10, 7, 8, 31, 7, tzinfo=timezone.utc)
     assert correos[1].asunto == "Reserva confirmada – Ana"
     assert correos[1].texto.strip() == "Check-in: Corazón de Madrid"

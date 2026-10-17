@@ -9,7 +9,7 @@
 \f0\fs26 \cf0 \expnd0\expndtw0\kerning0
 \outl0\strokewidth0 \strokec2 Received: from 127.0.0.1\
  by atlas-production.v2-mail-prod1-ir2.omega.yahoo.com pod-id atlas--production-ir2-7657ff95b6-n8nwx.ir2.yahoo.com with HTTP; Tue, 6 Oct 2026 10:31:07 +0000\
-Return-Path: <bounces+60337934-1d08-sourisseaujulien=yahoo.fr@em5923.automated.airbnb.com>\
+Return-Path: <bounces+60337934-1d08-anfitrion.ejemplo=yahoo.fr@em5923.automated.airbnb.com>\
 X-Originating-Ip: [50.31.32.8]\
 Received-SPF: pass (domain of em5923.automated.airbnb.com designates 50.31.32.8 as permitted sender)\
 Authentication-Results: mta.yahoo.com;\
@@ -17,7 +17,7 @@ Authentication-Results: mta.yahoo.com;\
  dkim=pass header.i=@sendgrid.info header.s=smtpapi arc_overridden_status=NOT_OVERRIDDEN;\
  spf=pass smtp.mailfrom=em5923.automated.airbnb.com arc_overridden_status=NOT_OVERRIDDEN;\
  dmarc=pass(p=REJECT,sp=REJECT) header.from=airbnb.com arc_overridden_status=NOT_OVERRIDDEN;\
-X-Apparently-To: sourisseaujulien@yahoo.fr; Tue, 6 Oct 2026 10:31:07 +0000\
+X-Apparently-To: anfitrion.ejemplo@yahoo.fr; Tue, 6 Oct 2026 10:31:07 +0000\
 X-YMailISG: UwvzOSEWLDvlgAn0Wgdfd1GRuVRQ4g14tJxB0x7ROgloE1Mb\
  hRMC.Yt9N32Atpf7iGLDOYPVL4GOZeqNC3oSNIGE.vtJ2jO5RoWqURCNfP9B\
  hJxdXz_t0FdzhHZ7maAkqEIweNP9r0iAQ4D0jfhm4PQY69kT..IlSnzOJtfh\
@@ -72,7 +72,7 @@ Date: Tue, 06 Oct 2026 10:31:04 +0000 (UTC)\
 From: Airbnb <automated@airbnb.com>\
 Mime-Version: 1.0\
 Message-ID: <a7UE1awdTEGSG4uZzvYCyQ@geopod-ismtpd-32>\
-Subject: Reservation confirmed - Jennifer Carter arrives Oct 20\
+Subject: Reservation confirmed - Laura Garcia arrives Oct 20\
 BIMI-Selector: v=BIMI1; s=belov2;\
 Importance: high\
 Priority: Urgent\
@@ -112,7 +112,7 @@ X-SG-ID: \
  =?us-ascii?Q?wLBxDSes1RmNT5AgpjZPNjsw9R6uoDIiZZeHoD5?=\
  =?us-ascii?Q?ZL7fa+6WjPRtPZv0EuTTvQXFo4RoByzYckkQFH+?=\
  =?us-ascii?Q?gtCaaH9ekarDxtGjCCvjcOogZuU=3D?=\
-To: sourisseaujulien@yahoo.fr\
+To: anfitrion.ejemplo@yahoo.fr\
 X-Entity-ID: u001.iMA/figTSN0zC9QyE22xZA==\
 Content-Length: 99721\
 \
@@ -124,25 +124,25 @@ Mime-Version: 1.0\
 %opentrack%\
 \
 https://www.airbnb.com/?c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdEN=\
-vbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831\
+vbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000\
 \
-NEW BOOKING CONFIRMED! JENNIFER ARRIVES OCT 20.\
+NEW BOOKING CONFIRMED! LAURA ARRIVES OCT 20.\
 \
 Send a message to confirm check-in details or welcome\
-Jennifer.\
+Laura.\
 \
-https://www.airbnb.com/hosting/reservations/details/HMMW9HP8JC?isPending=3D=\
+https://www.airbnb.com/hosting/reservations/details/HMTEST0001?isPending=3D=\
 true&c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbX=\
-BsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831   Jennifer Carter\
+BsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000   Laura Garcia\
                                                                            =\
                                                                            =\
                                               =20\
                                                                            =\
                                                                            =\
                                                [https://www.airbnb.com/host=\
-ing/reservations/details/HMMW9HP8JC?isPending=3Dtrue&c=3D.pi80.pkYm9va2luZy=\
-9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065=\
--fa2e-cca6-fbed02549831]\
+ing/reservations/details/HMTEST0001?isPending=3Dtrue&c=3D.pi80.pkYm9va2luZy=\
+9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000=\
+-xx0x-xxx0-xxxx00000000]\
                                                                            =\
                                                                            =\
                                               =20\
@@ -155,25 +155,25 @@ eviews\
                                               =20\
                                                                            =\
                                                                            =\
-                                               England, United Kingdom\
+                                               Bristol, United Kingdom\
 \
-Send Jennifer a MessageSend Jennifer a Message\
-[https://www.airbnb.com/hosting/thread/2690242425?thread_type=3Dhome_bookin=\
+Send Laura a MessageSend Laura a Message\
+[https://www.airbnb.com/hosting/thread/1000000000?thread_type=3Dhome_bookin=\
 g&email_cta=3Dlink_hosting_message_thread&c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc=\
-2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-=\
-fbed02549831]\
+2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-=\
+xxxx00000000]\
 \
 https://www.airbnb.com/rooms/1025328659441162105?c=3D.pi80.pkYm9va2luZy9ob3=\
-N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2=\
-e-cca6-fbed02549831\
+N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0=\
+x-xxx0-xxxx00000000\
 \
 ANTON MARTIN AGRADABLE, ANTON MARTIN - APARTAMENT.\
 \
 Entire home/apt\
 \
 [https://www.airbnb.com/rooms/1025328659441162105?c=3D.pi80.pkYm9va2luZy9ob=\
-3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa=\
-2e-cca6-fbed02549831]\
+3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx=\
+0x-xxx0-xxxx00000000]\
 \
 Check-in      Checkout\
              =20\
@@ -192,7 +192,7 @@ and infants. Learn more\
 [https://blog.atairbnb.com/more-host-controls/]\
 \
 CONFIRMATION CODE\
-HMMW9HP8JC\
+HMTEST0001\
 \
 GUEST PAID\
 \
@@ -218,13 +218,13 @@ YOU EARN   =E2=82=AC531.96\
 \
 View earningsView earnings\
 [https://www.airbnb.com/users/transaction_history?c=3D.pi80.pkYm9va2luZy9ob=\
-3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa=\
-2e-cca6-fbed02549831]\
+3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx=\
+0x-xxx0-xxxx00000000]\
 \
 Allow time for payment processing. Learn more\
 [https://www.airbnb.com/help/article/425?c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2=\
-VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-f=\
-bed02549831]\
+VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-x=\
+xxx00000000]\
 \
 Your guest paid =E2=82=AC16.85 in Occupancy Taxes. Airbnb remits\
 these taxes on your behalf.\
@@ -241,18 +241,18 @@ your calendar.\
 Read cancellation penalties\
 [https://www.airbnb.com/help/article/990?src_section=3DHOST_CONFIRMATION_CA=\
 NCELLATION_SECTION&c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZp=\
-cm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831]\
+cm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000]\
 \
-GET READY FOR JENNIFER=E2=80=99S ARRIVAL\
+GET READY FOR LAURA=E2=80=99S ARRIVAL\
 \
 PROVIDE DIRECTIONS\
 Check that your guest knows how to get to your place.\
 \
 Send message\
-[https://www.airbnb.com/hosting/thread/2690242425?thread_type=3Dhome_bookin=\
+[https://www.airbnb.com/hosting/thread/1000000000?thread_type=3Dhome_bookin=\
 g&src_section=3DHOST_CONFIRMATION_GET_READY_FOR_ARRIVAL_SECTION_COMPONENT&c=\
 =3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl=\
-&euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831]\
+&euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000]\
 \
 LOCAL REQUIREMENT\
 As you may know, Spain has rules which require hotels and\
@@ -269,7 +269,7 @@ Top-to-bottom protection, included every time you host.\
 Learn more\
 [https://www.airbnb.com/help/article/3142/getting-protected-through-aircove=\
 r-for-hosts?email_cta=3D&c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdE=\
-NvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831]\
+NvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000]\
 \
 CUSTOMER SUPPORT\
 Contact our support team 24/7 from anywhere in the world.\
@@ -277,11 +277,11 @@ Contact our support team 24/7 from anywhere in the world.\
 Visit help center\
 [https://www.airbnb.com/help?src_section=3DHOST_PENDING_BOOKING_EMAIL_CUSTO=\
 MER_SERVICE&c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGl=\
-vblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831]Contact\
+vblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000]Contact\
 Airbnb\
 [https://www.airbnb.com/help/contact_us?src_section=3DHOST_PENDING_BOOKING_=\
 EMAIL_CUSTOMER_SERVICE&c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENv=\
-bmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831]\
+bmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000]\
 \
 Airbnb Ireland UC\
 \
@@ -308,12 +308,12 @@ United Kingdom\
 Get the Airbnb app\
 \
 https://www.airbnb.com/interstitial?c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF=\
-0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-fbed02=\
-549831&r=3Dhttps%3A%2F%2Fairbnb.sng.link%2FA6f9up%2Fdvs6%3F_smtype%3D3%26pc=\
+0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00=\
+000000&r=3Dhttps%3A%2F%2Fairbnb.sng.link%2FA6f9up%2Fdvs6%3F_smtype%3D3%26pc=\
 id%3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYX=\
 Rl   https://www.airbnb.com/interstitial?c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2=\
-VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Df508c6c7-d065-fa2e-cca6-f=\
-bed02549831&r=3Dhttps%3A%2F%2Fairbnb.sng.link%2FA6f9up%2Fqh0lc%3F_dl%3Dairb=\
+VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&euid=3Dx000x0x0-x000-xx0x-xxx0-x=\
+xxx00000000&r=3Dhttps%3A%2F%2Fairbnb.sng.link%2FA6f9up%2Fqh0lc%3F_dl%3Dairb=\
 nb%3A%2F%2Fs%2Fhomes%26_smtype%3D3%26pcid%3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2V=\
 ydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl  =20\
 \
@@ -495,7 +495,7 @@ tyle=3D"margin:0px!important"><td style=3D"line-height:0px;padding-top:32px=\
 ;padding-bottom:0px" class=3D"brand-header-new-belo dir"><a target=3D"_self=\
 " rel=3D"noreferrer" data-eon-role=3D"link" data-eon-prop=3D"href" href=3D"=\
 https://www.airbnb.com/?c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdEN=\
-vbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831" =\
+vbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000" =\
 class=3D"regular dir" style=3D"font-size:18px;line-height:28px;display:inli=\
 ne-block;height:28px;font-weight:700;color:#222222;text-decoration:underlin=\
 e!important"><img data-eon-role=3D"image" data-eon-prop=3D"src" alt=3D"Airb=\
@@ -512,14 +512,14 @@ dth:100%" role=3D"presentation"><tbody><tr style=3D"margin:0px!important"><=\
 td class=3D"bottom_3_2 dir" style=3D"padding-bottom:24px"><div><h1 class=3D=\
 "heading1" style=3D"font-size:32px;line-height:36px;color:#222222;font-fami=\
 ly:Airbnb Cereal, Helvetica Neue, Helvetica, sans-serif;font-weight:700;mar=\
-gin:0">New booking confirmed! Jennifer arrives Oct 20.</h1></div></td></tr>=\
+gin:0">New booking confirmed! Laura arrives Oct 20.</h1></div></td></tr>=\
 </tbody></table><table cellpadding=3D"0" class style=3D"border-collapse:col=\
 lapse;border-spacing:0;width:100%" role=3D"presentation"><tbody><tr style=\
 =3D"margin:0px!important"><td><div class=3D"regular" style=3D"font-size:18p=\
 x;line-height:28px;margin:0;font-weight:400!important"><p class=3D"regular"=\
  style=3D"font-size:18px;line-height:28px;font-family:Airbnb Cereal, Helvet=\
 ica Neue, Helvetica, sans-serif;margin:0!important;font-weight:400!importan=\
-t">Send a message to confirm check-in details or welcome Jennifer.</p></div=\
+t">Send a message to confirm check-in details or welcome Laura.</p></div=\
 ></td></tr></tbody></table></td></tr></tbody></table><table cellpadding=3D"=\
 0" class style=3D"border-collapse:collapse;border-spacing:0;width:100%" rol=\
 e=3D"presentation"><tbody><tr style=3D"margin:0px!important"><td style=3D"p=\
@@ -527,9 +527,9 @@ adding-left:48px;padding-right:48px;padding-bottom:0px;padding-top:24px" cl=\
 ass=3D"left_6_2 right_6_2 dir"><table cellpadding=3D"0" class style=3D"bord=\
 er-collapse:collapse;border-spacing:0;width:100%" role=3D"presentation"><tb=\
 ody><tr style=3D"margin:0px!important"><td width=3D"64px" style=3D"padding-=\
-left:0px"><a target=3D"_self" rel=3D"noreferrer" aria-label=3D"Jennifer Car=\
+left:0px"><a target=3D"_self" rel=3D"noreferrer" aria-label=3D"Laura Car=\
 ter" data-eon-role=3D"link" data-eon-prop=3D"href" href=3D"https://www.airb=\
-nb.com/hosting/reservations/details/HMMW9HP8JC?isPending=3Dtrue&amp;c=3D.pi=\
+nb.com/hosting/reservations/details/HMTEST0001?isPending=3Dtrue&amp;c=3D.pi=\
 80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp;e=\
 uid=3Df508c6c7-d065-fa2e-cca6-fbed02549831" class=3D"regular dir" style=3D"=\
 font-size:18px;line-height:28px;font-weight:700;color:#222222;text-decorati=\
@@ -540,16 +540,16 @@ cy=3Dprofile_x_medium" width=3D"64 !important" height=3D"64 !important"></a=\
 ></td><td style=3D"padding-left:24px"><table cellpadding=3D"0" class style=\
 =3D"border-collapse:collapse;border-spacing:0;width:100%" role=3D"presentat=\
 ion"><tbody><tr style=3D"margin:0px!important"><td><a target=3D"_self" rel=\
-=3D"noreferrer" aria-label=3D"Jennifer Carter" data-eon-role=3D"link" data-=\
+=3D"noreferrer" aria-label=3D"Laura Garcia" data-eon-role=3D"link" data-=\
 eon-prop=3D"href" href=3D"https://www.airbnb.com/hosting/reservations/detai=\
-ls/HMMW9HP8JC?isPending=3Dtrue&amp;c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0=\
-aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Df508c6c7-d065-fa2e-cca6-fbe=\
-d02549831" class=3D"regular dir" style=3D"font-size:18px;line-height:28px;f=\
+ls/HMTEST0001?isPending=3Dtrue&amp;c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0=\
+aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Dx000x0x0-x000-xx0x-xxx0-xxx=\
+x00000000" class=3D"regular dir" style=3D"font-size:18px;line-height:28px;f=\
 ont-weight:700;color:#222222;text-decoration:none!important"><div class=3D"=\
 regular" style=3D"font-size:18px;line-height:28px;margin:0;font-weight:700!=\
 important"><p class=3D"regular" style=3D"font-size:18px;line-height:28px;fo=\
 nt-family:Airbnb Cereal, Helvetica Neue, Helvetica, sans-serif;margin:0!imp=\
-ortant;font-weight:700!important">Jennifer Carter</p></div></a></td></tr></=\
+ortant;font-weight:700!important">Laura Garcia</p></div></a></td></tr></=\
 tbody></table><table cellpadding=3D"0" class style=3D"border-collapse:colla=\
 pse;border-spacing:0;width:100%" role=3D"presentation"><tbody><tr style=3D"=\
 margin:0px!important"><td><p class=3D"regular" style=3D"font-size:18px;line=\
@@ -566,7 +566,7 @@ irbnb Cereal, Helvetica Neue, Helvetica, sans-serif;margin:0!important"><im=\
 g data-eon-role=3D"image" data-eon-prop=3D"src" src=3D"https://a0.muscache.=\
 com/im/pictures/d109f44f-35a7-4336-9420-750576bec06f.jpg" role=3D"presentat=\
 ion" aria-hidden=3D"true" style=3D"height:14px;width:14px;margin-right:16px=\
-;border:0!important" width=3D"14" height=3D"14">England, United Kingdom</p>=\
+;border:0!important" width=3D"14" height=3D"14">Bristol, United Kingdom</p>=\
 </td></tr></tbody></table></td></tr></tbody></table></td></tr></tbody></tab=\
 le><table cellpadding=3D"0" class style=3D"border-collapse:collapse;border-=\
 spacing:0;width:100%" role=3D"presentation"><tbody><tr style=3D"margin:0px!=\
@@ -582,13 +582,13 @@ s:8px;font-family:Airbnb Cereal, Helvetica Neue, Helvetica, sans-serif;font=\
 " style=3D"font-size:18px;line-height:24px;padding:16px 24px;font-weight:50=\
 0;color:#FFFFFF;text-align:center;text-decoration:none;display:block" data-=\
 eon-role=3D"button" data-eon-prop=3D"href" href=3D"https://www.airbnb.com/h=\
-osting/thread/2690242425?thread_type=3Dhome_booking&amp;email_cta=3Dlink_ho=\
+osting/thread/1000000000?thread_type=3Dhome_booking&amp;email_cta=3Dlink_ho=\
 sting_message_thread&amp;c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdE=\
-NvbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831"=\
+NvbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000"=\
 ><span style=3D"color:#FFFFFF!important"><span style=3D"max-height:0;max-wi=\
 dth:0;display:inline-block;white-space:nowrap;font-size:1px;text-indent:9px=\
-;color:rgba(0, 0, 0, 0);opacity:0">Send Jennifer a Message</span><span aria=\
--hidden=3D"true">Send Jennifer a Message</span></span></a></div></td></tr><=\
+;color:rgba(0, 0, 0, 0);opacity:0">Send Laura a Message</span><span aria=\
+-hidden=3D"true">Send Laura a Message</span></span></a></div></td></tr><=\
 /tbody></table></td></tr></tbody></table><table cellpadding=3D"0" class sty=\
 le=3D"border-collapse:collapse;border-spacing:0;width:100%" role=3D"present=\
 ation"><tbody><tr style=3D"margin:0px!important"><td style=3D"padding-left:=\
@@ -596,7 +596,7 @@ ation"><tbody><tr style=3D"margin:0px!important"><td style=3D"padding-left:=\
 ft_6_2 right_6_2 dir"><a target=3D"_self" rel=3D"noreferrer" data-eon-role=\
 =3D"link" data-eon-prop=3D"href" href=3D"https://www.airbnb.com/rooms/10253=\
 28659441162105?c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1h=\
-dGlvblRlbXBsYXRl&amp;euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831" class sty=\
+dGlvblRlbXBsYXRl&amp;euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000" class sty=\
 le=3D"font-weight:700;color:#222222"><div class=3D"non-outlook-only"><table=\
  cellpadding=3D"0" class=3D"non-outlook-only dir" style=3D"border-collapse:=\
 collapse;border-spacing:0;width:100%;max-height:none;mso-hide:all" role=3D"=\
@@ -631,8 +631,8 @@ r-collapse:collapse;border-spacing:0;width:100%" role=3D"presentation"><tbo=\
 dy><tr style=3D"margin:0px!important"><td><a target=3D"_self" rel=3D"norefe=\
 rrer" data-eon-role=3D"link" data-eon-prop=3D"href" href=3D"https://www.air=\
 bnb.com/rooms/1025328659441162105?c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0a=\
-W9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Df508c6c7-d065-fa2e-cca6-fbed=\
-02549831" class=3D"regular dir" style=3D"font-size:18px;line-height:28px;fo=\
+W9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx=\
+00000000" class=3D"regular dir" style=3D"font-size:18px;line-height:28px;fo=\
 nt-weight:400;color:#222222;text-decoration:none!important"><table cellpadd=\
 ing=3D"0" class style=3D"border-collapse:collapse;border-spacing:0;width:10=\
 0%" role=3D"presentation"><tbody><tr style=3D"margin:0px!important"><td><di=\
@@ -809,14 +809,14 @@ wrap:break-word;padding-bottom:0px" class=3D"dir dir-ltr"><div class=3D"atm=\
 _c8_i-dlk8xv__17g5ld3 atm_g3_i-gktfv__17g5ld3 dir dir-ltr" style=3D"font-si=\
 ze:18px;font-weight:400;line-height:28px;margin:0"><p class=3D"atm_c8_i-dlk=\
 8xv__17g5ld3 atm_g3_i-gktfv__17g5ld3 dir dir-ltr" style=3D"font-size:18px;f=\
-ont-weight:400;line-height:28px;margin:0!important">HMMW9HP8JC</p></div></t=\
+ont-weight:400;line-height:28px;margin:0!important">HMTEST0001</p></div></t=\
 d></tr></tbody></table></td><td style=3D"overflow-wrap:break-word;padding-l=\
 eft:8px" class=3D"dir dir-ltr" align=3D"right"><a target=3D"_self" rel=3D"n=\
 oreferrer" style=3D"color:#222222;font-size:18px;line-height:28px;font-weig=\
 ht:700;text-decoration:underline!important;display:block!important" class=\
 =3D"atm_c8_i-dlk8xv__17g5ld3 atm_g3_i-gktfv__17g5ld3 dir dir-ltr" aria-labe=\
 l=3D"View itinerary" data-eon-role=3D"link" data-eon-prop=3D"href" href=3D"=\
-https://www.airbnb.com/hosting/reservations/details/HMMW9HP8JC?src_section=\
+https://www.airbnb.com/hosting/reservations/details/HMTEST0001?src_section=\
 =3DHOST_CONFIRMATION_EMAIL_CONFIRMATION_CODE_SECTION_COMPONENT&amp;c=3D.pi8=\
 0.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp;eu=\
 id=3Df508c6c7-d065-fa2e-cca6-fbed02549831">View itinerary</a></td></tr><tr =\
@@ -1070,7 +1070,7 @@ e=3D"font-size:18px;line-height:24px;padding:16px 24px;font-weight:500;colo=\
 r:#222222;text-align:center;text-decoration:none;display:block" data-eon-ro=\
 le=3D"button" data-eon-prop=3D"href" href=3D"https://www.airbnb.com/users/t=\
 ransaction_history?c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZp=\
-cm1hdGlvblRlbXBsYXRl&amp;euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831"><span=\
+cm1hdGlvblRlbXBsYXRl&amp;euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000"><span=\
  style=3D"color:#222222!important"><span style=3D"max-height:0;max-width:0;=\
 display:inline-block;white-space:nowrap;font-size:1px;text-indent:9px;color=\
 :rgba(0, 0, 0, 0);opacity:0">View earnings</span><span aria-hidden=3D"true"=\
@@ -1185,7 +1185,7 @@ ywfm__7wj5i1 dir dir-ltr" aria-label=3D"Read cancellation penalties" data-e=\
 on-role=3D"link" data-eon-prop=3D"href" href=3D"https://www.airbnb.com/help=\
 /article/990?src_section=3DHOST_CONFIRMATION_CANCELLATION_SECTION&amp;c=3D.=\
 pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp=\
-;euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831">Read cancellation penalties</=\
+;euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000">Read cancellation penalties</=\
 a></td></tr></tbody></table></td></tr></tbody></table><table cellpadding=3D=\
 "0" class style=3D"border-collapse:collapse;border-spacing:0;width:100%" ro=\
 le=3D"presentation"><tbody><tr style=3D"margin:0px!important"><td style=3D"=\
@@ -1202,7 +1202,7 @@ utlook-row-container left_6_2 right_6_2 dir"><table cellpadding=3D"0" class=\
 sentation"><tbody><tr style=3D"margin:0px!important"><td><div><h2 class=3D"=\
 heading2" style=3D"font-size:22px;line-height:26px;color:#222222;font-famil=\
 y:Airbnb Cereal, Helvetica Neue, Helvetica, sans-serif;font-weight:700;marg=\
-in:0">Get ready for Jennifer=E2=80=99s arrival</h2></div></td></tr></tbody>=\
+in:0">Get ready for Laura=E2=80=99s arrival</h2></div></td></tr></tbody>=\
 </table></td></tr></tbody></table><table cellpadding=3D"0" class style=3D"b=\
 order-collapse:collapse;border-spacing:0;width:100%" role=3D"presentation">=\
 <tbody><tr style=3D"margin:0px!important"><td style=3D"padding-bottom:24px"=\
@@ -1242,10 +1242,10 @@ rel=3D"noreferrer" style=3D"color:#222222;font-size:18px;line-height:28px;f=\
 ont-weight:700;text-decoration:underline!important;display:block!important"=\
  class=3D"atm_c8_i-dlk8xv__17g5ld3 atm_g3_i-gktfv__17g5ld3 dir dir-ltr" ari=\
 a-label=3D"Send message" data-eon-role=3D"link" data-eon-prop=3D"href" href=\
-=3D"https://www.airbnb.com/hosting/thread/2690242425?thread_type=3Dhome_boo=\
+=3D"https://www.airbnb.com/hosting/thread/1000000000?thread_type=3Dhome_boo=\
 king&amp;src_section=3DHOST_CONFIRMATION_GET_READY_FOR_ARRIVAL_SECTION_COMP=\
 ONENT&amp;c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvb=\
-lRlbXBsYXRl&amp;euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831">Send message</=\
+lRlbXBsYXRl&amp;euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000">Send message</=\
 a></td></tr></tbody></table></td></tr></tbody></table></td></tr></tbody></t=\
 able><table cellpadding=3D"0" class style=3D"border-collapse:collapse;borde=\
 r-spacing:0;width:100%" role=3D"presentation"><tbody><tr style=3D"margin:0p=\
@@ -1390,7 +1390,7 @@ s=3D"atm_c8_i-dlk8xv__17g5ld3 atm_g3_i-gktfv__17g5ld3 atm_9s_i-1ulexfb__7wj=\
 -eon-role=3D"link" data-eon-prop=3D"href" href=3D"https://www.airbnb.com/he=\
 lp/contact_us?src_section=3DHOST_PENDING_BOOKING_EMAIL_CUSTOMER_SERVICE&amp=\
 ;c=3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYX=\
-Rl&amp;euid=3Df508c6c7-d065-fa2e-cca6-fbed02549831">Contact Airbnb</a></td>=\
+Rl&amp;euid=3Dx000x0x0-x000-xx0x-xxx0-xxxx00000000">Contact Airbnb</a></td>=\
 </tr></tbody></table></td></tr></tbody></table><table cellpadding=3D"0" cla=\
 ss style=3D"border-collapse:collapse;border-spacing:0;width:100%" role=3D"p=\
 resentation"><tbody><tr style=3D"margin:0px!important"><td style=3D"padding=\
@@ -1496,8 +1496,8 @@ spacing:0;width:100%" role=3D"presentation"><tbody><tr style=3D"margin:0px!=\
 important"><td style=3D"padding-left:0px"><a target=3D"_blank" rel=3D"noref=\
 errer" aria-label=3D"App Store" data-eon-role=3D"link" data-eon-prop=3D"hre=\
 f" href=3D"https://www.airbnb.com/interstitial?c=3D.pi80.pkYm9va2luZy9ob3N0=\
-L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Df508c6c7-d065-f=\
-a2e-cca6-fbed02549831&amp;r=3Dhttps%3A%2F%2Fairbnb.sng.link%2FA6f9up%2Fdvs6=\
+L1Jlc2VydmF0aW9uSG9zdENvbmZpcm1hdGlvblRlbXBsYXRl&amp;euid=3Dx000x0x0-x000-x=\
+x0x-xxx0-xxxx00000000&amp;r=3Dhttps%3A%2F%2Fairbnb.sng.link%2FA6f9up%2Fdvs6=\
 %3F_smtype%3D3%26pcid%3D.pi80.pkYm9va2luZy9ob3N0L1Jlc2VydmF0aW9uSG9zdENvbmZ=\
 pcm1hdGlvblRlbXBsYXRl" class=3D"regular dir" style=3D"font-size:18px;line-h=\
 eight:28px;font-weight:700;color:#222222;text-decoration:underline!importan=\

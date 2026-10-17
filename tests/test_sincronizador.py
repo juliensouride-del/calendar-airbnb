@@ -166,33 +166,33 @@ def hora(ev, campo="start"):
 # ---------------------------------------------------------------------------
 
 
-CONF_IMANE = cargar_ejemplo("ej0.txt", "2026-10-01")[0]
-CANC_SAM = cargar_ejemplo("ej1.txt", "2026-10-01")[0]
-MENSAJE_IMANE = replace(CONF_IMANE, fecha_ref="2026-10-03", fecha_hora="2026-10-03 10:00",
+CONF_LUCIA = cargar_ejemplo("ej0.txt", "2026-10-01")[0]
+CANC_MARC = cargar_ejemplo("ej1.txt", "2026-10-01")[0]
+MENSAJE_LUCIA = replace(CONF_LUCIA, fecha_ref="2026-10-03", fecha_hora="2026-10-03 10:00",
                         asunto="RE: Reservation for Espacioso y luminoso apartamento Corazón de Madrid, Nov 26 – Dec 2",
                         cuerpo="\n".join([
                             "Reservation for Espacioso y luminoso apartamento Corazón de Madrid, Nov 26 – Dec 2",
                             "For your protection and safety, always communicate through Airbnb.", "",
-                            "Imane", "Imane", "Booker", "",
+                            "Lucia", "Lucia", "Booker", "",
                             "Hi! We will arrive around 6pm and we will need the sofa bed for my sister, thanks!", "",
                             "Reply", "You can also respond by replying directly to this email.", "",
                             "Espacioso y luminoso apartamento Corazón de Madrid", "Rental unit - Entire home/apt hosted by Julian", "",
                             "Julian", "Check-in", "", "Thursday", "November 26, 2026", "", "3:00 PM", "",
                             "Checkout", "", "Wednesday", "December 2, 2026", "", "11:00 AM", "", "Guests", "2 adults"]))
-CANC_IMANE = replace(CANC_SAM, fecha_hora="2026-10-04 12:00", fecha_ref="2026-10-04",
+CANC_LUCIA = replace(CANC_MARC, fecha_hora="2026-10-04 12:00", fecha_ref="2026-10-04",
                      cuerpo=re.sub(r"Feb 1\s*–\s*4, 2027", "Nov 26 – Dec 2, 2026",
                                    re.sub(r"Feb 1\s*–\s*4, 1 guest", "Nov 26 – Dec 2, 2 guests",
-                                          CANC_SAM.cuerpo.replace("HMCJH8BNX4", "HMTSBCMZH9"))).replace("guest Sam", "guest Imane"))
+                                          CANC_MARC.cuerpo.replace("HMTEST0003", "HMTEST0002"))).replace("guest Marc", "guest Lucia"))
 
 # ---------------------------------------------------------------------------
 
 
 def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(CONF_LUCIA)
     s.ejecutar()
     assert len(s.cal.eventos) == 1, "un único evento por reserva"
-    entrada = s.cal.ev("HMTSBCMZH9")
+    entrada = s.cal.ev("HMTEST0002")
     assert entrada["summary"] == "🏠 Corazón de Madrid · 2 pers"
     assert hora(entrada) == "2026-11-26 15:00" and hora(entrada, "end") == "2026-12-02 11:00", "de la entrada a la salida"
     assert entrada["start"]["timeZone"] == "Europe/Madrid"
@@ -201,10 +201,10 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     assert len(s.gemini.llamadas) == 1, "Gemini analiza el mensaje inicial (francés)"
     assert s.avisos == [], "sin peticiones → sin aviso"
 
-    s.buzon.recibir(MENSAJE_IMANE)
+    s.buzon.recibir(MENSAJE_LUCIA)
     s.ejecutar()
     assert len(s.cal.eventos) == 1, "no se duplican eventos"
-    entrada = s.cal.ev("HMTSBCMZH9")
+    entrada = s.cal.ev("HMTEST0002")
     assert entrada["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
     assert hora(entrada) == "2026-11-26 18:00", "el evento se mueve a la hora de llegada"
     assert "Hora prevista" not in entrada["description"], "la hora ya está en el título"
@@ -217,34 +217,34 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     assert len(s.gemini.llamadas) == llamadas, "re-ejecutar no reprocesa (registro persistente)"
     assert len(s.avisos) == 1, "re-ejecutar no repite avisos"
 
-    s.buzon.recibir(CANC_IMANE)
+    s.buzon.recibir(CANC_LUCIA)
     s.ejecutar()
-    entrada = s.cal.ev("HMTSBCMZH9")
+    entrada = s.cal.ev("HMTEST0002")
     assert entrada["summary"].startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
     assert entrada["colorId"] == "8"
-    assert entrada["description"] == "—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n👤 Imane Bensalah · Código HMTSBCMZH9", \
+    assert entrada["description"] == "—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n👤 Lucia Romero · Código HMTEST0002", \
         "cancelada: sin datos de preparación"
-    assert "👤 Imane Bensalah" in entrada["description"]
+    assert "👤 Lucia Romero" in entrada["description"]
     assert len(s.cal.eventos) == 1 and len(s.avisos) == 1
 
 
-def _mensaje_imane(texto, fecha_hora):
-    return replace(MENSAJE_IMANE, fecha_hora=fecha_hora, fecha_ref=fecha_hora[:10],
-                   cuerpo=MENSAJE_IMANE.cuerpo.replace(
+def _mensaje_lucia(texto, fecha_hora):
+    return replace(MENSAJE_LUCIA, fecha_hora=fecha_hora, fecha_ref=fecha_hora[:10],
+                   cuerpo=MENSAJE_LUCIA.cuerpo.replace(
                        "Hi! We will arrive around 6pm and we will need the sofa bed for my sister, thanks!", texto))
 
 
 def test_A2_segunda_peticion_de_entrar_antes_se_detecta_y_avisa(tmp_path):
     """Caso real (Stina): primero llega 'antes de las 17:00'; después pregunta si puede entrar antes."""
     s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
-    s.buzon.recibir(_mensaje_imane("We will arrive before 5pm.", "2026-10-03 10:00"))
+    s.buzon.recibir(CONF_LUCIA)
+    s.buzon.recibir(_mensaje_lucia("We will arrive before 5pm.", "2026-10-03 10:00"))
     s.ejecutar()
     assert s.avisos == [], "17:00 no es antes de la hora de entrada"
-    s.buzon.recibir(_mensaje_imane("Thank you Julian! Will you notify me when the apartment is ready, "
+    s.buzon.recibir(_mensaje_lucia("Thank you Julian! Will you notify me when the apartment is ready, "
                                    "so I know if it’s possible to check-in early? :)", "2026-10-05 12:00"))
     s.ejecutar()
-    entrada = s.cal.ev("HMTSBCMZH9")
+    entrada = s.cal.ev("HMTEST0002")
     assert "⏰ pide entrar antes" in entrada["summary"], entrada["summary"]
     assert "escribe arriba: #entrada HH:MM" in entrada["description"]
     assert len(s.avisos) == 1 and "entrar antes" in s.asuntos[0], s.asuntos
@@ -254,27 +254,27 @@ def test_A2_segunda_peticion_de_entrar_antes_se_detecta_y_avisa(tmp_path):
 
 def test_A3_sin_gemini_las_palabras_clave_detectan_la_entrada_anticipada(tmp_path):
     s = Entorno(tmp_path, gemini="falla")
-    s.buzon.recibir(CONF_IMANE)
-    s.buzon.recibir(_mensaje_imane("Is it possible to check-in early?", "2026-10-03 10:00"))
+    s.buzon.recibir(CONF_LUCIA)
+    s.buzon.recibir(_mensaje_lucia("Is it possible to check-in early?", "2026-10-03 10:00"))
     s.ejecutar()
     assert any("entrar antes" in a for a in s.asuntos), s.asuntos
 
 
 def test_A4_recarga_manual_reconstruye_la_reserva_con_lo_ultimo_del_huesped(tmp_path):
     s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
-    s.buzon.recibir(MENSAJE_IMANE)
+    s.buzon.recibir(CONF_LUCIA)
+    s.buzon.recibir(MENSAJE_LUCIA)
     s.ejecutar()
     # Estado con datos antiguos o mal interpretados por una versión anterior
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
-    eventos = cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None)
+    eventos = cal.buscar_eventos_reserva("HMTEST0002", None, None, None)
     e = leer_estado(eventos)
     e.update(hora_llegada="17:00", entrada_anticipada="12:00", peticiones=["Petición antigua"])
     cal.guardar_reserva(e, eventos, None)
-    assert "llega 17:00" in s.cal.ev("HMTSBCMZH9")["summary"]
+    assert "llega 17:00" in s.cal.ev("HMTEST0002")["summary"]
 
     s.ejecutar(desde=datetime(2026, 9, 1, tzinfo=timezone.utc))
-    ev = s.cal.ev("HMTSBCMZH9")
+    ev = s.cal.ev("HMTEST0002")
     assert ev["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama", ev["summary"]
     assert "Petición antigua" not in ev["description"]
     assert len(s.cal.eventos) == 1
@@ -282,17 +282,17 @@ def test_A4_recarga_manual_reconstruye_la_reserva_con_lo_ultimo_del_huesped(tmp_
 
 def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp_path):
     s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(CONF_LUCIA)
     s.ejecutar()
-    ev = s.cal.ev("HMTSBCMZH9")
+    ev = s.cal.ev("HMTEST0002")
     ev["description"] = "#entrada 16:00\n🏠 Alojamiento: Espacioso...\n🕒 Hora prevista de llegada: No indicada"
     del ev["extendedProperties"]["private"]["airbnb_escrito"]       # evento escrito por una versión anterior
     s.cfg.alojamientos = [replace(a, alias="Tirso") if a.alias == "Corazón de Madrid" else a for a in s.cfg.alojamientos]
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
-    ev = s.cal.ev("HMTSBCMZH9")
+    ev = s.cal.ev("HMTEST0002")
     assert ev["summary"] == "🏠 Tirso · 2 pers · entra 16:00 ✅"
-    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada: 16:00   ·   Salida: 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Imane Bensalah · Código HMTSBCMZH9", \
+    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada: 16:00   ·   Salida: 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Lucia Romero · Código HMTEST0002", \
         "del formato anterior solo se conservan las etiquetas de acuerdo"
     assert leer_estado({"evento": ev})["alias"] == "Tirso"
     escrituras = cal.stats["limpiezas_recalculadas"]
@@ -327,7 +327,7 @@ def test_A6_recarga_manual_espera_al_limite_de_gemini_y_si_no_responde_se_detien
 def test_A7_calendario_inaccesible_detiene_la_ejecucion_sin_contar_fallos(tmp_path):
     from airbnb_calendar.calendario import CalendarioInaccesible
     s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(CONF_LUCIA)
     original = s.cal.request
 
     def sin_acceso(metodo, url, params=None, json=None, timeout=None):
@@ -372,23 +372,23 @@ def test_B2_no_se_avisa_de_reservas_que_ya_han_terminado(tmp_path):
 
 def test_B3_evento_creado_desde_mensaje_lleva_aviso_y_se_completa_con_la_confirmacion(tmp_path):
     s = Entorno(tmp_path)                       # por defecto se crean eventos desde mensajes
-    s.buzon.recibir(MENSAJE_IMANE)
+    s.buzon.recibir(MENSAJE_LUCIA)
     s.ejecutar()
     assert len(s.cal.eventos) == 1
     ev = next(iter(s.cal.eventos.values()))
     assert ev["description"].endswith("Se completará si llega."), ev["description"]
     assert "ℹ️ Evento creado a partir de un mensaje del huésped" in ev["description"]
     # Llega la confirmación: es el mismo evento, se completa y desaparece el aviso
-    s.buzon.recibir(replace(CONF_IMANE, fecha_hora="2026-10-04 09:00", fecha_ref="2026-10-04"))
+    s.buzon.recibir(replace(CONF_LUCIA, fecha_hora="2026-10-04 09:00", fecha_ref="2026-10-04"))
     s.ejecutar()
     assert len(s.cal.eventos) == 1
-    ev = s.cal.ev("HMTSBCMZH9")
+    ev = s.cal.ev("HMTEST0002")
     assert "creado a partir de un mensaje" not in ev["description"]
 
 
 def test_B4_mensaje_de_un_anuncio_no_configurado_no_crea_evento(tmp_path):
     s = Entorno(tmp_path)
-    s.buzon.recibir(replace(MENSAJE_IMANE, cuerpo=MENSAJE_IMANE.cuerpo.replace(
+    s.buzon.recibir(replace(MENSAJE_LUCIA, cuerpo=MENSAJE_LUCIA.cuerpo.replace(
         "Espacioso y luminoso apartamento Corazón de Madrid", "Great Studio"),
         asunto="RE: Reservation for Great Studio, Nov 26 – Dec 2"))
     s.ejecutar()
@@ -434,7 +434,7 @@ def test_D_gemini_caido_palabras_clave_nota_y_un_solo_aviso_al_dia(tmp_path):
 
 def test_E_plantilla_irreconocible_aviso_y_sin_reintentos(tmp_path):
     s = Entorno(tmp_path)
-    s.buzon.recibir(replace(CONF_IMANE, asunto="New booking confirmed!", cuerpo="New booking confirmed! Bob arrives soon.\nThis template changed."))
+    s.buzon.recibir(replace(CONF_LUCIA, asunto="New booking confirmed!", cuerpo="New booking confirmed! Bob arrives soon.\nThis template changed."))
     s.ejecutar()
     assert s.avisos == [], "los errores técnicos no llegan al anfitrión"
     assert len(s.tecnicos) == 1 and "No se pudieron extraer: codigo" in s.tecnicos[0][1]
@@ -444,7 +444,7 @@ def test_E_plantilla_irreconocible_aviso_y_sin_reintentos(tmp_path):
 
 def test_F_correos_de_airbnb_que_no_son_reservas_se_ignoran(tmp_path):
     s = Entorno(tmp_path)
-    s.buzon.recibir(replace(CONF_IMANE, asunto="Your monthly earnings report", cuerpo="Here is how you did this month."))
+    s.buzon.recibir(replace(CONF_LUCIA, asunto="Your monthly earnings report", cuerpo="Here is how you did this month."))
     s.ejecutar()
     assert s.cal.eventos == {} and s.avisos == []
 
@@ -455,25 +455,25 @@ def test_G_eml_reales_confirmacion_y_mensaje_con_hora_sofa_y_cuna(tmp_path):
     s.buzon.recibir(conf)
     s.ejecutar()
     assert len(s.cal.eventos) == 1
-    entrada = s.cal.ev("HMMW9HP8JC")
+    entrada = s.cal.ev("HMTEST0001")
     assert entrada["summary"] == "🏠 Antón Martín · 2 pers"
     assert hora(entrada) == "2026-10-20 15:00"
     assert entrada["end"]["dateTime"].startswith("2026-10-23")
 
-    # Mensaje con la plantilla real de cunasolicitud.eml, adaptado a la reserva de Jennifer
+    # Mensaje con la plantilla real de cunasolicitud.eml, adaptado a la reserva de Laura
     base = cargar_eml("cunasolicitud.eml")
     cuerpo = base.cuerpo
     for viejo, nuevo in [(r"SEP 16\s*–\s*19", "OCT 20 – 23"), (r"WEDNESDAY(\s+)SATURDAY", r"TUESDAY\1FRIDAY"),
                          (r"September 16, 2026(\s+)September 19, 2026", r"October 20, 2026\1October 23, 2026"),
-                         (r"2 adults, 1 infant", "2 adults"), (r"AGUSTIN", "JENNIFER"),
-                         (r'Reacted ❤️ to "Hi Agustin! Yes no problem! "',
+                         (r"2 adults, 1 infant", "2 adults"), (r"PABLO", "LAURA"),
+                         (r'Reacted ❤️ to "Hi Pablo! Yes no problem! "',
                           "Hi! We will arrive around 6pm, we will need the sofa bed for my son and a crib, thanks!")]:
         cuerpo = re.sub(viejo, nuevo, cuerpo)
     s.buzon.recibir(replace(base, fecha_hora="2026-10-07 09:00", fecha_ref="2026-10-07", cuerpo=cuerpo,
                             asunto="RE: Reservation for Apartamentos de Julian, Anton Martin - Apartame..., Oct 20 – 23"))
     s.ejecutar()
     assert len(s.cal.eventos) == 1, "no se duplican eventos"
-    entrada = s.cal.ev("HMMW9HP8JC")
+    entrada = s.cal.ev("HMTEST0001")
     assert entrada["summary"].startswith("🏠 Antón Martín · 2 pers · llega 18:00"), entrada["summary"]
     assert "🛋️ sofá cama" in entrada["summary"] and "🍼 cuna" in entrada["summary"]
     assert "Alojamiento" not in entrada["description"]
@@ -493,13 +493,13 @@ def test_H_modelo_gemini_colgado_timeout_y_respaldo(tmp_path):
 
 def test_I_error_temporal_de_calendar_se_reintenta_y_luego_es_definitivo(tmp_path):
     s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(CONF_LUCIA)
     s.cal.fallar_escrituras = 1
     reg = s.ejecutar()
     assert len(s.cal.eventos) == 1 and not reg.fallos, "un micro-corte se resuelve dentro de la misma ejecución"
 
     s = Entorno(tmp_path / "corte")
-    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(CONF_LUCIA)
     s.cal.fallar_escrituras = 4                          # más que los reintentos internos
     reg = s.ejecutar()
     assert s.cal.eventos == {} and s.avisos == [] and reg.fallos, "se reintentará en la próxima ejecución"
@@ -507,7 +507,7 @@ def test_I_error_temporal_de_calendar_se_reintenta_y_luego_es_definitivo(tmp_pat
     assert len(s.cal.eventos) == 1 and not Registro(s.ruta_estado).fallos
 
     s2 = Entorno(tmp_path / "otro")
-    s2.buzon.recibir(CONF_IMANE)
+    s2.buzon.recibir(CONF_LUCIA)
     s2.cal.fallar_escrituras = 99
     for _ in range(3):
         s2.ejecutar()
@@ -519,16 +519,16 @@ def test_I_error_temporal_de_calendar_se_reintenta_y_luego_es_definitivo(tmp_pat
 
 def test_J_remitente_que_no_es_de_airbnb_y_primera_ejecucion_sin_correos_antiguos(tmp_path):
     s = Entorno(tmp_path)
-    id_falso = s.buzon.recibir(CONF_IMANE, remitente="Fake <airbnb.com@gmail.com>")
+    id_falso = s.buzon.recibir(CONF_LUCIA, remitente="Fake <airbnb.com@gmail.com>")
     reg = s.ejecutar()
     assert s.cal.eventos == {} and id_falso in reg.procesados
 
     s2 = Entorno(tmp_path / "x", procesar_desde="")
-    s2.buzon.recibir(CONF_IMANE)                         # llegó el 01/10, antes de la primera ejecución
+    s2.buzon.recibir(CONF_LUCIA)                         # llegó el 01/10, antes de la primera ejecución
     reg = s2.ejecutar()
     assert s2.cal.eventos == {}, "no se cargan reservas anteriores a la instalación"
     assert reg.inicio == s2.ahora.isoformat()
-    s2.buzon.recibir(replace(MENSAJE_IMANE, fecha_hora="2026-10-08 15:00"))     # posterior: sí
+    s2.buzon.recibir(replace(MENSAJE_LUCIA, fecha_hora="2026-10-08 15:00"))     # posterior: sí
     s2.ahora += timedelta(hours=2)
     s2.ejecutar()
     assert len(s2.avisos) == 1 and "NO está en el calendario" not in s2.avisos[0][1]
@@ -538,22 +538,22 @@ def test_J_remitente_que_no_es_de_airbnb_y_primera_ejecucion_sin_correos_antiguo
 
 def test_K_estado_largo_se_trocea_y_al_acortarse_se_borran_los_trozos_sobrantes(tmp_path):
     s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(CONF_LUCIA)
     s.ejecutar()
     cal = Calendario(s.cfg, s.cal)
-    eventos = cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None)
+    eventos = cal.buscar_eventos_reserva("HMTEST0002", None, None, None)
     from airbnb_calendar.calendario import leer_estado
     estado = leer_estado(eventos)
     estado["peticiones"] = [f"{i} " + "x" * 140 for i in range(10)]
     cal.guardar_reserva(estado, eventos, None)
-    props = s.cal.ev("HMTSBCMZH9")["extendedProperties"]["private"]
+    props = s.cal.ev("HMTEST0002")["extendedProperties"]["private"]
     n = int(props["airbnb_estado_n"])
     assert n >= 2 and all(len(props[f"airbnb_estado_{i}"]) <= 900 for i in range(n))
     estado["peticiones"] = []
-    cal.guardar_reserva(estado, cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None), None)
-    props = s.cal.ev("HMTSBCMZH9")["extendedProperties"]["private"]
+    cal.guardar_reserva(estado, cal.buscar_eventos_reserva("HMTEST0002", None, None, None), None)
+    props = s.cal.ev("HMTEST0002")["extendedProperties"]["private"]
     assert props["airbnb_estado_n"] == "1" and "airbnb_estado_1" not in props
-    assert leer_estado(cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None))["peticiones"] == []
+    assert leer_estado(cal.buscar_eventos_reserva("HMTEST0002", None, None, None))["peticiones"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -791,7 +791,7 @@ def test_M_reglas_de_limpieza():
 def test_O_purga_solo_borra_eventos_propios(tmp_path, monkeypatch):
     import sincronizar
     s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(CONF_LUCIA)
     s.ejecutar()
     s.cal.eventos["personal"] = {"id": "personal", "summary": "Dentista",
                                  "extendedProperties": {"private": {"otra_app": "1"}}}

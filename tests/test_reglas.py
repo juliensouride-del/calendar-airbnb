@@ -34,7 +34,7 @@ def test_confirmacion_titulos_y_descripcion(r0, cfg):
     assert reglas.titulo_evento(e) == "🏠 Corazón de Madrid · 2 pers"
     d = reglas.descripcion_evento(e)
     # Siempre llegada/salida, sofá cama y cuna; nada de alojamiento ni fechas (ya están en el evento)
-    assert d == "🕒 Llegada: 15:00   ·   Salida: 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Imane Bensalah · Código HMTSBCMZH9"
+    assert d == "🕒 Llegada: 15:00   ·   Salida: 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Lucia Romero · Código HMTEST0002"
     assert reglas.avisos_pendientes(e, cfg) == []
 
 
@@ -98,9 +98,9 @@ def test_cancelacion_titulo_marcado_y_sin_avisos(r0, cfg):
     reglas.actualizar_con_datos(e, r1)
     e["cancelada"] = True
     assert reglas.titulo_evento(e).startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
-    assert reglas.descripcion_evento(e) == "👤 Imane Bensalah · Código HMCJH8BNX4"
+    assert reglas.descripcion_evento(e) == "👤 Lucia Romero · Código HMTEST0003"
     assert reglas.avisos_pendientes(e, cfg) == []
-    assert e["huesped"] == "Imane Bensalah"      # "Sam" (más corto y distinto) no lo pisa
+    assert e["huesped"] == "Lucia Romero"      # "Marc" (más corto y distinto) no lo pisa
 
 
 def test_palabras_clave(r3):
@@ -179,7 +179,7 @@ def test_descripcion_ordenada_avisos_primero_locker_y_huesped_al_final(r0, cfg):
     assert d[1].startswith("🕒 Llegada: 18:00   ·   Salida: 11:00\n🛋️ Sofá cama: SÍ (lo indica el huésped)")
     assert d[2] == "📝 Peticiones:\n   • Trona"
     assert d[3] == "🔑 Locker: https://k/1"
-    assert d[4] == "👤 Imane Bensalah · Código HMTSBCMZH9"
+    assert d[4] == "👤 Lucia Romero · Código HMTEST0002"
 
 
 def test_lo_ultimo_que_dice_el_huesped_manda(r0, cfg):
@@ -200,7 +200,7 @@ def test_lo_ultimo_que_dice_el_huesped_manda(r0, cfg):
     e.update(acuerdo_entrada="13:00", peticiones=["Trona"])
     reglas.resetear_mensajes(e)
     assert e["hora_llegada"] is None and e["peticiones"] == [] and not e["sin_analizar"]
-    assert e["acuerdo_entrada"] == "13:00" and e["codigo"] == "HMTSBCMZH9"
+    assert e["acuerdo_entrada"] == "13:00" and e["codigo"] == "HMTEST0002"
 
 
 def test_llegar_antes_o_salir_despues_del_horario_cuenta_como_peticion(r0, cfg):
