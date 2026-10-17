@@ -360,13 +360,19 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
 
 def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None = None) -> str:
     """
-    Solo lo que NO se ve ya en el título ni en las horas del evento (alojamiento, nº de personas, horas,
-    sofá cama y cuna van en el título; las fechas, en el propio evento).
+    Debajo del título: llegada y salida previstas, sofá cama y cuna (siempre), y después solo lo que no
+    está en otro sitio (locker, limpieza, detalle de personas, peticiones, avisos). No se repiten el
+    alojamiento ni las fechas, que ya se ven en el evento.
     """
     # Las etiquetas #entrada / #salida las escribe el anfitrión en su parte de la descripción
     # (encima de la línea automática); el script las lee pero no las reescribe.
     l = []
     if not e["cancelada"]:
+        # Datos fijos de cada reserva, siempre visibles debajo del título
+        l.append(f"🕒 Llegada prevista: {e['hora_llegada'] or 'no indicada'} · "
+                 f"Salida prevista: {e['hora_salida'] or 'no indicada'}")
+        l.append("🛋️ Sofá cama: " + _texto_marca(e, "sofa"))
+        l.append("🍼 Cuna: " + _texto_marca(e, "cuna"))
         if e.get("locker"):
             l.append("🔑 Locker: " + e["locker"])
         if limpieza and cfg:
@@ -378,10 +384,6 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
         detalle = texto_personas(e, solo_detalle=True)
         if detalle:
             l.append("👥 " + detalle)
-        for campo, nombre in (("sofa", "Sofá cama"), ("cuna", "Cuna")):
-            m = e[campo]
-            if m and m["v"] and m["f"] != "huesped":      # si lo pide el huésped ya está en el título
-                l.append(f"{'🛋️' if campo == 'sofa' else '🍼'} {nombre}: {texto_fuente(e, campo)}")
         if e["peticiones"]:
             l.append("📝 Peticiones:")
             l += ["   • " + p for p in e["peticiones"]]
@@ -391,6 +393,13 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
         l.append("")
     l.append(f"Huésped: {e['huesped'] or '?'} · Código: {e['codigo'] or 'desconocido'}")
     return "\n".join(l)
+
+
+def _texto_marca(e: dict, campo: str) -> str:
+    m = e[campo]
+    if not m:
+        return "no indicado"
+    return ("SÍ" if m["v"] else "no") + " — " + texto_fuente(e, campo)
 
 
 def texto_personas(e: dict, solo_detalle: bool = False) -> str:

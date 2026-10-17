@@ -68,6 +68,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
           ALERTA_NTFY_TOPIC: ${{ secrets.ALERTA_NTFY_TOPIC }}
+          ALERTA_EMAIL: ${{ secrets.ALERTA_EMAIL }}   # avisos de errores al desarrollador (no al anfitrión)
           CONFIRMAR: ${{ inputs.confirmar }}
           MODO: ${{ inputs.modo || 'sincronizar' }}
           DESDE: ${{ inputs.desde }}

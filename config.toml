@@ -63,7 +63,8 @@ max_reintentos = 3
 email = ""
 peticiones = true      # sofá cama, cuna y otras peticiones especiales
 horas = false          # también cuando el huésped indique hora de llegada/salida
-errores = true         # correos que no se pueden procesar (Gemini caído se avisa solo al desarrollador)
+errores = true         # correos que no se pueden procesar: se avisa SOLO al desarrollador (secreto
+                       # ALERTA_EMAIL y ntfy), nunca al anfitrión
 modificaciones = true  # modificaciones de reserva (se revisan a mano)
 
 [gemini]

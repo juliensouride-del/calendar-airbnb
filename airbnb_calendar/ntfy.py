@@ -13,6 +13,20 @@ import requests
 log = logging.getLogger(__name__)
 
 
+class Varios:
+    """Envía el mismo aviso por varios canales (p. ej. ntfy y correo al desarrollador)."""
+
+    def __init__(self, *canales):
+        self.canales = [c for c in canales if c]
+
+    def enviar(self, asunto: str, cuerpo: str) -> None:
+        for c in self.canales:
+            try:
+                c.enviar(asunto, cuerpo)
+            except Exception as e:                   # noqa: BLE001 — un canal caído no impide los demás
+                log.warning("No se pudo enviar el aviso técnico por %s (%s): %s", type(c).__name__, e, asunto)
+
+
 class NotificadorNtfy:
     def __init__(self, tema: str = "", sesion=None):
         self.tema = tema

@@ -223,7 +223,8 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     entrada = s.cal.ev("HMTSBCMZH9")
     assert entrada["summary"].startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
     assert entrada["colorId"] == "8"
-    assert entrada["description"] == "—— Airbnb · automático (escribe tus notas encima de esta línea) ——\nHuésped: Imane Bensalah · Código: HMTSBCMZH9"
+    assert entrada["description"] == "—— Airbnb · automático (escribe tus notas encima de esta línea) ——\nHuésped: Imane Bensalah · Código: HMTSBCMZH9", \
+        "cancelada: sin datos de preparación"
     assert "Huésped: Imane Bensalah" in entrada["description"]
     assert len(s.cal.eventos) == 1 and len(s.avisos) == 1
 
@@ -292,7 +293,7 @@ def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
     ev = s.cal.ev("HMTSBCMZH9")
     assert ev["summary"] == "🏠 Tirso · 2 pers · entra 16:00 ✅"
-    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\nHuésped: Imane Bensalah · Código: HMTSBCMZH9", \
+    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada prevista: no indicada · Salida prevista: no indicada\n🛋️ Sofá cama: no indicado\n🍼 Cuna: no indicado\n\nHuésped: Imane Bensalah · Código: HMTSBCMZH9", \
         "del formato anterior solo se conservan las etiquetas de acuerdo"
     assert leer_estado({"evento": ev})["alias"] == "Tirso"
     escrituras = cal.stats["limpiezas_recalculadas"]
@@ -326,6 +327,7 @@ def test_A6_recarga_manual_espera_al_limite_de_gemini_y_si_no_responde_se_detien
 
 def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):
     s = Entorno(tmp_path)
+    s.ahora = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
     ids = [s.buzon.recibir(c) for c in cargar_ejemplo("ej3.txt", "2026-09-22")]
     registro = s.ejecutar()
     assert s.cal.eventos == {}
@@ -337,8 +339,18 @@ def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):
     assert all(registro.ya_procesado(i) for i in ids)
 
 
+def test_B2_no_se_avisa_de_reservas_que_ya_han_terminado(tmp_path):
+    """Caso real: en la carga inicial se avisó de una petición de una estancia de septiembre ya pasada."""
+    s = Entorno(tmp_path)                       # ahora = 08/10; la reserva de ej3 terminó el 27/09
+    for c in cargar_ejemplo("ej3.txt", "2026-09-22"):
+        s.buzon.recibir(c)
+    s.ejecutar()
+    assert s.avisos == []
+
+
 def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
     s = Entorno(tmp_path, crear_evento_desde_mensaje=True)
+    s.ahora = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
     for c in cargar_ejemplo("ej3.txt", "2026-09-22") + cargar_ejemplo("ej2.txt", "2026-10-01"):
         s.buzon.recibir(c)
     s.ejecutar()
@@ -346,7 +358,8 @@ def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
     e3 = s.cal.ev("Antón Martín")
     assert e3["summary"] == "🏠 Antón Martín · 3 pers · llega 15:05 · sale 11:00 · 🍼 cuna"
     assert hora(e3) == "2026-09-23 15:05"
-    assert "Cuna" not in e3["description"], "la pide el huésped: ya está en el título"
+    assert "🍼 Cuna: SÍ — lo indica el huésped" in e3["description"]
+    assert "🕒 Llegada prevista: 15:05 · Salida prevista: 11:00" in e3["description"]
     assert "Pregunta si puede entrar hacia las 12:00" in e3["description"]
     e2 = s.cal.ev("Lavapiés")
     assert e2["summary"] == "🏠 Lavapiés · 3 pers · llega 15:00"
@@ -357,6 +370,7 @@ def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
 
 def test_D_gemini_caido_palabras_clave_nota_y_un_solo_aviso_al_dia(tmp_path):
     s = Entorno(tmp_path, gemini="falla", crear_evento_desde_mensaje=True)
+    s.ahora = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
     for c in cargar_ejemplo("ej3.txt", "2026-09-22")[:2]:
         s.buzon.recibir(c)
     s.ejecutar()
@@ -375,9 +389,10 @@ def test_E_plantilla_irreconocible_aviso_y_sin_reintentos(tmp_path):
     s = Entorno(tmp_path)
     s.buzon.recibir(replace(CONF_IMANE, asunto="New booking confirmed!", cuerpo="New booking confirmed! Bob arrives soon.\nThis template changed."))
     s.ejecutar()
-    assert len(s.avisos) == 1 and "No se pudieron extraer: codigo" in s.avisos[0][1]
+    assert s.avisos == [], "los errores técnicos no llegan al anfitrión"
+    assert len(s.tecnicos) == 1 and "No se pudieron extraer: codigo" in s.tecnicos[0][1]
     s.ejecutar()
-    assert len(s.avisos) == 1, "no se vuelve a intentar"
+    assert len(s.tecnicos) == 1, "no se vuelve a intentar"
 
 
 def test_F_correos_de_airbnb_que_no_son_reservas_se_ignoran(tmp_path):
@@ -449,9 +464,10 @@ def test_I_error_temporal_de_calendar_se_reintenta_y_luego_es_definitivo(tmp_pat
     s2.cal.fallar_escrituras = 99
     for _ in range(3):
         s2.ejecutar()
-    assert len(s2.avisos) == 1 and "HTTP 503" in s2.avisos[0][1], "tras 3 intentos se avisa y se deja"
+    assert len(s2.tecnicos) == 1 and "HTTP 503" in s2.tecnicos[0][1], "tras 3 intentos se avisa y se deja"
+    assert s2.avisos == []
     s2.ejecutar()
-    assert len(s2.avisos) == 1
+    assert len(s2.tecnicos) == 1
 
 
 def test_J_remitente_que_no_es_de_airbnb_y_primera_ejecucion_sin_correos_antiguos(tmp_path):
@@ -789,6 +805,22 @@ def test_S_listado_paginado(tmp_path):
     paginas = {None: {"items": [{"id": "a"}], "nextPageToken": "t2"}, "t2": {"items": [{"id": "b"}]}}
     s.cal.request = lambda m, u, params=None, **kw: Respuesta(200, paginas[dict(params).get("pageToken")])
     assert [e["id"] for e in Calendario(s.cfg, s.cal)._listar({"x": "1"})] == ["a", "b"]
+
+
+def test_T2_avisos_tecnicos_por_varios_canales_aunque_uno_falle():
+    from airbnb_calendar.ntfy import Varios
+    recibidos = []
+
+    class Roto:
+        def enviar(self, a, c):
+            raise OSError("smtp caído")
+
+    class Bien:
+        def enviar(self, a, c):
+            recibidos.append(a)
+
+    Varios(Roto(), None, Bien()).enviar("⚠️ error", "x")
+    assert recibidos == ["⚠️ error"]
 
 
 def test_T_ntfy_sin_tema_no_envia_y_con_tema_publica():

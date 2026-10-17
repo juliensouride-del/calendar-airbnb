@@ -33,8 +33,8 @@ def test_confirmacion_titulos_y_descripcion(r0, cfg):
     reglas.aplicar_reglas(e, None, cfg)
     assert reglas.titulo_evento(e) == "🏠 Corazón de Madrid · 2 pers"
     d = reglas.descripcion_evento(e)
-    # Nada que ya esté en el título o en las horas del evento: solo el huésped y el código
-    assert d == "Huésped: Imane Bensalah · Código: HMTSBCMZH9"
+    # Siempre llegada/salida, sofá cama y cuna; nada de alojamiento ni fechas (ya están en el evento)
+    assert d == "🕒 Llegada prevista: no indicada · Salida prevista: no indicada\n🛋️ Sofá cama: no indicado\n🍼 Cuna: no indicado\n\nHuésped: Imane Bensalah · Código: HMTSBCMZH9"
     assert reglas.avisos_pendientes(e, cfg) == []
 
 
@@ -53,7 +53,8 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     reglas.marcar_avisado(e)
     assert reglas.titulo_evento(e) == "🏠 Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
     d = reglas.descripcion_evento(e)
-    assert "Cuna" not in d, "la pide el huésped: ya está en el título"
+    assert "🕒 Llegada prevista: 15:05 · Salida prevista: no indicada" in d
+    assert "🍼 Cuna: SÍ — lo indica el huésped" in d
     assert "Llegan en una hora" not in d, "las notas de los mensajes no van en el evento"
     assert "👥 2 adultos, 1 bebé" in d and "📝 Peticiones:\n   • Entrada anticipada hacia las 12:00" in d
 

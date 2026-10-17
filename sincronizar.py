@@ -32,7 +32,7 @@ from datetime import date, datetime, timedelta, timezone
 from airbnb_calendar.calendario import Calendario, sesion_cuenta_servicio
 from airbnb_calendar.config import Secretos, cargar_config
 from airbnb_calendar.gemini import AnalizadorMensajes
-from airbnb_calendar.ntfy import NotificadorNtfy
+from airbnb_calendar.ntfy import NotificadorNtfy, Varios
 from airbnb_calendar.parser import parsear_correo
 from airbnb_calendar.registro import Registro
 from airbnb_calendar.sincronizador import Sincronizador
@@ -87,12 +87,19 @@ def main() -> int:
                 notificador = NotificadorSilencioso()   # carga manual: no avisar de correos antiguos
             sincro = Sincronizador(cfg, buzon, calendario, analizador, notificador, registro,
                                    desde=fecha(args.desde), hasta=fecha(args.hasta),
-                                   notificador_tecnico=NotificadorNtfy(os.environ.get("ALERTA_NTFY_TOPIC", "")))
+                                   notificador_tecnico=notificador_tecnico(sec))
             sincro.ejecutar()
             escribir_resumen(sincro.resumen, calendario.stats)
     finally:
         registro.guardar()      # lo procesado hasta un posible fallo queda registrado
     return 0
+
+
+def notificador_tecnico(sec):
+    """Avisos de errores SOLO al desarrollador: ntfy (ALERTA_NTFY_TOPIC) y correo (ALERTA_EMAIL)."""
+    email = os.environ.get("ALERTA_EMAIL", "").strip()
+    return Varios(NotificadorNtfy(os.environ.get("ALERTA_NTFY_TOPIC", "")),
+                  NotificadorYahoo(sec.yahoo_usuario, sec.yahoo_clave_app, email) if email and sec else None)
 
 
 def escribir_resumen(resumen: dict, stats: dict) -> None:
@@ -198,6 +205,14 @@ def diagnosticar(cfg, sec) -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception:
+    except Exception as err:
         log.exception("La ejecución ha fallado")
+        if os.environ.get("ALERTA_EMAIL") and os.environ.get("YAHOO_USUARIO"):
+            try:   # además del aviso por ntfy del workflow
+                NotificadorYahoo(os.environ["YAHOO_USUARIO"], os.environ.get("YAHOO_CLAVE_APP", "").replace(" ", ""),
+                                 os.environ["ALERTA_EMAIL"]).enviar(
+                    "⚠️ Airbnb → Calendar: la ejecución ha fallado",
+                    f"{type(err).__name__}: {err}\n\nDetalles en el registro de GitHub Actions.")
+            except Exception:                        # noqa: BLE001
+                log.warning("No se pudo enviar el aviso de fallo por correo")
         sys.exit(1)

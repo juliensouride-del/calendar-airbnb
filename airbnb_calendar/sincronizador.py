@@ -92,7 +92,8 @@ class Sincronizador:
             if definitivo:
                 self._marcar_procesado(c)
                 if self.cfg.avisar_errores:
-                    self.notificador.enviar(
+                    # Errores técnicos: al desarrollador (ntfy / ALERTA_EMAIL), nunca al anfitrión
+                    self.tecnico.enviar(
                         "⚠️ Airbnb → Calendar: no se pudo procesar un correo",
                         f"Correo: {c.asunto}\n\nError: {err}\n\n"
                         "Revísalo a mano y actualiza el calendario si hace falta. No se volverá a intentar.\n\n"
@@ -138,7 +139,7 @@ class Sincronizador:
         reglas.aplicar_reglas(estado, alojamiento, self.cfg)
         novedades = reglas.avisos_pendientes(estado, self.cfg)
         # Primero el aviso: si después fallara el guardado se reintenta (mejor un aviso repetido que uno perdido)
-        if novedades:
+        if novedades and not self._terminada(estado):
             self._avisar_peticiones(estado, novedades, d, ctx, en_calendario=True)
         reglas.marcar_avisado(estado)
         self.cal.guardar_reserva(estado, eventos, alojamiento)
@@ -162,7 +163,7 @@ class Sincronizador:
         estado = reglas.crear_estado(d)
         self._analizar_texto_huesped(estado, d, ctx)
         novedades = reglas.avisos_pendientes(estado, self.cfg)
-        if novedades:
+        if novedades and not self._terminada(estado):
             self._avisar_peticiones(estado, novedades, d, ctx, en_calendario=False)
         log.info("  Mensaje de una reserva que no está en el calendario: no se crean eventos.")
 
@@ -186,6 +187,11 @@ class Sincronizador:
                 self.tecnico.enviar("⚠️ Airbnb → Calendar: Gemini no responde",
                                         "Los mensajes se están analizando solo con palabras clave (sin horas de llegada/salida).\n\n"
                                         f"Error: {r.error}\n\nComprueba el secreto GEMINI_API_KEY y [gemini] modelo en config.toml.")
+
+    def _terminada(self, estado: dict) -> bool:
+        """Reserva que ya ha terminado: no tiene sentido avisar al anfitrión de sus peticiones."""
+        fin = estado.get("checkout") or estado.get("checkin")
+        return bool(fin) and fin < self.ahora.astimezone(self.tz).date().isoformat()
 
     def _avisar_peticiones(self, estado: dict, novedades: list[str], d: DatosCorreo, ctx: dict, en_calendario: bool) -> None:
         etiquetas = [n for p, n in (("⏰", "entrar antes"), ("⌛", "salir después"), ("🛋️", "sofá cama"),
