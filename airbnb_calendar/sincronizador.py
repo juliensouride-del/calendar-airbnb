@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import reglas
-from .calendario import leer_estado
+from .calendario import CalendarioInaccesible, leer_estado
 from .config import Config
 from .gemini import GeminiAgotado
 from .parser import DatosCorreo, parsear_correo
@@ -44,6 +44,9 @@ class Sincronizador:
 
     def ejecutar(self) -> int:
         """Procesa los correos pendientes. Devuelve cuántos ha procesado."""
+        # Si el calendario no es accesible se para aquí: si no, cada correo contaría un fallo y,
+        # tras varios intentos, se daría por perdido aunque el problema sea la configuración
+        self.cal.comprobar_acceso()
         inicio = self.registro.fecha_inicio(self.cfg.procesar_desde, self.ahora)
         desde = self.desde or max(inicio, self.ahora - timedelta(days=self.cfg.ventana_dias))
         # Carga manual (--desde): se reprocesa todo el tramo (p. ej. tras una purga); es idempotente
@@ -81,6 +84,8 @@ class Sincronizador:
                 log.warning("  ⚠ %s", a)
             self._procesar_datos(datos, ctx)
             self._marcar_procesado(c)
+        except CalendarioInaccesible:
+            raise                                        # problema de configuración: no es culpa del correo
         except GeminiAgotado as err:
             # Recarga manual: se para aquí (este correo queda sin procesar) para no empeorar los datos
             raise RuntimeError(f'Gemini no responde ({err}). Recarga detenida en "{c.asunto}" '

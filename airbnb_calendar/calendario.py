@@ -59,6 +59,11 @@ REINTENTABLES = {429, 500, 502, 503, 504}
 ESPERAS_S = (2, 5, 15)                # backoff ante cortes momentáneos de Google
 
 
+class CalendarioInaccesible(RuntimeError):
+    """El calendario entero no es accesible (ID incorrecto o no compartido con la cuenta de servicio).
+    No es culpa de ningún correo: la ejecución se detiene sin contar fallos."""
+
+
 def sesion_cuenta_servicio(json_credenciales: str):
     """Sesión HTTP autenticada con la cuenta de servicio (JSON completo de la clave)."""
     from google.auth.transport.requests import AuthorizedSession
@@ -395,6 +400,9 @@ class Calendario:
             if resp.status_code in (403, 404):
                 ayuda = (" — ¿Has compartido el calendario con el email de la cuenta de servicio"
                          " («Hacer cambios en eventos») y es correcto [calendario] id?")
+            if resp.status_code in (401, 403, 404) and metodo == "GET" and url == self.url:
+                raise CalendarioInaccesible(f"Google Calendar no permite acceder al calendario (HTTP {resp.status_code})"
+                                            f"{ayuda}")
             raise RuntimeError(f"Google Calendar {metodo} → HTTP {resp.status_code}: {resp.text[:300]}{ayuda}")
         return resp.json() if resp.content else {}
 

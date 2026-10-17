@@ -49,7 +49,8 @@ class CalendarFalso:
     def request(self, metodo, url, params=None, json=None, timeout=None):
         assert url.startswith("https://www.googleapis.com/calendar/v3/calendars/cal-prueba/events")
         if metodo == "GET":
-            filtros = [v.split("=", 1) for k, v in (params or []) if k == "privateExtendedProperty"]
+            pares = params.items() if isinstance(params, dict) else (params or [])
+            filtros = [v.split("=", 1) for k, v in pares if k == "privateExtendedProperty"]
             items = [e for e in self.eventos.values()
                      if all(e["extendedProperties"]["private"].get(k) == v for k, v in filtros)]
             return Respuesta(200, {"items": copy.deepcopy(items)})
@@ -323,6 +324,29 @@ def test_A6_recarga_manual_espera_al_limite_de_gemini_y_si_no_responde_se_detien
         AnalizadorMensajes(cfg, "k", sesion=Limitado(99), dormir=lambda _: None, paciente=True).analizar("x", {})
     # Sin paciencia (ejecución normal): respaldo por palabras clave, no se para
     assert AnalizadorMensajes(cfg, "k", sesion=Limitado(99), dormir=lambda _: None).analizar("x", {}).fuente == "palabras"
+
+
+def test_A7_calendario_inaccesible_detiene_la_ejecucion_sin_contar_fallos(tmp_path):
+    from airbnb_calendar.calendario import CalendarioInaccesible
+    s = Entorno(tmp_path)
+    s.buzon.recibir(CONF_IMANE)
+    original = s.cal.request
+
+    def sin_acceso(metodo, url, params=None, json=None, timeout=None):
+        if metodo == "GET" and url.endswith("/events"):
+            return Respuesta(404, texto='{"error": {"code": 404, "message": "Not Found"}}')
+        return original(metodo, url, params=params, json=json, timeout=timeout)
+
+    s.cal.request = sin_acceso
+    for _ in range(4):
+        with pytest.raises(CalendarioInaccesible):
+            s.ejecutar()
+    reg = Registro(s.ruta_estado)
+    assert reg.fallos == {} and reg.procesados == {}, "el correo se procesará cuando el calendario funcione"
+    assert s.tecnicos == [] and s.avisos == []
+    s.cal.request = original
+    s.ejecutar()
+    assert len(s.cal.eventos) == 1
 
 
 def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):
