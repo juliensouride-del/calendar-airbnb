@@ -73,7 +73,8 @@ def main() -> int:
         return recalcular(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run)
 
     calendario = Calendario(cfg, sesion_cuenta_servicio(sec.google_service_account_json))
-    analizador = AnalizadorMensajes(cfg, sec.gemini_api_key)
+    # Carga manual (--desde): Gemini espera al límite de peticiones y, si aun así falla, la carga se detiene
+    analizador = AnalizadorMensajes(cfg, sec.gemini_api_key, paciente=bool(args.desde))
     if args.comprobar:
         return comprobar(cfg, sec, calendario, analizador)
 

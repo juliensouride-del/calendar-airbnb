@@ -159,6 +159,13 @@ class Calendario:
         return {"start": {"dateTime": inicio.isoformat(), "timeZone": self.cfg.zona_horaria},
                 "end": {"dateTime": fin.isoformat(), "timeZone": self.cfg.zona_horaria}}
 
+    def _desactualizado(self, ev: dict, estado: dict, limpieza: dict | None) -> bool:
+        """¿El evento no es como quedaría ahora (limpieza, horario, título, descripción o color)?"""
+        if _props(ev).get(P_LIMPIEZA, "") != _huella(limpieza) or self._horario_distinto(ev, estado):
+            return True
+        contenido = self._contenido(dict(estado), limpieza)
+        return any((ev.get(k) or "") != v for k, v in contenido.items())
+
     def _horario_distinto(self, ev: dict, estado: dict) -> bool:
         """¿La hora del evento no es la que le toca con las reglas actuales?"""
         def leer(campo):
@@ -174,12 +181,15 @@ class Calendario:
         self._pedir("DELETE", f"{self.url}/{ev['id']}", ignorar=(404, 410))
 
     def _contenido(self, estado: dict, limpieza: dict | None) -> dict:
-        actualizado = datetime.now(self.tz).strftime("%d/%m/%Y %H:%M")
+        # El nombre corto siempre sale de config.toml (si se cambia allí, se corrigen todos los eventos)
+        alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
+        if alojamiento:
+            estado["alias"] = alojamiento.alias or alojamiento.nombre
         color = ("cancelada" if estado["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else "reserva")
         return {
             "summary": reglas.titulo_evento(estado, limpieza),
-            "description": reglas.descripcion_evento(estado, actualizado, limpieza, self.cfg),
+            "description": reglas.descripcion_evento(estado, limpieza, self.cfg),
             "colorId": self.cfg.colores[color],
         }
 
@@ -207,14 +217,14 @@ class Calendario:
                 if _misma_reserva(sig, estado):
                     continue
                 limpieza = reglas.evaluar_limpieza(self._reserva_anterior(sig), sig, self.cfg)
-                if _props(ev).get(P_LIMPIEZA, "") == _huella(limpieza) and not self._horario_distinto(ev, sig):
+                if not self._desactualizado(ev, sig, limpieza):
                     continue
                 self._escribir_limpieza(ev, sig, limpieza)
 
     def _escribir_limpieza(self, ev: dict, estado: dict, limpieza: dict | None) -> None:
-        """Reescribe texto, color y horario del evento (el horario siempre con las reglas actuales)."""
-        cuerpo = {**self._contenido(estado, limpieza), **self._fechas(*self._horario(estado)),
-                  "extendedProperties": {"private": {P_LIMPIEZA: _huella(limpieza)}}}
+        """Reescribe texto, color, horario (siempre con las reglas actuales) y estado del evento."""
+        cuerpo = {**self._contenido(estado, limpieza), **self._fechas(*self._horario(estado))}
+        cuerpo["extendedProperties"] = {"private": self._propiedades(estado, limpieza, ev)}   # con el nombre corto al día
         self._pedir("PATCH", f"{self.url}/{ev['id']}", json=cuerpo)
         self.stats["limpiezas_recalculadas"] += 1
         log.info("Limpieza recalculada: %s", cuerpo["summary"])
@@ -240,7 +250,7 @@ class Calendario:
             self.stats["reservas_revisadas"] += 1
             mismas = [o for _, o in reservas if _hash(o["alojamiento"]) == _hash(e["alojamiento"])]
             limpieza = reglas.evaluar_limpieza(_anterior_en(mismas, e, self.cfg), e, self.cfg)
-            if _props(ev).get(P_LIMPIEZA, "") != _huella(limpieza) or self._horario_distinto(ev, e):
+            if self._desactualizado(ev, e, limpieza):
                 if simulacion:
                     inicio, fin = self._horario(e)
                     log.info("Se actualizaría: %s → %s (%s → %s)", ev.get("summary"),

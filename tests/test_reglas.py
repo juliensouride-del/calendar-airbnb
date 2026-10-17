@@ -32,13 +32,9 @@ def test_confirmacion_titulos_y_descripcion(r0, cfg):
     e = reglas.crear_estado(r0)
     reglas.aplicar_reglas(e, None, cfg)
     assert reglas.titulo_evento(e) == "🏠 Corazón de Madrid · 2 pers"
-    d = reglas.descripcion_evento(e, "x")
-    assert "📅 Check-in: jueves 26/11/2026 · desde 15:00" in d
-    assert "📅 Check-out: miércoles 02/12/2026 · hasta 11:00" in d
-    assert "👥 Personas: 2 (2 adultos)" in d
-    assert "Hora prevista de llegada: No indicada" in d
-    assert "Sofá cama: No indicado" in d
-    assert "Código: HMTSBCMZH9" in d
+    d = reglas.descripcion_evento(e)
+    # Nada que ya esté en el título o en las horas del evento: solo el huésped y el código
+    assert d == "Huésped: Imane Bensalah · Código: HMTSBCMZH9"
     assert reglas.avisos_pendientes(e, cfg) == []
 
 
@@ -56,8 +52,10 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     assert reglas.avisos_pendientes(e, cfg) == ["📝 Entrada anticipada hacia las 12:00"]
     reglas.marcar_avisado(e)
     assert reglas.titulo_evento(e) == "🏠 Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
-    assert "🍼 Cuna: SÍ — lo indica el huésped" in reglas.descripcion_evento(e)
-    assert "23/09: Llegan en una hora; agradecen la cuna." in reglas.descripcion_evento(e)
+    d = reglas.descripcion_evento(e)
+    assert "Cuna" not in d, "la pide el huésped: ya está en el título"
+    assert "Llegan en una hora" not in d, "las notas de los mensajes no van en el evento"
+    assert "👥 2 adultos, 1 bebé" in d and "📝 Peticiones:\n   • Entrada anticipada hacia las 12:00" in d
 
     # La misma petición reformulada igual no se duplica
     reglas.fusionar_analisis(e, analisis(otras_peticiones=["entrada anticipada hacia las 12:00"]), "huesped", "24/09")
@@ -99,7 +97,7 @@ def test_cancelacion_titulo_marcado_y_sin_avisos(r0, cfg):
     reglas.actualizar_con_datos(e, r1)
     e["cancelada"] = True
     assert reglas.titulo_evento(e).startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
-    assert reglas.descripcion_evento(e).startswith("❌ RESERVA CANCELADA")
+    assert reglas.descripcion_evento(e) == "Huésped: Imane Bensalah · Código: HMCJH8BNX4"
     assert reglas.avisos_pendientes(e, cfg) == []
     assert e["huesped"] == "Imane Bensalah"      # "Sam" (más corto y distinto) no lo pisa
 
@@ -127,8 +125,7 @@ def test_palabras_clave_entrada_anticipada_y_salida_tardia():
 def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
     """Caso real: primero 'llegaremos antes de las 17:00', después pide entrar antes de las 15:00."""
     e = reglas.crear_estado(r0)
-    reglas.fusionar_analisis(e, analisis(hora_llegada="17:00"), "huesped")
-    reglas.deducir_solicitudes(e, cfg)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="17:00"), "huesped", cfg=cfg)
     assert e["entrada_anticipada"] is None, "17:00 es después de la hora de entrada: no pide nada"
     reglas.marcar_avisado(e)
 
@@ -136,7 +133,7 @@ def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
     av = reglas.avisos_pendientes(e, cfg)
     assert av == ["⏰ Pide ENTRAR ANTES de las 15:00: sin hora concreta (pregunta si es posible)"]
     assert "⏰ pide entrar antes" in reglas.titulo_evento(e)
-    assert "⏰ Pide entrar antes: sin hora concreta" in reglas.descripcion_evento(e)
+    assert "escribe arriba #entrada HH:MM" in reglas.descripcion_evento(e)
     reglas.marcar_avisado(e)
     assert reglas.avisos_pendientes(e, cfg) == [], "no se repite"
 
@@ -150,12 +147,34 @@ def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
     # Con acuerdo del anfitrión el título muestra el acuerdo, no la petición
     e["acuerdo_entrada"] = "12:30"
     assert "pide entrar" not in reglas.titulo_evento(e)
+    assert "escribe arriba" not in reglas.descripcion_evento(e)
+
+
+def test_lo_ultimo_que_dice_el_huesped_manda(r0, cfg):
+    e = reglas.crear_estado(r0)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="11:00"), "huesped", cfg=cfg)
+    assert e["entrada_anticipada"] == "11:00"
+    reglas.fusionar_analisis(e, analisis(hora_llegada="18:00"), "huesped", cfg=cfg)
+    assert e["hora_llegada"] == "18:00" and e["entrada_anticipada"] is None, "ya no necesita entrar antes"
+    reglas.fusionar_analisis(e, analisis(entrada_anticipada="12:00"), "huesped", cfg=cfg)
+    reglas.fusionar_analisis(e, analisis(entrada_anticipada="no"), "huesped", cfg=cfg)
+    assert e["entrada_anticipada"] is None, "retira la petición"
+    reglas.fusionar_analisis(e, analisis(hora_salida="13:00", resumen="Sale a las 13"), "huesped", "01/10", cfg)
+    reglas.fusionar_analisis(e, analisis(hora_salida="13:00", resumen="Sale a las 13"), "huesped", "01/10", cfg)
+    assert e["salida_tardia"] == "13:00" and len(e["notas"]) == 1, "re-procesar no duplica notas"
+    reglas.fusionar_analisis(e, analisis(hora_salida="10:00"), "huesped", cfg=cfg)
+    assert e["salida_tardia"] is None
+
+    # Re-procesar la reserva desde su confirmación: se olvida lo deducido de los mensajes
+    e.update(acuerdo_entrada="13:00", peticiones=["Trona"])
+    reglas.resetear_mensajes(e)
+    assert e["hora_llegada"] is None and e["peticiones"] == [] and e["notas"] == []
+    assert e["acuerdo_entrada"] == "13:00" and e["codigo"] == "HMTSBCMZH9"
 
 
 def test_llegar_antes_o_salir_despues_del_horario_cuenta_como_peticion(r0, cfg):
     e = reglas.crear_estado(r0)
-    reglas.fusionar_analisis(e, analisis(hora_llegada="11:00", hora_salida="14:00"), "huesped")
-    reglas.deducir_solicitudes(e, cfg)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="11:00", hora_salida="14:00"), "huesped", cfg=cfg)
     assert e["entrada_anticipada"] == "11:00" and e["salida_tardia"] == "14:00"
     av = reglas.avisos_pendientes(e, cfg)       # [avisos] horas = false, pero esto es una petición
     assert "⏰ Pide ENTRAR ANTES de las 15:00: a las 11:00" in av

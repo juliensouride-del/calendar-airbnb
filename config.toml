@@ -89,7 +89,7 @@ timeout_s = 30
 
 [[alojamientos]]
 nombre = "Espacioso y luminoso apartamento Corazón de Madrid"
-alias = "Buenavista"
+alias = "Tirso"
 id_anuncio = "809290025626258590"
 capacidad_sin_sofa = 2
 
@@ -101,7 +101,7 @@ capacidad_sin_sofa = 3
 
 [[alojamientos]]
 nombre = "Anton Martin Agradable, Anton Martin - Apartament."
-alias = "Tirso"
+alias = "Buenavista"
 id_anuncio = "1025328659441162105"
 otros_nombres = ["Apartamentos de Julian, Anton Martin - Apartament."]
 capacidad_sin_sofa = 2

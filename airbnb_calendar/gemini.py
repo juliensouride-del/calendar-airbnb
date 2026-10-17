@@ -41,9 +41,10 @@ INSTRUCCIONES = "\n".join([
     '  ("avísame cuando esté listo por si puedo entrar antes", "can we arrive before 3pm?", "¿hay check-in temprano?").',
     '  Devuelve la hora deseada en HH:MM (24 h) si la indica ("¿podemos entrar a las 12?" → "12:00"),',
     '  o "si" si no da una hora concreta ("antes de las 15:00", "lo antes posible", "early check-in").',
-    "  null si no pide nada de esto. Cuenta también si es una petición repetida o con una hora distinta a la de antes.",
+    '  "no" si dice que ya no lo necesita o que llegará a la hora normal. null si no dice nada de esto.',
+    "  Cuenta también si es una petición repetida o con una hora distinta a la de antes.",
     "- salida_tardia: igual, si pide salir o dejar las maletas DESPUÉS de la hora de check-out (late check-out):",
-    '  hora deseada HH:MM, "si" sin hora concreta, o null.',
+    '  hora deseada HH:MM, "si" sin hora concreta, "no" si ya no lo necesita, o null.',
     '- sofa_cama: "si" si indica que usarán o necesitan el sofá cama (o una cama extra para alguien);',
     '  "no" si dice que NO lo necesitan; "sin_mencion" en cualquier otro caso.',
     '- cuna: "si" si pide, necesita o confirma una cuna / cama de bebé (también si agradece que se la proporciones);',
@@ -63,8 +64,8 @@ ESQUEMA = {
     "properties": {
         "hora_llegada": {"type": "STRING", "nullable": True, "description": "HH:MM en 24 h o null"},
         "hora_salida": {"type": "STRING", "nullable": True, "description": "HH:MM en 24 h o null"},
-        "entrada_anticipada": {"type": "STRING", "nullable": True, "description": 'HH:MM en 24 h, "si" o null'},
-        "salida_tardia": {"type": "STRING", "nullable": True, "description": 'HH:MM en 24 h, "si" o null'},
+        "entrada_anticipada": {"type": "STRING", "nullable": True, "description": 'HH:MM en 24 h, "si", "no" o null'},
+        "salida_tardia": {"type": "STRING", "nullable": True, "description": 'HH:MM en 24 h, "si", "no" o null'},
         "sofa_cama": {"type": "STRING", "enum": ["si", "no", "sin_mencion"]},
         "cuna": {"type": "STRING", "enum": ["si", "no", "sin_mencion"]},
         "otras_peticiones": {"type": "ARRAY", "items": {"type": "STRING"}},
@@ -77,6 +78,13 @@ ESQUEMA = {
 }
 
 ESPERAS_REINTENTO_S = [2, 6]
+# Recarga manual (--desde): cientos de mensajes seguidos chocan con el límite por minuto de Gemini.
+# Se espera lo necesario en vez de pasar a palabras clave (peor análisis).
+ESPERAS_PACIENTE_S = [10, 30, 60, 60, 90]
+
+
+class GeminiAgotado(Exception):
+    """En una recarga manual Gemini no responde ni esperando: mejor parar que guardar un análisis peor."""
 
 
 @dataclass
@@ -87,11 +95,13 @@ class Resultado:
 
 
 class AnalizadorMensajes:
-    def __init__(self, cfg: Config, api_key: str, sesion: requests.Session | None = None, dormir=time.sleep):
+    def __init__(self, cfg: Config, api_key: str, sesion: requests.Session | None = None, dormir=time.sleep,
+                 paciente: bool = False):
         self.cfg = cfg
         self.api_key = api_key
         self.sesion = sesion or requests.Session()
         self.dormir = dormir
+        self.paciente = paciente        # recarga manual: esperar al límite de peticiones y, si aun así falla, parar
 
     def analizar(self, texto: str, contexto: dict) -> Resultado:
         if not self.cfg.usar_gemini or not self.api_key:
@@ -103,23 +113,34 @@ class AnalizadorMensajes:
             except Exception as err:                     # noqa: BLE001 — se prueba el siguiente modelo
                 errores.append(f"{modelo} → {err}")
         msg = "Gemini " + " | ".join(errores)
+        if self.paciente:
+            raise GeminiAgotado(msg)
         log.error("%s; se usan palabras clave", msg)
         return Resultado(analisis_por_palabras_clave(texto), "palabras", msg)
 
     def _llamar(self, modelo: str, texto: str, contexto: dict) -> dict:
         cuerpo = construir_peticion(texto, contexto, modelo, self.cfg.gemini_nivel_razonamiento)
         ultimo = ""
-        for intento in range(len(ESPERAS_REINTENTO_S) + 1):
+        esperas = ESPERAS_PACIENTE_S if self.paciente else ESPERAS_REINTENTO_S
+        for intento in range(len(esperas) + 1):
             resp = self.sesion.post(URL_API.format(modelo=modelo), json=cuerpo,
                                     headers={"x-goog-api-key": self.api_key}, timeout=(10, self.cfg.gemini_timeout_s))
             log.info("  Gemini (%s) intento %d → HTTP %d", modelo, intento + 1, resp.status_code)
             if resp.status_code == 200:
                 return interpretar_respuesta(resp.json())
             ultimo = f"HTTP {resp.status_code}: {resp.text[:300]}"
-            if resp.status_code != 429 and resp.status_code < 500 or intento == len(ESPERAS_REINTENTO_S):
+            if resp.status_code != 429 and resp.status_code < 500 or intento == len(esperas):
                 break
-            self.dormir(ESPERAS_REINTENTO_S[intento])
+            if resp.status_code == 429 and "PerDay" in resp.text:
+                break                   # cuota diaria agotada: esperar unos minutos no sirve
+            self.dormir(max(esperas[intento], _espera_sugerida(resp.text) if self.paciente else 0))
         raise RuntimeError(ultimo)
+
+
+def _espera_sugerida(texto: str) -> float:
+    """Segundos que Gemini pide esperar en un 429 ('"retryDelay": "37s"'), con un pequeño margen."""
+    m = re.search(r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"', texto or "")
+    return float(m.group(1)) + 1 if m else 0
 
 
 def construir_peticion(texto: str, c: dict, modelo: str = "", nivel_razonamiento: str = "") -> dict:
@@ -174,9 +195,11 @@ def interpretar_respuesta(resp: dict) -> dict:
 
 
 def _solicitud(v) -> str | None:
-    """'HH:MM' | 'si' | None (cualquier otra cosa no válida que no sea vacía/null/no cuenta como 'si')."""
-    if not isinstance(v, str) or v.strip().lower() in ("", "null", "none", "no", "sin_mencion"):
+    """'HH:MM' | 'si' | 'no' | None (otro texto no vacío cuenta como 'si')."""
+    if not isinstance(v, str) or v.strip().lower() in ("", "null", "none", "sin_mencion"):
         return None
+    if v.strip().lower() == "no":
+        return "no"
     return _normalizar_hora(v) or "si"
 
 

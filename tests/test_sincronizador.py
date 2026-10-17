@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests
 
-from airbnb_calendar.calendario import Calendario
+from airbnb_calendar.calendario import Calendario, leer_estado
 from airbnb_calendar.gemini import AnalizadorMensajes
 from airbnb_calendar.registro import Registro
 from airbnb_calendar.sincronizador import Sincronizador
@@ -142,14 +142,15 @@ class Entorno:
         self.ruta_estado = tmp_path / "estado.json"
         self.ahora = datetime(2026, 10, 8, 12, tzinfo=timezone.utc)
 
-    def ejecutar(self):
-        """Una ejecución completa, como en GitHub Actions: carga el registro, procesa y lo guarda."""
+    def ejecutar(self, desde: datetime | None = None):
+        """Una ejecución completa, como en GitHub Actions: carga el registro, procesa y lo guarda.
+        desde: carga manual (--desde), que vuelve a procesar todos los correos del tramo."""
         registro = Registro(self.ruta_estado)
         notificador = type("N", (), {"enviar": lambda _, a, c: self.avisos.append((a, c))})()
         tecnico = type("T", (), {"enviar": lambda _, a, c: self.tecnicos.append((a, c))})()
         analizador = AnalizadorMensajes(self.cfg, "clave-falsa", sesion=self.gemini, dormir=lambda s: None)
         Sincronizador(self.cfg, self.buzon, Calendario(self.cfg, self.cal, dormir=lambda s: None), analizador, notificador,
-                      registro, ahora=self.ahora, notificador_tecnico=tecnico).ejecutar()
+                      registro, ahora=self.ahora, desde=desde, notificador_tecnico=tecnico).ejecutar()
         registro.guardar()
         return registro
 
@@ -207,7 +208,7 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     entrada = s.cal.ev("HMTSBCMZH9")
     assert entrada["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
     assert hora(entrada) == "2026-11-26 18:00", "el evento se mueve a la hora de llegada"
-    assert "🕒 Hora prevista de llegada: 18:00" in entrada["description"]
+    assert "Hora prevista" not in entrada["description"], "la hora ya está en el título"
     assert len(s.avisos) == 1 and "sofá cama" in s.asuntos[0]
     assert "we will need the sofa bed" in s.avisos[0][1]
     assert "Correo en Yahoo Mail: «RE: Reservation for" in s.avisos[0][1]
@@ -222,7 +223,7 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     entrada = s.cal.ev("HMTSBCMZH9")
     assert entrada["summary"].startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
     assert entrada["colorId"] == "8"
-    assert entrada["description"].startswith("❌ RESERVA CANCELADA")
+    assert entrada["description"] == "Huésped: Imane Bensalah · Código: HMTSBCMZH9"
     assert "Huésped: Imane Bensalah" in entrada["description"]
     assert len(s.cal.eventos) == 1 and len(s.avisos) == 1
 
@@ -245,7 +246,7 @@ def test_A2_segunda_peticion_de_entrar_antes_se_detecta_y_avisa(tmp_path):
     s.ejecutar()
     entrada = s.cal.ev("HMTSBCMZH9")
     assert "⏰ pide entrar antes" in entrada["summary"], entrada["summary"]
-    assert "⏰ Pide entrar antes: sin hora concreta" in entrada["description"]
+    assert "escribe arriba #entrada HH:MM" in entrada["description"]
     assert len(s.avisos) == 1 and "entrar antes" in s.asuntos[0], s.asuntos
     assert "⏰ Pide ENTRAR ANTES de las 15:00" in s.avisos[0][1]
     assert hora(entrada) == "2026-11-26 17:00", "sin acuerdo, el calendario no adelanta la entrada"
@@ -257,6 +258,68 @@ def test_A3_sin_gemini_las_palabras_clave_detectan_la_entrada_anticipada(tmp_pat
     s.buzon.recibir(_mensaje_imane("Is it possible to check-in early?", "2026-10-03 10:00"))
     s.ejecutar()
     assert any("entrar antes" in a for a in s.asuntos), s.asuntos
+
+
+def test_A4_recarga_manual_reconstruye_la_reserva_con_lo_ultimo_del_huesped(tmp_path):
+    s = Entorno(tmp_path)
+    s.buzon.recibir(CONF_IMANE)
+    s.buzon.recibir(MENSAJE_IMANE)
+    s.ejecutar()
+    # Estado con datos antiguos o mal interpretados por una versión anterior
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    eventos = cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None)
+    e = leer_estado(eventos)
+    e.update(hora_llegada="17:00", entrada_anticipada="12:00", peticiones=["Petición antigua"])
+    cal.guardar_reserva(e, eventos, None)
+    assert "llega 17:00" in s.cal.ev("HMTSBCMZH9")["summary"]
+
+    s.ejecutar(desde=datetime(2026, 9, 1, tzinfo=timezone.utc))
+    ev = s.cal.ev("HMTSBCMZH9")
+    assert ev["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama", ev["summary"]
+    assert "Petición antigua" not in ev["description"]
+    assert len(s.cal.eventos) == 1
+
+
+def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp_path):
+    s = Entorno(tmp_path)
+    s.buzon.recibir(CONF_IMANE)
+    s.ejecutar()
+    ev = s.cal.ev("HMTSBCMZH9")
+    ev["description"] = "🏠 Alojamiento: Espacioso...\n🕒 Hora prevista de llegada: No indicada\nSincronizado desde Yahoo Mail"
+    s.cfg.alojamientos = [replace(a, alias="Tirso") if a.alias == "Corazón de Madrid" else a for a in s.cfg.alojamientos]
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
+    ev = s.cal.ev("HMTSBCMZH9")
+    assert ev["summary"] == "🏠 Tirso · 2 pers"
+    assert ev["description"] == "Huésped: Imane Bensalah · Código: HMTSBCMZH9"
+    assert leer_estado({"evento": ev})["alias"] == "Tirso"
+    escrituras = cal.stats["limpiezas_recalculadas"]
+    cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
+    assert cal.stats["limpiezas_recalculadas"] == escrituras, "si ya está al día no se reescribe"
+
+
+def test_A6_recarga_manual_espera_al_limite_de_gemini_y_si_no_responde_se_detiene(tmp_path):
+    from airbnb_calendar.gemini import GeminiAgotado
+
+    class Limitado:
+        def __init__(self, fallos):
+            self.fallos, self.n = fallos, 0
+
+        def post(self, url, json=None, headers=None, timeout=None):
+            self.n += 1
+            if self.n <= self.fallos:
+                return Respuesta(429, texto='{"error": {"details": [{"retryDelay": "37s"}]}}')
+            return GeminiFalso().post(url, json=json)
+
+    esperas = []
+    cfg = config_prueba()
+    a = AnalizadorMensajes(cfg, "k", sesion=Limitado(2), dormir=esperas.append, paciente=True)
+    assert a.analizar("We will arrive around 6pm", {}).analisis["hora_llegada"] == "18:00"
+    assert esperas == [38.0, 38.0], "respeta el retryDelay de Gemini"
+    with pytest.raises(GeminiAgotado):
+        AnalizadorMensajes(cfg, "k", sesion=Limitado(99), dormir=lambda _: None, paciente=True).analizar("x", {})
+    # Sin paciencia (ejecución normal): respaldo por palabras clave, no se para
+    assert AnalizadorMensajes(cfg, "k", sesion=Limitado(99), dormir=lambda _: None).analizar("x", {}).fuente == "palabras"
 
 
 def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):
@@ -281,7 +344,7 @@ def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
     e3 = s.cal.ev("Antón Martín")
     assert e3["summary"] == "🏠 Antón Martín · 3 pers · llega 15:05 · sale 11:00 · 🍼 cuna"
     assert hora(e3) == "2026-09-23 15:05"
-    assert "🍼 Cuna: SÍ — lo indica el huésped" in e3["description"]
+    assert "Cuna" not in e3["description"], "la pide el huésped: ya está en el título"
     assert "Pregunta si puede entrar hacia las 12:00" in e3["description"]
     e2 = s.cal.ev("Lavapiés")
     assert e2["summary"] == "🏠 Lavapiés · 3 pers · llega 15:00"
@@ -297,7 +360,7 @@ def test_D_gemini_caido_palabras_clave_nota_y_un_solo_aviso_al_dia(tmp_path):
     s.ejecutar()
     e = s.cal.ev("Antón Martín")
     assert "🍼 cuna" in e["summary"]
-    assert "Mensaje sin analizar por la IA" in e["description"]
+    assert "mensajes sin analizar por la IA" in e["description"]
     assert sum("Gemini no responde" in a for a, _ in s.tecnicos) == 1
     assert not any("Gemini" in a for a in s.asuntos), "los avisos técnicos no llegan al cliente"
     assert sum("cuna" in a for a in s.asuntos) == 1
@@ -349,7 +412,7 @@ def test_G_eml_reales_confirmacion_y_mensaje_con_hora_sofa_y_cuna(tmp_path):
     entrada = s.cal.ev("HMMW9HP8JC")
     assert entrada["summary"].startswith("🏠 Antón Martín · 2 pers · llega 18:00"), entrada["summary"]
     assert "🛋️ sofá cama" in entrada["summary"] and "🍼 cuna" in entrada["summary"]
-    assert "🏠 Alojamiento: Anton Martin Agradable" in entrada["description"]
+    assert "Alojamiento" not in entrada["description"]
     assert len(s.avisos) == 1
 
 
@@ -360,7 +423,7 @@ def test_H_modelo_gemini_colgado_timeout_y_respaldo(tmp_path):
         s.buzon.recibir(c)
     s.ejecutar()
     assert any("gemini-respaldo" in u for u in s.gemini.llamadas)
-    assert "Mensaje sin analizar por la IA" not in s.cal.ev("Antón Martín")["description"]
+    assert "sin analizar por la IA" not in s.cal.ev("Antón Martín")["description"]
     assert not any("Gemini no responde" in a for a, _ in s.tecnicos)
 
 
@@ -450,15 +513,14 @@ def test_L_rotacion_limpieza_ok_alerta_y_recalculo_al_cambiar_la_salida(tmp_path
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
     ev = s.cal.ev("ENTRA2")
     assert ev["summary"] == "[LIMPIEZA OK] 🏠 Lavapiés · 2 pers"
-    assert "Ventana: 05/11 de 11:00 a 15:00" in ev["description"]
-    assert "🔑 Entrega de llaves en persona a las 15:00" in ev["description"]
+    assert "🧹 Limpieza: 05/11 de 11:00 a 15:00 (4 h 00 min)" in ev["description"]
     assert not s.cal.ev("SALE1")["summary"].startswith("["), "la reserva sin huésped anterior no lleva etiqueta"
 
     # El huésped saliente dice que se va a las 13:30: sin acuerdo expreso se mantiene la salida estándar (11:00)
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", hora_salida="13:30"))
     ev = s.cal.ev("ENTRA2")
     assert ev["summary"] == "[LIMPIEZA OK] 🏠 Lavapiés · 2 pers", "se recalcula y sigue OK"
-    assert "sale hoy mismo a las 11:00" in ev["description"]
+    assert "sale ese mismo día a las 11:00" in ev["description"]
     assert s.cal.ev("SALE1")["end"]["dateTime"].startswith("2026-11-05T11:00")
 
     # Si cancela el que sale, ya no hay rotación
@@ -501,7 +563,6 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
     ev = s.cal.ev("ENTRA2")
-    assert "#entrada HH:MM" in ev["description"], "la descripción explica cómo fijar un acuerdo"
 
     # Julien acuerda entrada a las 12:00 (deja 1 h de limpieza) y lo escribe en la web de Calendar (HTML)
     ev["description"] = "#entrada 12h<br>" + ev["description"]

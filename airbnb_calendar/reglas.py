@@ -61,11 +61,13 @@ def actualizar_con_datos(e: dict, d: DatosCorreo) -> dict:
     return e
 
 
-def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "") -> dict:
+def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "", cfg: Config | None = None) -> dict:
     """
-    Fusiona el análisis de un mensaje.
+    Fusiona el análisis de un mensaje. Los mensajes se procesan en orden: lo último que dice el huésped manda.
     a: {hora_llegada, hora_salida, entrada_anticipada, salida_tardia, sofa_cama, cuna, otras_peticiones, resumen}
     fuente: 'huesped' (Gemini) | 'palabras' (respaldo por palabras clave)
+    cfg: con él, una hora de llegada (salida) anterior (posterior) al horario estándar cuenta como
+         petición de entrar antes (salir después), y una posterior (anterior) la anula.
     """
     if not a:
         return e
@@ -73,8 +75,10 @@ def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "")
         e["hora_llegada"] = a["hora_llegada"]
     if es_hora_valida(a.get("hora_salida")):
         e["hora_salida"] = a["hora_salida"]
-    for k in ("entrada_anticipada", "salida_tardia"):
-        e[k] = _fusionar_solicitud(e.get(k), a.get(k))
+    estandar = (cfg.hora_entrada_por_defecto, cfg.hora_salida_por_defecto) if cfg else (None, None)
+    for k, hora, std, antes in (("entrada_anticipada", a.get("hora_llegada"), estandar[0], True),
+                                ("salida_tardia", a.get("hora_salida"), estandar[1], False)):
+        e[k] = _fusionar_solicitud(e.get(k), a.get(k), hora, std, antes)
     e["sofa"] = _fusionar_marca(e["sofa"], a.get("sofa_cama"), fuente)
     e["cuna"] = _fusionar_marca(e["cuna"], a.get("cuna"), fuente)
 
@@ -84,31 +88,40 @@ def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "")
             e["peticiones"].append(txt)
     e["peticiones"] = e["peticiones"][-10:]
 
-    resumen = str(a.get("resumen") or "").strip()
-    if resumen:
-        e["notas"] = (e["notas"] + [{"f": fecha_txt, "t": resumen[:200]}])[-5:]
+    resumen = str(a.get("resumen") or "").strip()[:200]
+    if resumen and not any(n["t"] == resumen for n in e["notas"]):       # re-procesar no duplica notas
+        e["notas"] = (e["notas"] + [{"f": fecha_txt, "t": resumen}])[-5:]
     return e
 
 
-def _fusionar_solicitud(actual: str | None, nueva) -> str | None:
-    """La última hora pedida manda; un 'si' sin hora no borra una hora pedida antes."""
-    if es_hora_valida(nueva):
-        return nueva
-    if nueva == "si":
+def _fusionar_solicitud(actual: str | None, pedida, hora_dicha, estandar: str | None, antes: bool) -> str | None:
+    """
+    Petición de entrar antes / salir después tras un mensaje nuevo (lo más reciente manda):
+     - pide una hora concreta → esa hora; 'si' sin hora → no borra una hora pedida antes; 'no' → la anula.
+     - si no pide nada pero dice a qué hora llega (sale): antes (después) del horario estándar es en la
+       práctica una petición; dentro del horario, la petición anterior ya no hace falta.
+    """
+    if es_hora_valida(pedida):
+        return pedida
+    if pedida == "si":
         return actual or "si"
+    if pedida == "no":
+        return None
+    hora = normalizar_hora(hora_dicha) if es_hora_valida(hora_dicha) else None
+    if hora and estandar:
+        return hora if (hora < estandar if antes else hora > estandar) else None
     return actual
 
 
-def deducir_solicitudes(e: dict, cfg: Config) -> dict:
+def resetear_mensajes(e: dict) -> dict:
     """
-    Si el huésped dice que llega antes de la hora de entrada (o sale después de la de salida),
-    en la práctica está pidiendo entrar antes (salir después), aunque no lo pregunte.
+    Olvida lo deducido de los mensajes (al re-procesar una reserva desde su confirmación), para que se
+    reconstruya con el análisis actual y no queden datos antiguos o mal interpretados. Se conservan los
+    datos de la reserva, los acuerdos del anfitrión y lo ya avisado.
     """
-    llegada, salida = normalizar_hora(e.get("hora_llegada")), normalizar_hora(e.get("hora_salida"))
-    if llegada and llegada < cfg.hora_entrada_por_defecto and not es_hora_valida(e.get("entrada_anticipada")):
-        e["entrada_anticipada"] = llegada
-    if salida and salida > cfg.hora_salida_por_defecto and not es_hora_valida(e.get("salida_tardia")):
-        e["salida_tardia"] = salida
+    vacio = crear_estado()
+    for k in ("hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa", "cuna", "peticiones", "notas"):
+        e[k] = vacio[k]
     return e
 
 
@@ -295,18 +308,14 @@ def prefijo_limpieza(l: dict | None) -> str:
 def lineas_limpieza(l: dict | None, cfg: Config) -> list[str]:
     if not l:
         return []
-    cuando = "hoy mismo" if l["mismo_dia"] else "el día anterior"
-    lin = [f"🧹 LIMPIEZA ({'OK' if l['ok'] else 'ALERTA — AJUSTAR HORARIO'})",
-           f"   Huésped anterior sale {cuando} a las {l['salida']} · este huésped entra a las {l['entrada']}"]
+    cuando = "ese mismo día" if l["mismo_dia"] else "el día anterior"
     if l["ok"]:
-        lin.append(f"   Ventana: {fecha_corta_es(l['dia'])} de {l['desde']} a {l['hasta']}"
-                   f" ({l['margen_min'] // 60} h {l['margen_min'] % 60:02d} min; hacen falta {cfg.limpieza_duracion_min // 60} h)")
-    else:
-        lin.append(f"   ⚠️ No caben {cfg.limpieza_duracion_min // 60} h de limpieza entre las {cfg.limpieza_inicio}"
-                   f" y las {cfg.limpieza_fin}: {l['motivo']}.")
-        lin.append("   Pide al huésped saliente que salga antes o al entrante que llegue más tarde.")
-    lin.append(f"   🔑 Entrega de llaves en persona a las {l['entrada']}")
-    return lin + [""]
+        return [f"🧹 Limpieza: {fecha_corta_es(l['dia'])} de {l['desde']} a {l['hasta']}"
+                f" ({l['margen_min'] // 60} h {l['margen_min'] % 60:02d} min) · el huésped anterior sale {cuando}"
+                f" a las {l['salida']}"]
+    return [f"⚠️ Limpieza: no caben {cfg.limpieza_duracion_min // 60} h entre las {cfg.limpieza_inicio} y las"
+            f" {cfg.limpieza_fin}: {l['motivo']}. Pide al huésped saliente que salga antes o al entrante que llegue"
+            " más tarde (y fija la hora con #entrada / #salida)."]
 
 
 def _min(hhmm: str) -> int:
@@ -349,59 +358,48 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
     return "❌ CANCELADA · " + t if e["cancelada"] else prefijo_limpieza(limpieza) + t
 
 
-def descripcion_evento(e: dict, actualizado_txt: str = "", limpieza: dict | None = None, cfg: Config | None = None) -> str:
-    no = "No indicada"
+def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None = None) -> str:
+    """
+    Solo lo que NO se ve ya en el título ni en las horas del evento (alojamiento, nº de personas, horas,
+    sofá cama y cuna van en el título; las fechas, en el propio evento).
+    """
     l = []
     # Las etiquetas de acuerdo van arriba y tal cual: se vuelven a leer en cada actualización
     acuerdos = [f"#{t} {e[f'acuerdo_{t}']}" for t in ("entrada", "salida") if e.get(f"acuerdo_{t}")]
     if acuerdos:
-        l += acuerdos + ["(horario acordado con el huésped: el script no lo cambia)", ""]
-    if e["cancelada"]:
-        l += ["❌ RESERVA CANCELADA", ""]
-    elif limpieza and cfg:
-        l += lineas_limpieza(limpieza, cfg)
-    l.append("🏠 Alojamiento: " + (e["alojamiento"] or "?"))
-    l.append("📅 Check-in: " + fecha_larga_es(e["checkin"]) + (" · desde " + e["hora_checkin"] if e["hora_checkin"] else ""))
-    l.append("📅 Check-out: " + fecha_larga_es(e["checkout"]) + (" · hasta " + e["hora_checkout"] if e["hora_checkout"] else ""))
-    l.append("👥 Personas: " + texto_personas(e))
-    l.append("🕒 Hora prevista de llegada: " + (e["hora_llegada"] or no))
-    l.append("🕒 Hora prevista de salida: " + (e["hora_salida"] or no))
-    pendiente = " — sin acordar (si lo aceptas, escribe arriba {})"
-    if e.get("entrada_anticipada"):
-        l.append("⏰ Pide entrar antes: " + _texto_solicitud(e["entrada_anticipada"])
-                 + ("" if e.get("acuerdo_entrada") else pendiente.format("#entrada HH:MM")))
-    if e.get("salida_tardia"):
-        l.append("⌛ Pide salir después: " + _texto_solicitud(e["salida_tardia"])
-                 + ("" if e.get("acuerdo_salida") else pendiente.format("#salida HH:MM")))
-    l.append("🛋️ Sofá cama: " + _texto_marca(e, "sofa"))
-    l.append("🍼 Cuna: " + _texto_marca(e, "cuna"))
-    if e["peticiones"]:
-        l.append("📝 Otras peticiones:")
-        l += ["   • " + p for p in e["peticiones"]]
-    if e["notas"]:
-        l.append("💬 Notas de los mensajes:")
-        l += ["   • " + (n["f"] + ": " if n["f"] else "") + n["t"] for n in e["notas"]]
-    l += ["", "────────────"]
+        l += acuerdos + ["(horario acordado: el script no lo cambia)"]
+    if not e["cancelada"]:
+        if limpieza and cfg:
+            l += lineas_limpieza(limpieza, cfg)
+        pendientes = [f"#{t}" for t, k in (("entrada", "entrada_anticipada"), ("salida", "salida_tardia"))
+                      if e.get(k) and not e.get(f"acuerdo_{t}")]
+        if pendientes:
+            l.append(f"⏰ Si aceptas la petición de horario, escribe arriba {' / '.join(p + ' HH:MM' for p in pendientes)}")
+        detalle = texto_personas(e, solo_detalle=True)
+        if detalle:
+            l.append("👥 " + detalle)
+        for campo, nombre in (("sofa", "Sofá cama"), ("cuna", "Cuna")):
+            m = e[campo]
+            if m and m["v"] and m["f"] != "huesped":      # si lo pide el huésped ya está en el título
+                l.append(f"{'🛋️' if campo == 'sofa' else '🍼'} {nombre}: {texto_fuente(e, campo)}")
+        if e["peticiones"]:
+            l.append("📝 Peticiones:")
+            l += ["   • " + p for p in e["peticiones"]]
+        if any(n["t"].startswith("⚠️") for n in e["notas"]):
+            l.append("⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.")
+    if l:
+        l.append("")
     l.append(f"Huésped: {e['huesped'] or '?'} · Código: {e['codigo'] or 'desconocido'}")
-    l.append("Sincronizado desde Yahoo Mail" + (" · " + actualizado_txt if actualizado_txt else ""))
-    if not acuerdos and not e["cancelada"]:
-        l.append("Para fijar una hora acordada con el huésped, escribe al principio: #entrada HH:MM o #salida HH:MM")
     return "\n".join(l)
 
 
-def _texto_marca(e: dict, campo: str) -> str:
-    m = e[campo]
-    if not m:
-        return "No indicado"
-    return ("SÍ" if m["v"] else "No") + " — " + texto_fuente(e, campo)
-
-
-def texto_personas(e: dict) -> str:
+def texto_personas(e: dict, solo_detalle: bool = False) -> str:
+    """'3 (2 adultos, 1 bebé)'. solo_detalle: '2 adultos, 1 bebé' solo si hay niños, bebés o mascotas."""
     if not e["total"] and not e["adultos"]:
-        return "?"
+        return "" if solo_detalle else "?"
     total = e["total"] or e["adultos"]
     if e["adultos"] is None:
-        return str(total)
+        return "" if solo_detalle else str(total)
 
     def plural(n, s, pl):
         return f"{n} {s if n == 1 else pl}"
@@ -414,6 +412,8 @@ def texto_personas(e: dict) -> str:
         p.append(plural(e["bebes"], "bebé", "bebés"))
     if e["mascotas"]:
         p.append(plural(e["mascotas"], "mascota", "mascotas"))
+    if solo_detalle:
+        return ", ".join(p) if (e["ninos"] or e["bebes"] or e["mascotas"]) else ""
     return f"{total} ({', '.join(p)})"
 
 

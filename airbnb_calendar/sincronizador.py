@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from . import reglas
 from .calendario import leer_estado
 from .config import Config
+from .gemini import GeminiAgotado
 from .parser import DatosCorreo, parsear_correo
 from .registro import Registro
 from .yahoo import Correo, es_remitente
@@ -80,6 +81,10 @@ class Sincronizador:
                 log.warning("  ⚠ %s", a)
             self._procesar_datos(datos, ctx)
             self._marcar_procesado(c)
+        except GeminiAgotado as err:
+            # Recarga manual: se para aquí (este correo queda sin procesar) para no empeorar los datos
+            raise RuntimeError(f'Gemini no responde ({err}). Recarga detenida en "{c.asunto}" '
+                               f"(recibido el {local:%Y-%m-%d}): vuelve a lanzarla más tarde con desde = esa fecha.") from None
         except Exception as err:                         # noqa: BLE001 — un correo malo no para los demás
             definitivo = isinstance(err, ErrorDefinitivo) or self.registro.sumar_fallo(c.id) >= self.cfg.max_reintentos
             log.error('Error en "%s": %s (%s)', c.asunto, err, "definitivo" if definitivo else "se reintentará")
@@ -120,7 +125,13 @@ class Sincronizador:
 
     def _confirmacion_o_mensaje(self, d: DatosCorreo, ctx: dict, eventos: dict | None = None) -> None:
         eventos = eventos if eventos is not None else self._buscar(d)
-        estado = leer_estado(eventos) or reglas.crear_estado()
+        estado = leer_estado(eventos)
+        if estado and d.tipo == "confirmacion":
+            # La confirmación es el primer correo de la reserva: si ya existe el evento es que se están
+            # re-procesando correos (--desde). Se reconstruye todo lo deducido de los mensajes, en orden,
+            # para que mande lo último que dijo el huésped y no queden interpretaciones antiguas.
+            reglas.resetear_mensajes(estado)
+        estado = estado or reglas.crear_estado()
         reglas.actualizar_con_datos(estado, d)
         self._analizar_texto_huesped(estado, d, ctx)
         alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
@@ -168,8 +179,7 @@ class Sincronizador:
             "peticiones_previas": estado["peticiones"],
         })
         log.info("  Análisis (%s): %s", r.fuente, r.analisis)
-        reglas.fusionar_analisis(estado, r.analisis, r.fuente, ctx["fecha_corta"])
-        reglas.deducir_solicitudes(estado, self.cfg)
+        reglas.fusionar_analisis(estado, r.analisis, r.fuente, ctx["fecha_corta"], self.cfg)
         if r.error:
             estado["notas"] = (estado["notas"] + [{"f": ctx["fecha_corta"], "t": "⚠️ Mensaje sin analizar por la IA; revísalo en Yahoo Mail."}])[-5:]
             if self.registro.puede_avisar("gemini", self.ahora):
