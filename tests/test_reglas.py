@@ -34,7 +34,7 @@ def test_confirmacion_titulos_y_descripcion(r0, cfg):
     assert reglas.titulo_evento(e) == "🏠 Corazón de Madrid · 2 pers"
     d = reglas.descripcion_evento(e)
     # Siempre llegada/salida, sofá cama y cuna; nada de alojamiento ni fechas (ya están en el evento)
-    assert d == "🕒 Llegada prevista: no indicada · Salida prevista: no indicada\n🛋️ Sofá cama: no indicado\n🍼 Cuna: no indicado\n\nHuésped: Imane Bensalah · Código: HMTSBCMZH9"
+    assert d == "🕒 Llegada: —   ·   Salida: —\n🛋️ Sofá cama: —\n🍼 Cuna: —\n\n👤 Imane Bensalah · Código HMTSBCMZH9"
     assert reglas.avisos_pendientes(e, cfg) == []
 
 
@@ -53,10 +53,11 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     reglas.marcar_avisado(e)
     assert reglas.titulo_evento(e) == "🏠 Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
     d = reglas.descripcion_evento(e)
-    assert "🕒 Llegada prevista: 15:05 · Salida prevista: no indicada" in d
-    assert "🍼 Cuna: SÍ — lo indica el huésped" in d
+    assert "🕒 Llegada: 15:05   ·   Salida: —" in d
+    assert "🍼 Cuna: SÍ (lo indica el huésped)" in d
     assert "Llegan en una hora" not in d, "las notas de los mensajes no van en el evento"
-    assert "👥 2 adultos, 1 bebé" in d and "📝 Peticiones:\n   • Entrada anticipada hacia las 12:00" in d
+    assert "👥" not in d, "niños y bebés ya se ven en sofá cama y cuna"
+    assert "📝 Peticiones:\n   • Entrada anticipada hacia las 12:00" in d
 
     # La misma petición reformulada igual no se duplica
     reglas.fusionar_analisis(e, analisis(otras_peticiones=["entrada anticipada hacia las 12:00"]), "huesped", "24/09")
@@ -98,7 +99,7 @@ def test_cancelacion_titulo_marcado_y_sin_avisos(r0, cfg):
     reglas.actualizar_con_datos(e, r1)
     e["cancelada"] = True
     assert reglas.titulo_evento(e).startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
-    assert reglas.descripcion_evento(e) == "Huésped: Imane Bensalah · Código: HMCJH8BNX4"
+    assert reglas.descripcion_evento(e) == "👤 Imane Bensalah · Código HMCJH8BNX4"
     assert reglas.avisos_pendientes(e, cfg) == []
     assert e["huesped"] == "Imane Bensalah"      # "Sam" (más corto y distinto) no lo pisa
 
@@ -134,7 +135,7 @@ def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
     av = reglas.avisos_pendientes(e, cfg)
     assert av == ["⏰ Pide ENTRAR ANTES de las 15:00: sin hora concreta (pregunta si es posible)"]
     assert "⏰ pide entrar antes" in reglas.titulo_evento(e)
-    assert "escribe arriba #entrada HH:MM" in reglas.descripcion_evento(e)
+    assert "escribe arriba: #entrada HH:MM" in reglas.descripcion_evento(e)
     reglas.marcar_avisado(e)
     assert reglas.avisos_pendientes(e, cfg) == [], "no se repite"
 
@@ -149,6 +150,26 @@ def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
     e["acuerdo_entrada"] = "12:30"
     assert "pide entrar" not in reglas.titulo_evento(e)
     assert "escribe arriba" not in reglas.descripcion_evento(e)
+
+
+def test_llegar_de_madrugada_es_llegar_tarde_no_entrar_antes(r0, cfg):
+    e = reglas.crear_estado(r0)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="00:30"), "huesped", cfg=cfg)
+    assert e["hora_llegada"] == "00:30" and e["entrada_anticipada"] is None
+    reglas.fusionar_analisis(e, analisis(hora_llegada="09:00"), "huesped", cfg=cfg)
+    assert e["entrada_anticipada"] == "09:00"
+
+
+def test_descripcion_ordenada_avisos_primero_locker_y_huesped_al_final(r0, cfg):
+    e = reglas.crear_estado(r0)
+    e.update(hora_llegada="18:00", entrada_anticipada="12:30", peticiones=["Trona"], locker="https://k/1",
+             sofa={"v": True, "f": "huesped"})
+    d = reglas.descripcion_evento(e, None, cfg).split("\n\n")
+    assert d[0] == "⏰ PIDE ENTRAR ANTES (a las 12:30). Si lo aceptas, escribe arriba: #entrada 12:30"
+    assert d[1].startswith("🕒 Llegada: 18:00   ·   Salida: —\n🛋️ Sofá cama: SÍ (lo indica el huésped)")
+    assert d[2] == "📝 Peticiones:\n   • Trona"
+    assert d[3] == "🔑 Locker: https://k/1"
+    assert d[4] == "👤 Imane Bensalah · Código HMTSBCMZH9"
 
 
 def test_lo_ultimo_que_dice_el_huesped_manda(r0, cfg):

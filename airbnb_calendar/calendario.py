@@ -414,7 +414,9 @@ def leer_estado(eventos: dict) -> dict | None:
         # Los acuerdos de horario los escribe el anfitrión en la descripción: lo que pone ahí manda
         # (si borra la etiqueta, el acuerdo desaparece)
         principal = eventos.get("evento") or ev
-        estado.update(reglas.leer_acuerdos(principal.get("description")))
+        # Solo la parte del anfitrión (encima del separador): la automática sugiere "#entrada 12:30" y no es un acuerdo
+        desc = _texto_plano(principal.get("description") or "")
+        estado.update(reglas.leer_acuerdos(desc.split(SEPARADOR, 1)[0]))
         # Mover el evento a mano en Calendar también es un horario acordado (salvo que haya etiqueta)
         escrito = _escrito(principal)
         for campo, clave, dia in (("start", "inicio", estado.get("checkin")), ("end", "fin", estado.get("checkout"))):

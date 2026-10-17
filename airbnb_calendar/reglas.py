@@ -16,6 +16,7 @@ from .config import Alojamiento, Config
 from .parser import DatosCorreo, clave_normalizada, normalizar_hora
 
 PRIORIDAD_FUENTE = {"regla": 1, "palabras": 2, "huesped": 3}   # lo que dice el huésped manda
+MADRUGADA = "06:00"      # una llegada antes de esta hora es de noche (tarde), no una entrada anticipada
 DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 
@@ -109,6 +110,8 @@ def _fusionar_solicitud(actual: str | None, pedida, hora_dicha, estandar: str | 
         return None
     hora = normalizar_hora(hora_dicha) if es_hora_valida(hora_dicha) else None
     if hora and estandar:
+        if antes and hora < MADRUGADA:
+            return None                     # llegar a las 00:30 es llegar tarde (de noche), no pedir entrar antes
         return hora if (hora < estandar if antes else hora > estandar) else None
     return actual
 
@@ -306,16 +309,16 @@ def prefijo_limpieza(l: dict | None) -> str:
 
 
 def lineas_limpieza(l: dict | None, cfg: Config) -> list[str]:
+    """Ventana para limpiar entre la salida del huésped anterior y la entrada de este (o el aviso si no cabe)."""
     if not l:
         return []
-    cuando = "ese mismo día" if l["mismo_dia"] else "el día anterior"
+    cuando = "ese día" if l["mismo_dia"] else "el día anterior"
     if l["ok"]:
         return [f"🧹 Limpieza: {fecha_corta_es(l['dia'])} de {l['desde']} a {l['hasta']}"
-                f" ({l['margen_min'] // 60} h {l['margen_min'] % 60:02d} min) · el huésped anterior sale {cuando}"
-                f" a las {l['salida']}"]
-    return [f"⚠️ Limpieza: no caben {cfg.limpieza_duracion_min // 60} h entre las {cfg.limpieza_inicio} y las"
-            f" {cfg.limpieza_fin}: {l['motivo']}. Pide al huésped saliente que salga antes o al entrante que llegue"
-            " más tarde (y fija la hora con #entrada / #salida)."]
+                f" (el huésped anterior sale {cuando} a las {l['salida']})"]
+    return [f"⚠️ LIMPIEZA: no caben {cfg.limpieza_duracion_min // 60} h entre las {cfg.limpieza_inicio} y las"
+            f" {cfg.limpieza_fin} ({l['motivo']}). Pide al huésped anterior que salga antes o a este que"
+            " llegue más tarde."]
 
 
 def _min(hhmm: str) -> int:
@@ -360,46 +363,52 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
 
 def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None = None) -> str:
     """
-    Debajo del título: llegada y salida previstas, sofá cama y cuna (siempre), y después solo lo que no
-    está en otro sitio (locker, limpieza, detalle de personas, peticiones, avisos). No se repiten el
-    alojamiento ni las fechas, que ya se ven en el evento.
+    Debajo del título, de lo más urgente a lo menos:
+      1. Avisos (solo si los hay): limpieza que no cabe, petición de horario pendiente, mensajes sin analizar.
+      2. Datos de la reserva: llegada y salida previstas, sofá cama, cuna y ventana de limpieza.
+      3. Peticiones del huésped.
+      4. Locker.
+      y al final, el huésped y el código de la reserva.
+    No se repiten el alojamiento ni las fechas, que ya se ven en el evento.
     """
     # Las etiquetas #entrada / #salida las escribe el anfitrión en su parte de la descripción
     # (encima de la línea automática); el script las lee pero no las reescribe.
-    l = []
+    bloques = []
     if not e["cancelada"]:
-        # Datos fijos de cada reserva, siempre visibles debajo del título
-        l.append(f"🕒 Llegada prevista: {e['hora_llegada'] or 'no indicada'} · "
-                 f"Salida prevista: {e['hora_salida'] or 'no indicada'}")
-        l.append("🛋️ Sofá cama: " + _texto_marca(e, "sofa"))
-        l.append("🍼 Cuna: " + _texto_marca(e, "cuna"))
-        if e.get("locker"):
-            l.append("🔑 Locker: " + e["locker"])
-        if limpieza and cfg:
-            l += lineas_limpieza(limpieza, cfg)
-        pendientes = [f"#{t}" for t, k in (("entrada", "entrada_anticipada"), ("salida", "salida_tardia"))
-                      if e.get(k) and not e.get(f"acuerdo_{t}")]
-        if pendientes:
-            l.append(f"⏰ Si aceptas la petición de horario, escribe arriba {' / '.join(p + ' HH:MM' for p in pendientes)}")
-        detalle = texto_personas(e, solo_detalle=True)
-        if detalle:
-            l.append("👥 " + detalle)
-        if e["peticiones"]:
-            l.append("📝 Peticiones:")
-            l += ["   • " + p for p in e["peticiones"]]
+        avisos = []
+        if limpieza and cfg and not limpieza["ok"]:
+            avisos += lineas_limpieza(limpieza, cfg)
+        for tipo, campo, icono, texto in (("entrada", "entrada_anticipada", "⏰", "ENTRAR ANTES"),
+                                          ("salida", "salida_tardia", "⌛", "SALIR DESPUÉS")):
+            pedida = e.get(campo)
+            if pedida and not e.get(f"acuerdo_{tipo}"):
+                hora = pedida if es_hora_valida(pedida) else "HH:MM"
+                cuando = f"a las {pedida}" if es_hora_valida(pedida) else "sin hora concreta"
+                avisos.append(f"{icono} PIDE {texto} ({cuando}). Si lo aceptas, escribe arriba: #{tipo} {hora}")
         if any(n["t"].startswith("⚠️") for n in e["notas"]):
-            l.append("⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.")
-    if l:
-        l.append("")
-    l.append(f"Huésped: {e['huesped'] or '?'} · Código: {e['codigo'] or 'desconocido'}")
-    return "\n".join(l)
+            avisos.append("⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.")
+        bloques.append(avisos)
+
+        datos = [f"🕒 Llegada: {e['hora_llegada'] or '—'}   ·   Salida: {e['hora_salida'] or '—'}",
+                 "🛋️ Sofá cama: " + _texto_marca(e, "sofa"),
+                 "🍼 Cuna: " + _texto_marca(e, "cuna")]
+        if limpieza and cfg and limpieza["ok"]:
+            datos += lineas_limpieza(limpieza, cfg)
+        bloques.append(datos)
+
+        if e["peticiones"]:
+            bloques.append(["📝 Peticiones:"] + ["   • " + x for x in e["peticiones"]])
+        if e.get("locker"):
+            bloques.append(["🔑 Locker: " + e["locker"]])
+    bloques.append([f"👤 {e['huesped'] or '?'} · Código {e['codigo'] or 'desconocido'}"])
+    return "\n\n".join("\n".join(b) for b in bloques if b)
 
 
 def _texto_marca(e: dict, campo: str) -> str:
     m = e[campo]
     if not m:
-        return "no indicado"
-    return ("SÍ" if m["v"] else "no") + " — " + texto_fuente(e, campo)
+        return "—"
+    return ("SÍ" if m["v"] else "no") + " (" + texto_fuente(e, campo) + ")"
 
 
 def texto_personas(e: dict, solo_detalle: bool = False) -> str:

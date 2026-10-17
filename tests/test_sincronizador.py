@@ -223,9 +223,9 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     entrada = s.cal.ev("HMTSBCMZH9")
     assert entrada["summary"].startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
     assert entrada["colorId"] == "8"
-    assert entrada["description"] == "—— Airbnb · automático (escribe tus notas encima de esta línea) ——\nHuésped: Imane Bensalah · Código: HMTSBCMZH9", \
+    assert entrada["description"] == "—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n👤 Imane Bensalah · Código HMTSBCMZH9", \
         "cancelada: sin datos de preparación"
-    assert "Huésped: Imane Bensalah" in entrada["description"]
+    assert "👤 Imane Bensalah" in entrada["description"]
     assert len(s.cal.eventos) == 1 and len(s.avisos) == 1
 
 
@@ -247,7 +247,7 @@ def test_A2_segunda_peticion_de_entrar_antes_se_detecta_y_avisa(tmp_path):
     s.ejecutar()
     entrada = s.cal.ev("HMTSBCMZH9")
     assert "⏰ pide entrar antes" in entrada["summary"], entrada["summary"]
-    assert "escribe arriba #entrada HH:MM" in entrada["description"]
+    assert "escribe arriba: #entrada HH:MM" in entrada["description"]
     assert len(s.avisos) == 1 and "entrar antes" in s.asuntos[0], s.asuntos
     assert "⏰ Pide ENTRAR ANTES de las 15:00" in s.avisos[0][1]
     assert hora(entrada) == "2026-11-26 17:00", "sin acuerdo, el calendario no adelanta la entrada"
@@ -293,7 +293,7 @@ def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
     ev = s.cal.ev("HMTSBCMZH9")
     assert ev["summary"] == "🏠 Tirso · 2 pers · entra 16:00 ✅"
-    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada prevista: no indicada · Salida prevista: no indicada\n🛋️ Sofá cama: no indicado\n🍼 Cuna: no indicado\n\nHuésped: Imane Bensalah · Código: HMTSBCMZH9", \
+    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada: —   ·   Salida: —\n🛋️ Sofá cama: —\n🍼 Cuna: —\n\n👤 Imane Bensalah · Código HMTSBCMZH9", \
         "del formato anterior solo se conservan las etiquetas de acuerdo"
     assert leer_estado({"evento": ev})["alias"] == "Tirso"
     escrituras = cal.stats["limpiezas_recalculadas"]
@@ -358,8 +358,8 @@ def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
     e3 = s.cal.ev("Antón Martín")
     assert e3["summary"] == "🏠 Antón Martín · 3 pers · llega 15:05 · sale 11:00 · 🍼 cuna"
     assert hora(e3) == "2026-09-23 15:05"
-    assert "🍼 Cuna: SÍ — lo indica el huésped" in e3["description"]
-    assert "🕒 Llegada prevista: 15:05 · Salida prevista: 11:00" in e3["description"]
+    assert "🍼 Cuna: SÍ (lo indica el huésped)" in e3["description"]
+    assert "🕒 Llegada: 15:05   ·   Salida: 11:00" in e3["description"]
     assert "Pregunta si puede entrar hacia las 12:00" in e3["description"]
     e2 = s.cal.ev("Lavapiés")
     assert e2["summary"] == "🏠 Lavapiés · 3 pers · llega 15:00"
@@ -531,14 +531,14 @@ def test_L_rotacion_limpieza_ok_alerta_y_recalculo_al_cambiar_la_salida(tmp_path
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
     ev = s.cal.ev("ENTRA2")
     assert ev["summary"] == "[LIMPIEZA OK] 🏠 Lavapiés · 2 pers"
-    assert "🧹 Limpieza: 05/11 de 11:00 a 15:00 (4 h 00 min)" in ev["description"]
+    assert "🧹 Limpieza: 05/11 de 11:00 a 15:00 (el huésped anterior sale ese día a las 11:00)" in ev["description"]
     assert not s.cal.ev("SALE1")["summary"].startswith("["), "la reserva sin huésped anterior no lleva etiqueta"
 
     # El huésped saliente dice que se va a las 13:30: sin acuerdo expreso se mantiene la salida estándar (11:00)
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", hora_salida="13:30"))
     ev = s.cal.ev("ENTRA2")
     assert ev["summary"] == "[LIMPIEZA OK] 🏠 Lavapiés · 2 pers", "se recalcula y sigue OK"
-    assert "sale ese mismo día a las 11:00" in ev["description"]
+    assert "sale ese día a las 11:00" in ev["description"]
     assert s.cal.ev("SALE1")["end"]["dateTime"].startswith("2026-11-05T11:00")
 
     # Si cancela el que sale, ya no hay rotación
@@ -688,6 +688,16 @@ def test_L6_lockers_y_locker_alternativo_si_entran_el_mismo_dia(tmp_path):
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
     assert "🔑 Locker: https://k/compartido" in s.cal.ev("LAV1")["description"]
     assert "Locker" not in s.cal.ev("ANT1")["description"], "las canceladas no llevan locker"
+
+
+def test_L8_la_sugerencia_de_etiqueta_en_la_parte_automatica_no_es_un_acuerdo(tmp_path):
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", entrada_anticipada="12:30"))
+    assert "escribe arriba: #entrada 12:30" in s.cal.ev("ENTRA2")["description"]
+    e = leer_estado(cal.buscar_eventos_reserva("ENTRA2", None, None, None))
+    assert e["acuerdo_entrada"] is None, "solo cuenta lo que escribe el anfitrión encima de la línea"
+    assert s.cal.ev("ENTRA2")["start"]["dateTime"].startswith("2026-11-05T15:00")
 
 
 def test_L4_leer_acuerdos():
