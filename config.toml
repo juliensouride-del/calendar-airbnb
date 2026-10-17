@@ -85,6 +85,9 @@ timeout_s = 30
 #   direccion:          (opcional) ubicación del evento
 #   capacidad_sin_sofa: (opcional) personas que caben SIN abrir el sofá cama; si la
 #                       reserva lo supera se marca "sofá cama" como probable
+#   locker:             (opcional) enlace del locker de llaves (se añade a la descripción)
+#   locker_coincide_con / locker_si_coincide: (opcional) si entra el mismo día un huésped del
+#                       alojamiento con ese alias, se usa este otro locker
 # ----------------------------------------------------------------------------
 
 [[alojamientos]]
@@ -92,12 +95,17 @@ nombre = "Espacioso y luminoso apartamento Corazón de Madrid"
 alias = "Tirso"
 id_anuncio = "809290025626258590"
 capacidad_sin_sofa = 2
+locker = "https://access.keynest.com/D996FCE173C5EEAF6762ECE86EC18F0C"
 
 [[alojamientos]]
 nombre = "Lavapies - Peaceful 2 bedrooms Fresh A/C"
 alias = "Torrecilla"
 id_anuncio = "1065868788427158053"
 capacidad_sin_sofa = 3
+locker = "https://access.keynest.com/02AB83A59B49935C9BB1F5F643C249ED"
+# Comparte locker con Buenavista: si entran los dos el mismo día, Torrecilla usa este
+locker_coincide_con = "Buenavista"
+locker_si_coincide = "https://access.keynest.com/0E9F85E265F4B28141E911ADF8D12AB0"
 
 [[alojamientos]]
 nombre = "Anton Martin Agradable, Anton Martin - Apartament."
@@ -105,3 +113,4 @@ alias = "Buenavista"
 id_anuncio = "1025328659441162105"
 otros_nombres = ["Apartamentos de Julian, Anton Martin - Apartament."]
 capacidad_sin_sofa = 2
+locker = "https://access.keynest.com/02AB83A59B49935C9BB1F5F643C249ED"

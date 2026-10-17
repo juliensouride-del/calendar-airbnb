@@ -223,7 +223,7 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     entrada = s.cal.ev("HMTSBCMZH9")
     assert entrada["summary"].startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
     assert entrada["colorId"] == "8"
-    assert entrada["description"] == "Huésped: Imane Bensalah · Código: HMTSBCMZH9"
+    assert entrada["description"] == "—— Airbnb · automático (escribe tus notas encima de esta línea) ——\nHuésped: Imane Bensalah · Código: HMTSBCMZH9"
     assert "Huésped: Imane Bensalah" in entrada["description"]
     assert len(s.cal.eventos) == 1 and len(s.avisos) == 1
 
@@ -285,13 +285,15 @@ def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp
     s.buzon.recibir(CONF_IMANE)
     s.ejecutar()
     ev = s.cal.ev("HMTSBCMZH9")
-    ev["description"] = "🏠 Alojamiento: Espacioso...\n🕒 Hora prevista de llegada: No indicada\nSincronizado desde Yahoo Mail"
+    ev["description"] = "#entrada 16:00\n🏠 Alojamiento: Espacioso...\n🕒 Hora prevista de llegada: No indicada"
+    del ev["extendedProperties"]["private"]["airbnb_escrito"]       # evento escrito por una versión anterior
     s.cfg.alojamientos = [replace(a, alias="Tirso") if a.alias == "Corazón de Madrid" else a for a in s.cfg.alojamientos]
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
     ev = s.cal.ev("HMTSBCMZH9")
-    assert ev["summary"] == "🏠 Tirso · 2 pers"
-    assert ev["description"] == "Huésped: Imane Bensalah · Código: HMTSBCMZH9"
+    assert ev["summary"] == "🏠 Tirso · 2 pers · entra 16:00 ✅"
+    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\nHuésped: Imane Bensalah · Código: HMTSBCMZH9", \
+        "del formato anterior solo se conservan las etiquetas de acuerdo"
     assert leer_estado({"evento": ev})["alias"] == "Tirso"
     escrituras = cal.stats["limpiezas_recalculadas"]
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
@@ -539,6 +541,8 @@ def test_L2_recalcular_corrige_el_horario_de_eventos_antiguos(tmp_path):
     s.cal.ev("ENTRA2")["start"]["dateTime"] = "2026-11-05T12:30:00"
     s.cal.ev("SOLA3")["end"]["dateTime"] = "2026-12-04T13:00:00"
     s.cal.ev("SOLA3")["extendedProperties"]["private"]["airbnb_limpieza"] = ""
+    for c in ("ENTRA2", "SOLA3"):
+        del s.cal.ev(c)["extendedProperties"]["private"]["airbnb_escrito"]   # sin huella: versión anterior
 
     # Simulación: cuenta los cambios pero no escribe nada
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None, simulacion=True)
@@ -566,12 +570,11 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
 
     # Julien acuerda entrada a las 12:00 (deja 1 h de limpieza) y lo escribe en la web de Calendar (HTML)
     ev["description"] = "#entrada 12h<br>" + ev["description"]
-    ev["start"]["dateTime"] = "2026-11-05T12:00:00"
     cal.recalcular_limpiezas(date(2026, 10, 13))
     ev = s.cal.ev("ENTRA2")
-    assert ev["start"]["dateTime"] == "2026-11-05T12:00:00", "no se devuelve a las 15:00"
+    assert ev["start"]["dateTime"] == "2026-11-05T12:00:00", "el evento se mueve a la hora acordada"
     assert ev["summary"].startswith("[ALERTA LIMPIEZA / AJUSTE HORARIO]") and "entra 12:00 ✅" in ev["summary"]
-    assert ev["description"].startswith("#entrada 12:00\n"), "la etiqueta se conserva al reescribir"
+    assert ev["description"].startswith("#entrada 12h\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n"), "lo escrito a mano se conserva (como texto)"
 
     # Llega un correo nuevo de la reserva (p. ej. mensaje del huésped pidiendo las 10:00): el acuerdo sigue
     from airbnb_calendar.calendario import leer_estado
@@ -589,9 +592,86 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
 
     # Si Julien borra la etiqueta, vuelve el horario estándar
     ev = s.cal.ev("ENTRA2")
-    ev["description"] = ev["description"].replace("#entrada 12:00\n", "")
+    ev["description"] = ev["description"].replace("#entrada 12h", "")
     cal.recalcular_limpiezas(date(2026, 10, 13))
     assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T15:00:00"
+
+
+def test_L5_cambios_a_mano_en_el_evento_no_se_sobrescriben(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    ev = s.cal.ev("ENTRA2")
+    # Julien mueve el evento a las 13:30, cambia el título y el color y añade una nota encima del separador
+    ev["start"]["dateTime"] = "2026-11-05T13:30:00+01:00"
+    ev["summary"] = "Lavapiés — familia García (llaves en recepción)"
+    ev["colorId"] = "3"
+    ev["description"] = "Traer toallas extra\n" + ev["description"]
+
+    # Llega un mensaje nuevo de la reserva y además pasa el recálculo diario
+    eventos = cal.buscar_eventos_reserva("ENTRA2", None, None, None)
+    e = leer_estado(eventos)
+    assert e["acuerdo_entrada"] == "13:30", "mover el evento a mano cuenta como horario acordado"
+    e["peticiones"] = ["Trona"]
+    cal.guardar_reserva(e, eventos, None)
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    ev = s.cal.ev("ENTRA2")
+    assert ev["start"]["dateTime"] == "2026-11-05T13:30:00+01:00"
+    assert ev["summary"] == "Lavapiés — familia García (llaves en recepción)"
+    assert ev["colorId"] == "3"
+    assert ev["description"].startswith("Traer toallas extra\n\n—— Airbnb")
+    assert "📝 Peticiones:\n   • Trona" in ev["description"], "la parte automática sí se actualiza"
+    assert ev["end"]["dateTime"].startswith("2026-11-08T11:00"), "lo no tocado sigue siendo automático"
+
+    # Si edita también la parte automática, la descripción pasa a ser suya
+    ev["description"] = ev["description"].replace("Trona", "Trona (ya está en el piso)")
+    e = leer_estado(cal.buscar_eventos_reserva("ENTRA2", None, None, None))
+    e["peticiones"] = ["Trona", "Parking"]
+    cal.guardar_reserva(e, cal.buscar_eventos_reserva("ENTRA2", None, None, None), None)
+    assert "Trona (ya está en el piso)" in s.cal.ev("ENTRA2")["description"]
+    assert "Parking" not in s.cal.ev("ENTRA2")["description"]
+
+
+def test_L7_nota_anadida_en_la_web_html_no_bloquea_las_actualizaciones(tmp_path):
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    ev = s.cal.ev("ENTRA2")
+    # Calendar web guarda la descripción en HTML al editarla
+    ev["description"] = ("Llamar al llegar &amp; dejar&nbsp;toallas<br>" +
+                         ev["description"].replace("\n", "<br>"))
+    eventos = cal.buscar_eventos_reserva("ENTRA2", None, None, None)
+    e = leer_estado(eventos)
+    e["peticiones"] = ["Trona"]
+    cal.guardar_reserva(e, eventos, None)
+    d = s.cal.ev("ENTRA2")["description"]
+    assert d.startswith("Llamar al llegar & dejar toallas\n\n—— Airbnb"), d
+    assert "• Trona" in d
+
+
+def test_L6_lockers_y_locker_alternativo_si_entran_el_mismo_dia(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    lav, anton = s.cfg.alojamientos[1], s.cfg.alojamientos[2]
+    lav.locker, lav.locker_coincide_con, lav.locker_si_coincide = "https://k/compartido", "Antón Martín", "https://k/alternativo"
+    anton.locker = "https://k/compartido"
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("LAV1", "2026-11-05", "2026-11-08"))
+    assert "🔑 Locker: https://k/compartido" in s.cal.ev("LAV1")["description"]
+
+    # Entra alguien en Antón Martín el mismo día → Torrecilla (Lavapiés) pasa al locker alternativo
+    _guardar(cal, _reserva("ANT1", "2026-11-05", "2026-11-07", alojamiento=anton.nombre))
+    assert "🔑 Locker: https://k/alternativo" in s.cal.ev("LAV1")["description"]
+    assert "🔑 Locker: https://k/compartido" in s.cal.ev("ANT1")["description"]
+
+    # Si se cancela la de Antón Martín, vuelve al compartido (también en el recálculo diario)
+    _guardar(cal, _reserva("ANT1", "2026-11-05", "2026-11-07", alojamiento=anton.nombre, cancelada=True))
+    assert "🔑 Locker: https://k/compartido" in s.cal.ev("LAV1")["description"]
+    cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
+    assert "🔑 Locker: https://k/compartido" in s.cal.ev("LAV1")["description"]
+    assert "Locker" not in s.cal.ev("ANT1")["description"], "las canceladas no llevan locker"
 
 
 def test_L4_leer_acuerdos():

@@ -363,12 +363,12 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
     Solo lo que NO se ve ya en el título ni en las horas del evento (alojamiento, nº de personas, horas,
     sofá cama y cuna van en el título; las fechas, en el propio evento).
     """
+    # Las etiquetas #entrada / #salida las escribe el anfitrión en su parte de la descripción
+    # (encima de la línea automática); el script las lee pero no las reescribe.
     l = []
-    # Las etiquetas de acuerdo van arriba y tal cual: se vuelven a leer en cada actualización
-    acuerdos = [f"#{t} {e[f'acuerdo_{t}']}" for t in ("entrada", "salida") if e.get(f"acuerdo_{t}")]
-    if acuerdos:
-        l += acuerdos + ["(horario acordado: el script no lo cambia)"]
     if not e["cancelada"]:
+        if e.get("locker"):
+            l.append("🔑 Locker: " + e["locker"])
         if limpieza and cfg:
             l += lineas_limpieza(limpieza, cfg)
         pendientes = [f"#{t}" for t, k in (("entrada", "entrada_anticipada"), ("salida", "salida_tardia"))

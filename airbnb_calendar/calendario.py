@@ -12,17 +12,22 @@ origen (airbnb_origen) que permite borrarlos todos sin tocar otros eventos.
 Las reservas del formato anterior (dos eventos: entrada y salida) se convierten
 en un único evento la próxima vez que llega un correo suyo.
 
-⚠️ Si se edita a mano el título, la descripción o la hora de un evento, se
-sobrescribirán. Para fijar una hora acordada con el huésped se escribe en la
-descripción '#entrada HH:MM' o '#salida HH:MM': esa hora manda y se conserva.
+Cambios a mano: el script recuerda (airbnb_escrito) lo último que escribió en cada
+campo. Si el anfitrión cambia el título, el color o la hora de inicio o de fin, ese
+campo ya no se toca (mover el evento cuenta como horario acordado). La descripción
+tiene dos partes separadas por SEPARADOR: lo de encima es del anfitrión y se conserva
+siempre; lo de debajo es automático (si lo edita, la descripción pasa a ser suya).
+Para fijar una hora acordada también vale escribir '#entrada HH:MM' o '#salida HH:MM'.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+import re
 import time
 from datetime import date, datetime, timedelta
+from html import unescape
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
@@ -46,6 +51,9 @@ P_CHECKOUT = "airbnb_checkout"
 P_LIMPIEZA = "airbnb_limpieza"        # última evaluación de la limpieza (para no reescribir si no cambia)
 P_ESTADO_N = "airbnb_estado_n"        # nº de trozos del JSON
 P_ESTADO = "airbnb_estado_"           # airbnb_estado_0, _1, ...
+P_ESCRITO = "airbnb_escrito"          # huella de lo último que escribió el script (detecta cambios a mano)
+# La descripción tiene dos partes: lo que escribe el anfitrión (encima) y lo automático (debajo)
+SEPARADOR = "—— Airbnb · automático (escribe tus notas encima de esta línea) ——"
 TAM_TROZO = 900                       # los valores de una propiedad admiten hasta 1024 caracteres
 REINTENTABLES = {429, 500, 502, 503, 504}
 ESPERAS_S = (2, 5, 15)                # backoff ante cortes momentáneos de Google
@@ -121,11 +129,7 @@ class Calendario:
         limpieza = reglas.evaluar_limpieza(self._reserva_anterior(estado), estado, self.cfg)
         inicio, fin = self._horario(estado)
         ev = eventos.get("evento")
-        cuerpo = {
-            **self._contenido(estado, limpieza),
-            **self._fechas(inicio, fin),
-            "extendedProperties": {"private": self._propiedades(estado, limpieza, ev)},
-        }
+        cuerpo = self._cuerpo(ev, estado, limpieza)
         if ev is None:
             if alojamiento and alojamiento.direccion:
                 cuerpo["location"] = alojamiento.direccion
@@ -138,12 +142,13 @@ class Calendario:
         else:
             eventos["evento"] = self._pedir("PATCH", f"{self.url}/{ev['id']}", json=cuerpo)
             self.stats["actualizados"] += 1
-            log.info("Evento actualizado: %s", cuerpo["summary"])
+            log.info("Evento actualizado: %s", eventos["evento"].get("summary") or ev.get("summary"))
         for sobrante in eventos.get("sobrantes") or []:
             self.borrar_evento(sobrante)
             log.info("Evento del formato anterior eliminado (reserva unificada): %s", sobrante.get("summary"))
         eventos["sobrantes"] = []
         self._actualizar_siguientes(estado)
+        self._actualizar_lockers_compartidos(estado)
         return eventos
 
     def _horario(self, estado: dict) -> tuple[datetime, datetime]:
@@ -159,39 +164,91 @@ class Calendario:
         return {"start": {"dateTime": inicio.isoformat(), "timeZone": self.cfg.zona_horaria},
                 "end": {"dateTime": fin.isoformat(), "timeZone": self.cfg.zona_horaria}}
 
-    def _desactualizado(self, ev: dict, estado: dict, limpieza: dict | None) -> bool:
-        """¿El evento no es como quedaría ahora (limpieza, horario, título, descripción o color)?"""
-        if _props(ev).get(P_LIMPIEZA, "") != _huella(limpieza) or self._horario_distinto(ev, estado):
-            return True
-        contenido = self._contenido(dict(estado), limpieza)
-        return any((ev.get(k) or "") != v for k, v in contenido.items())
+    def _cuerpo(self, ev: dict | None, estado: dict, limpieza: dict | None, reservas: list[dict] | None = None) -> dict:
+        """
+        Lo que hay que escribir en el evento (para PATCH o POST). Lo que el anfitrión haya cambiado a mano
+        desde la última escritura del script (título, color, hora de inicio o de fin, o la parte automática
+        de la descripción) NO se toca; su parte de la descripción (encima del separador) se conserva siempre.
+        """
+        self._preparar(estado, reservas)
+        inicio, fin = self._horario(estado)
+        color = ("cancelada" if estado["cancelada"] else
+                 "alerta_limpieza" if limpieza and not limpieza["ok"] else "reserva")
+        nuevo = {"summary": reglas.titulo_evento(estado, limpieza), "colorId": self.cfg.colores[color],
+                 "inicio": _local(inicio), "fin": _local(fin),
+                 "auto": reglas.descripcion_evento(estado, limpieza, self.cfg)}
+        previo = _escrito(ev)
+        actual, manual = self._leer_evento(ev)
+        escrito, cuerpo = {}, {}
+        for k, v in nuevo.items():
+            if previo and k in previo and _h(actual.get(k)) != previo[k]:
+                escrito[k] = previo[k]              # cambiado a mano: se respeta (y lo seguirá siendo)
+                continue
+            escrito[k] = _h(v)
+            if k in ("inicio", "fin"):
+                d = datetime.fromisoformat(v)
+                cuerpo["start" if k == "inicio" else "end"] = {"dateTime": d.isoformat(), "timeZone": self.cfg.zona_horaria}
+            elif k == "auto":
+                cuerpo["description"] = (manual + "\n\n" if manual else "") + SEPARADOR + "\n" + v
+            else:
+                cuerpo[k] = v
+        props = self._propiedades(estado, limpieza, ev)
+        props[P_ESCRITO] = json.dumps(escrito, separators=(",", ":"))
+        cuerpo["extendedProperties"] = {"private": props}
+        return cuerpo
 
-    def _horario_distinto(self, ev: dict, estado: dict) -> bool:
-        """¿La hora del evento no es la que le toca con las reglas actuales?"""
-        def leer(campo):
-            t = (ev.get(campo) or {}).get("dateTime")
-            if not t:
-                return None
-            d = datetime.fromisoformat(t.replace("Z", "+00:00"))
-            return d if d.tzinfo else d.replace(tzinfo=self.tz)
-        inicio, fin = (d.replace(tzinfo=self.tz) for d in self._horario(estado))
-        return leer("start") != inicio or leer("end") != fin
+    def _leer_evento(self, ev: dict | None) -> tuple[dict, str]:
+        """(valores actuales comparables con los que escribe el script, parte manual de la descripción)."""
+        if not ev:
+            return {}, ""
+        desc = _texto_plano(ev.get("description") or "")
+        if SEPARADOR in desc:
+            manual, auto = desc.split(SEPARADOR, 1)
+            manual, auto = manual.strip(), auto.lstrip("\n")
+        elif _escrito(ev):
+            manual, auto = "", None          # el anfitrión quitó el separador: la descripción es suya
+        else:
+            # Evento del formato anterior: todo era automático salvo las etiquetas de acuerdo
+            texto = re.sub(r"<[^>]+>", "\n", desc)
+            manual = "\n".join(m.group(0) for m in reglas.ETIQUETA_ACUERDO.finditer(texto))
+            auto = desc
+        actual = {"summary": ev.get("summary"), "colorId": ev.get("colorId"), "auto": auto,
+                  "inicio": _local_evento(ev.get("start"), self.tz), "fin": _local_evento(ev.get("end"), self.tz)}
+        return actual, manual
+
+    def _preparar(self, estado: dict, reservas: list[dict] | None = None) -> None:
+        """Datos que dependen de config.toml y de otras reservas: nombre corto y locker."""
+        alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
+        if not alojamiento:
+            return
+        # El nombre corto siempre sale de config.toml (si se cambia allí, se corrigen todos los eventos)
+        estado["alias"] = alojamiento.alias or alojamiento.nombre
+        estado["locker"] = alojamiento.locker or None
+        otro = self.cfg.alojamiento_por_nombre(alojamiento.locker_coincide_con)
+        if otro and alojamiento.locker_si_coincide and estado["checkin"]:
+            if reservas is None:
+                reservas = [e for _, e in self._reservas(otro.nombre, P_CHECKIN, date.fromisoformat(estado["checkin"]))]
+            if any(_hash(o["alojamiento"]) == _hash(otro.nombre) and o.get("checkin") == estado["checkin"]
+                   and not o.get("cancelada") for o in reservas):
+                estado["locker"] = alojamiento.locker_si_coincide
+
+    def _desactualizado(self, ev: dict, estado: dict, limpieza: dict | None, reservas: list[dict] | None = None) -> bool:
+        """¿Hay algo que escribir en el evento (sin contar lo cambiado a mano)?"""
+        cuerpo = self._cuerpo(ev, dict(estado), limpieza, reservas)
+        p_nuevas, p_ev = cuerpo["extendedProperties"]["private"], _props(ev)
+        if any(p_ev.get(k) != v for k, v in p_nuevas.items() if not k.startswith(P_ESTADO)):
+            return True
+        actual, _ = self._leer_evento(ev)
+        for k, v in cuerpo.items():
+            if k in ("start", "end"):
+                if actual["inicio" if k == "start" else "fin"] != _local(datetime.fromisoformat(v["dateTime"])):
+                    return True
+            elif k != "extendedProperties" and (ev.get(k) or "") != v:
+                return True
+        return False
 
     def borrar_evento(self, ev: dict) -> None:
         self._pedir("DELETE", f"{self.url}/{ev['id']}", ignorar=(404, 410))
-
-    def _contenido(self, estado: dict, limpieza: dict | None) -> dict:
-        # El nombre corto siempre sale de config.toml (si se cambia allí, se corrigen todos los eventos)
-        alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
-        if alojamiento:
-            estado["alias"] = alojamiento.alias or alojamiento.nombre
-        color = ("cancelada" if estado["cancelada"] else
-                 "alerta_limpieza" if limpieza and not limpieza["ok"] else "reserva")
-        return {
-            "summary": reglas.titulo_evento(estado, limpieza),
-            "description": reglas.descripcion_evento(estado, limpieza, self.cfg),
-            "colorId": self.cfg.colores[color],
-        }
 
     def _reservas(self, alojamiento: str, propiedad: str, dia: date) -> list[tuple[dict, dict]]:
         """(evento, estado) de las reservas del alojamiento con esa fecha de entrada o salida."""
@@ -221,13 +278,26 @@ class Calendario:
                     continue
                 self._escribir_limpieza(ev, sig, limpieza)
 
-    def _escribir_limpieza(self, ev: dict, estado: dict, limpieza: dict | None) -> None:
-        """Reescribe texto, color, horario (siempre con las reglas actuales) y estado del evento."""
-        cuerpo = {**self._contenido(estado, limpieza), **self._fechas(*self._horario(estado))}
-        cuerpo["extendedProperties"] = {"private": self._propiedades(estado, limpieza, ev)}   # con el nombre corto al día
+    def _escribir_limpieza(self, ev: dict, estado: dict, limpieza: dict | None, reservas: list[dict] | None = None) -> None:
+        """Reescribe el evento con las reglas actuales (sin tocar lo cambiado a mano)."""
+        cuerpo = self._cuerpo(ev, estado, limpieza, reservas)
         self._pedir("PATCH", f"{self.url}/{ev['id']}", json=cuerpo)
         self.stats["limpiezas_recalculadas"] += 1
-        log.info("Limpieza recalculada: %s", cuerpo["summary"])
+        log.info("Evento puesto al día: %s", cuerpo.get("summary") or ev.get("summary"))
+
+    def _actualizar_lockers_compartidos(self, estado: dict) -> None:
+        """Si otro alojamiento comparte locker con este (p. ej. Torrecilla con Buenavista), su locker
+        depende de que este tenga entrada el mismo día: se ponen al día sus reservas de ese día."""
+        if not estado["alojamiento"] or not estado["checkin"]:
+            return
+        este = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
+        for a in self.cfg.alojamientos:
+            if not este or self.cfg.alojamiento_por_nombre(a.locker_coincide_con) is not este:
+                continue
+            for ev, otra in self._reservas(a.nombre, P_CHECKIN, date.fromisoformat(estado["checkin"])):
+                limpieza = reglas.evaluar_limpieza(self._reserva_anterior(otra), otra, self.cfg)
+                if self._desactualizado(ev, otra, limpieza):
+                    self._escribir_limpieza(ev, otra, limpieza)
 
     # ------------------------------------------------------- tareas periódicas
 
@@ -250,14 +320,15 @@ class Calendario:
             self.stats["reservas_revisadas"] += 1
             mismas = [o for _, o in reservas if _hash(o["alojamiento"]) == _hash(e["alojamiento"])]
             limpieza = reglas.evaluar_limpieza(_anterior_en(mismas, e, self.cfg), e, self.cfg)
-            if self._desactualizado(ev, e, limpieza):
+            todas = [o for _, o in reservas]
+            if self._desactualizado(ev, e, limpieza, todas):
                 if simulacion:
                     inicio, fin = self._horario(e)
                     log.info("Se actualizaría: %s → %s (%s → %s)", ev.get("summary"),
                              reglas.titulo_evento(e, limpieza), inicio, fin)
                     self.stats["limpiezas_recalculadas"] += 1
                 else:
-                    self._escribir_limpieza(ev, e, limpieza)
+                    self._escribir_limpieza(ev, e, limpieza, todas)
             if limpieza and not limpieza["ok"]:
                 alertas.append(e)
         return alertas
@@ -342,7 +413,16 @@ def leer_estado(eventos: dict) -> dict | None:
             continue
         # Los acuerdos de horario los escribe el anfitrión en la descripción: lo que pone ahí manda
         # (si borra la etiqueta, el acuerdo desaparece)
-        estado.update(reglas.leer_acuerdos((eventos.get("evento") or ev).get("description")))
+        principal = eventos.get("evento") or ev
+        estado.update(reglas.leer_acuerdos(principal.get("description")))
+        # Mover el evento a mano en Calendar también es un horario acordado (salvo que haya etiqueta)
+        escrito = _escrito(principal)
+        for campo, clave, dia in (("start", "inicio", estado.get("checkin")), ("end", "fin", estado.get("checkout"))):
+            local = _local_evento(principal.get(campo))
+            tipo = "entrada" if campo == "start" else "salida"
+            if (escrito.get(clave) and local and _h(local) != escrito[clave] and local[:10] == dia
+                    and not estado.get(f"acuerdo_{tipo}")):
+                estado[f"acuerdo_{tipo}"] = local[11:16]
         return estado
     return None
 
@@ -362,6 +442,44 @@ def _misma_reserva(a: dict, b: dict) -> bool:
     if a.get("codigo") and b.get("codigo"):
         return a["codigo"] == b["codigo"]
     return a.get("checkin") == b.get("checkin") and a.get("checkout") == b.get("checkout")
+
+
+def _escrito(ev: dict | None) -> dict:
+    try:
+        return json.loads(_props(ev).get(P_ESCRITO) or "{}")
+    except json.JSONDecodeError:
+        return {}
+
+
+def _h(valor) -> str:
+    """Huella de un valor; los textos se comparan sin espacios sobrantes al final de cada línea."""
+    texto = "\n".join(l.rstrip() for l in str(valor if valor is not None else "").splitlines()).strip()
+    return hashlib.sha1(texto.encode()).hexdigest()[:12]
+
+
+def _texto_plano(desc: str) -> str:
+    """Al editar la descripción en la web, Calendar la guarda en HTML: se pasa a texto para compararla."""
+    if not re.search(r"<(br|p|div|span|b|i|u|a|ul|li)\b[^>]*>|&[a-z]+;|&#\d+;", desc, re.I):
+        return desc
+    t = re.sub(r"<br\s*/?>", "\n", desc, flags=re.I)
+    t = re.sub(r"</(p|div|li)>", "\n", t, flags=re.I)
+    t = re.sub(r"<[^>]+>", "", t)
+    return unescape(t).replace("\xa0", " ")
+
+
+def _local(d: datetime) -> str:
+    """Hora local sin zona, 'yyyy-mm-ddTHH:MM'."""
+    return d.strftime("%Y-%m-%dT%H:%M")
+
+
+def _local_evento(campo: dict | None, tz: ZoneInfo | None = None) -> str | None:
+    """'yyyy-mm-ddTHH:MM' en la zona del evento, a partir de start/end de la API de Calendar."""
+    t = (campo or {}).get("dateTime")
+    if not t:
+        return None
+    zona = tz or ZoneInfo((campo or {}).get("timeZone") or "Europe/Madrid")
+    d = datetime.fromisoformat(t.replace("Z", "+00:00"))
+    return _local(d.astimezone(zona) if d.tzinfo else d)
 
 
 def _huella(limpieza: dict | None) -> str:

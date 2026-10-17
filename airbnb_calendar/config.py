@@ -17,6 +17,9 @@ class Alojamiento:
     otros_nombres: list[str] = field(default_factory=list)
     direccion: str = ""
     capacidad_sin_sofa: int | None = None   # personas que caben sin abrir el sofá cama
+    locker: str = ""                    # enlace del locker de llaves
+    locker_coincide_con: str = ""       # alias de otro alojamiento que comparte el locker...
+    locker_si_coincide: str = ""        # ...y locker que se usa si los dos tienen entrada el mismo día
 
 
 @dataclass
@@ -57,12 +60,14 @@ class Config:
     gemini_timeout_s: int = 30
 
     def alojamiento_por_nombre(self, nombre: str | None) -> Alojamiento | None:
+        """Por el nombre del anuncio (u otros_nombres) o por el alias."""
         from .parser import clave_normalizada
         k = clave_normalizada(nombre)
         if not k:
             return None
-        return next((a for a in self.alojamientos
-                     if any(clave_normalizada(n) == k for n in [a.nombre, *a.otros_nombres])), None)
+        return (next((a for a in self.alojamientos
+                      if any(clave_normalizada(n) == k for n in [a.nombre, *a.otros_nombres])), None)
+                or next((a for a in self.alojamientos if clave_normalizada(a.alias) == k), None))
 
 
 @dataclass
