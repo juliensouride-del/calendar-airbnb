@@ -32,7 +32,7 @@ def crear_estado(datos: DatosCorreo | None = None) -> dict:
         "acuerdo_entrada": None, "acuerdo_salida": None,    # lo acordado por el anfitrión (#entrada / #salida)
         "sofa": None, "cuna": None,                          # {"v": bool, "f": "huesped"|"palabras"|"regla"}
         "peticiones": [],                                    # otras peticiones especiales
-        "notas": [],                                         # [{"f": "dd/mm", "t": resumen}]
+        "sin_analizar": False,                               # algún mensaje no lo pudo analizar la IA
         "cancelada": False,
         "avisado": {"sofa": False, "cuna": False, "peticiones": [], "hora_llegada": None, "hora_salida": None,
                     "entrada_anticipada": None, "salida_tardia": None},
@@ -65,7 +65,7 @@ def actualizar_con_datos(e: dict, d: DatosCorreo) -> dict:
 def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "", cfg: Config | None = None) -> dict:
     """
     Fusiona el análisis de un mensaje. Los mensajes se procesan en orden: lo último que dice el huésped manda.
-    a: {hora_llegada, hora_salida, entrada_anticipada, salida_tardia, sofa_cama, cuna, otras_peticiones, resumen}
+    a: {hora_llegada, hora_salida, entrada_anticipada, salida_tardia, sofa_cama, cuna, otras_peticiones}
     fuente: 'huesped' (Gemini) | 'palabras' (respaldo por palabras clave)
     cfg: con él, una hora de llegada (salida) anterior (posterior) al horario estándar cuenta como
          petición de entrar antes (salir después), y una posterior (anterior) la anula.
@@ -88,10 +88,6 @@ def fusionar_analisis(e: dict, a: dict | None, fuente: str, fecha_txt: str = "",
         if txt and not any(clave_normalizada(x) == clave_normalizada(txt) for x in e["peticiones"]):
             e["peticiones"].append(txt)
     e["peticiones"] = e["peticiones"][-10:]
-
-    resumen = str(a.get("resumen") or "").strip()[:200]
-    if resumen and not any(n["t"] == resumen for n in e["notas"]):       # re-procesar no duplica notas
-        e["notas"] = (e["notas"] + [{"f": fecha_txt, "t": resumen}])[-5:]
     return e
 
 
@@ -123,7 +119,9 @@ def resetear_mensajes(e: dict) -> dict:
     datos de la reserva, los acuerdos del anfitrión y lo ya avisado.
     """
     vacio = crear_estado()
-    for k in ("hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa", "cuna", "peticiones", "notas"):
+    e.pop("notas", None)                          # campo de versiones anteriores
+    for k in ("hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa", "cuna", "peticiones",
+              "sin_analizar"):
         e[k] = vacio[k]
     return e
 
@@ -181,11 +179,6 @@ def avisos_pendientes(e: dict, cfg: Config) -> list[str]:
             av.append("🍼 Ya NO necesita cuna")
         ya = {clave_normalizada(p) for p in av0.get("peticiones", [])}
         av += ["📝 " + p for p in e["peticiones"] if clave_normalizada(p) not in ya]
-    if cfg.avisar_horas:
-        if e["hora_llegada"] and e["hora_llegada"] != av0.get("hora_llegada"):
-            av.append("🕒 Llegada prevista: " + e["hora_llegada"])
-        if e["hora_salida"] and e["hora_salida"] != av0.get("hora_salida"):
-            av.append("🕒 Salida prevista: " + e["hora_salida"])
     return av
 
 
@@ -195,8 +188,6 @@ def marcar_avisado(e: dict) -> dict:
         "sofa": bool(e["sofa"] and e["sofa"]["v"]),
         "cuna": bool(e["cuna"] and e["cuna"]["v"]),
         "peticiones": list(e["peticiones"]),
-        "hora_llegada": e["hora_llegada"],
-        "hora_salida": e["hora_salida"],
         "entrada_anticipada": e.get("entrada_anticipada"),
         "salida_tardia": e.get("salida_tardia"),
     }
@@ -385,7 +376,7 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
                 hora = pedida if es_hora_valida(pedida) else "HH:MM"
                 cuando = f"a las {pedida}" if es_hora_valida(pedida) else "sin hora concreta"
                 avisos.append(f"{icono} PIDE {texto} ({cuando}). Si lo aceptas, escribe arriba: #{tipo} {hora}")
-        if any(n["t"].startswith("⚠️") for n in e["notas"]):
+        if e.get("sin_analizar") or any(n["t"].startswith("⚠️") for n in e.get("notas") or []):
             avisos.append("⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.")
         bloques.append(avisos)
 
@@ -417,13 +408,13 @@ def _texto_marca(e: dict, campo: str) -> str:
     return ("SÍ" if m["v"] else "no") + " (" + texto_fuente(e, campo) + ")"
 
 
-def texto_personas(e: dict, solo_detalle: bool = False) -> str:
-    """'3 (2 adultos, 1 bebé)'. solo_detalle: '2 adultos, 1 bebé' solo si hay niños, bebés o mascotas."""
+def texto_personas(e: dict) -> str:
+    """'3 (2 adultos, 1 bebé)'"""
     if not e["total"] and not e["adultos"]:
-        return "" if solo_detalle else "?"
+        return "?"
     total = e["total"] or e["adultos"]
     if e["adultos"] is None:
-        return "" if solo_detalle else str(total)
+        return str(total)
 
     def plural(n, s, pl):
         return f"{n} {s if n == 1 else pl}"
@@ -436,8 +427,6 @@ def texto_personas(e: dict, solo_detalle: bool = False) -> str:
         p.append(plural(e["bebes"], "bebé", "bebés"))
     if e["mascotas"]:
         p.append(plural(e["mascotas"], "mascota", "mascotas"))
-    if solo_detalle:
-        return ", ".join(p) if (e["ninos"] or e["bebes"] or e["mascotas"]) else ""
     return f"{total} ({', '.join(p)})"
 
 
@@ -489,5 +478,4 @@ def analisis_por_palabras_clave(texto: str) -> dict:
         "sofa_cama": "si" if PALABRAS_SOFA.search(t) else "sin_mencion",
         "cuna": "si" if PALABRAS_CUNA.search(t) else "sin_mencion",
         "otras_peticiones": [],
-        "resumen": "",
     }

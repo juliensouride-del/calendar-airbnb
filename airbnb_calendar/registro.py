@@ -30,9 +30,6 @@ class Registro:
             self.inicio = ahora.isoformat()
         return datetime.fromisoformat(self.inicio)
 
-    def ya_procesado(self, id_: str) -> bool:
-        return id_ in self.procesados
-
     def marcar_procesado(self, id_: str, fecha: datetime) -> None:
         self.procesados[id_] = fecha.isoformat()
         self.fallos.pop(id_, None)

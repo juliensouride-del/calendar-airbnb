@@ -101,7 +101,7 @@ class GeminiFalso:
         huesped = txt.split('"""')[1]
         enviado = re.search(r"Mensaje enviado el: \d{4}-\d{2}-\d{2} (\d{2}):(\d{2})", txt)
         r = {"hora_llegada": None, "hora_salida": None, "sofa_cama": "sin_mencion", "cuna": "sin_mencion",
-             "otras_peticiones": [], "resumen": ""}
+             "otras_peticiones": []}
         if re.search(r"crib|cot\b", huesped, re.I): r["cuna"] = "si"
         if re.search(r"sofa bed", huesped, re.I): r["sofa_cama"] = "si"
         if re.search(r"around 6pm", huesped, re.I): r["hora_llegada"] = "18:00"
@@ -112,8 +112,6 @@ class GeminiFalso:
         if re.search(r"out right before 11", huesped, re.I): r["hora_salida"] = "11:00"
         if re.search(r"before 5pm", huesped, re.I): r["hora_llegada"] = "17:00"
         if re.search(r"check-in early", huesped, re.I): r["entrada_anticipada"] = "si"
-        if r["cuna"] == "si" or r["sofa_cama"] == "si" or r["hora_llegada"] or r["hora_salida"]:
-            r["resumen"] = "Resumen simulado."
         return Respuesta(200, {"candidates": [{"content": {"parts": [{"text": __import__("json").dumps(r)}]}}]})
 
 
@@ -360,7 +358,7 @@ def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):
     assert "Antón Martín" in asunto and "cuna" in asunto
     assert "NO está en el calendario" in cuerpo
     assert "Pregunta si puede entrar hacia las 12:00" in cuerpo
-    assert all(registro.ya_procesado(i) for i in ids)
+    assert all(i in registro.procesados for i in ids)
 
 
 def test_B2_no_se_avisa_de_reservas_que_ya_han_terminado(tmp_path):
@@ -523,7 +521,7 @@ def test_J_remitente_que_no_es_de_airbnb_y_primera_ejecucion_sin_correos_antiguo
     s = Entorno(tmp_path)
     id_falso = s.buzon.recibir(CONF_IMANE, remitente="Fake <airbnb.com@gmail.com>")
     reg = s.ejecutar()
-    assert s.cal.eventos == {} and reg.ya_procesado(id_falso)
+    assert s.cal.eventos == {} and id_falso in reg.procesados
 
     s2 = Entorno(tmp_path / "x", procesar_desde="")
     s2.buzon.recibir(CONF_IMANE)                         # llegó el 01/10, antes de la primera ejecución
@@ -546,16 +544,16 @@ def test_K_estado_largo_se_trocea_y_al_acortarse_se_borran_los_trozos_sobrantes(
     eventos = cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None)
     from airbnb_calendar.calendario import leer_estado
     estado = leer_estado(eventos)
-    estado["notas"] = [{"f": "01/10", "t": "x" * 200}] * 5
+    estado["peticiones"] = [f"{i} " + "x" * 140 for i in range(10)]
     cal.guardar_reserva(estado, eventos, None)
     props = s.cal.ev("HMTSBCMZH9")["extendedProperties"]["private"]
     n = int(props["airbnb_estado_n"])
     assert n >= 2 and all(len(props[f"airbnb_estado_{i}"]) <= 900 for i in range(n))
-    estado["notas"] = []
+    estado["peticiones"] = []
     cal.guardar_reserva(estado, cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None), None)
     props = s.cal.ev("HMTSBCMZH9")["extendedProperties"]["private"]
     assert props["airbnb_estado_n"] == "1" and "airbnb_estado_1" not in props
-    assert leer_estado(cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None))["notas"] == []
+    assert leer_estado(cal.buscar_eventos_reserva("HMTSBCMZH9", None, None, None))["peticiones"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -751,6 +749,17 @@ def test_L8_la_sugerencia_de_etiqueta_en_la_parte_automatica_no_es_un_acuerdo(tm
     assert s.cal.ev("ENTRA2")["start"]["dateTime"].startswith("2026-11-05T15:00")
 
 
+def test_L9_direccion_del_piso_como_ubicacion_del_evento(tmp_path):
+    s = Entorno(tmp_path)
+    s.cfg.alojamientos[1].direccion = "Calle Torrecilla del Leal 1, Madrid"
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    assert s.cal.ev("ENTRA2")["location"] == "Calle Torrecilla del Leal 1, Madrid"
+    s.cal.ev("ENTRA2")["location"] = "Portal B, 2º izq."               # cambiada a mano: se respeta
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="18:00"))
+    assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq."
+
+
 def test_L4_leer_acuerdos():
     from airbnb_calendar.reglas import leer_acuerdos
     assert leer_acuerdos("#entrada 12:00\n#Salida: 13.30") == {"acuerdo_entrada": "12:00", "acuerdo_salida": "13:30"}
@@ -777,23 +786,6 @@ def test_M_reglas_de_limpieza():
     assert r["ok"] and r["hasta"] == "15:00" and r["entrada"] == "18:00"
     # Con un día entero de margen, no hay rotación
     assert evaluar_limpieza(_reserva("A", "2026-11-01", "2026-11-03"), _reserva("B", "2026-11-05", "2026-11-09"), cfg) is None
-
-
-def test_N_reserva_del_formato_anterior_se_unifica_en_un_evento(tmp_path):
-    s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
-    s.ejecutar()
-    ev = next(iter(s.cal.eventos.values()))
-    # Simula el formato anterior: el evento pasa a 'entrada' y se añade su 'salida'
-    ev["extendedProperties"]["private"]["airbnb_tipo"] = "entrada"
-    salida = copy.deepcopy(ev)
-    salida["id"] = "antiguo-salida"
-    salida["extendedProperties"]["private"]["airbnb_tipo"] = "salida"
-    s.cal.eventos[salida["id"]] = salida
-    s.buzon.recibir(MENSAJE_IMANE)
-    s.ejecutar()
-    assert list(s.cal.eventos) == [ev["id"]], "queda un único evento"
-    assert s.cal.eventos[ev["id"]]["extendedProperties"]["private"]["airbnb_tipo"] == "reserva"
 
 
 def test_O_purga_solo_borra_eventos_propios(tmp_path, monkeypatch):
@@ -839,26 +831,6 @@ def test_Q_cada_ejecucion_recalcula_limpiezas_sin_correos_nuevos(tmp_path):
     ev["extendedProperties"]["private"]["airbnb_limpieza"] = "obsoleta"
     s.ejecutar()                                                              # sin correos
     assert s.cal.ev("ENTRA2")["summary"] == "🏠 Lavapiés · 2 pers"
-
-
-def test_R_migrar_formato_anterior(tmp_path):
-    s = Entorno(tmp_path)
-    s.buzon.recibir(CONF_IMANE)
-    s.ejecutar()
-    ev = next(iter(s.cal.eventos.values()))
-    ev["extendedProperties"]["private"]["airbnb_tipo"] = "entrada"
-    del ev["extendedProperties"]["private"]["airbnb_origen"]
-    salida = copy.deepcopy(ev)
-    salida["id"] = "antiguo-salida"
-    salida["extendedProperties"]["private"]["airbnb_tipo"] = "salida"
-    s.cal.eventos[salida["id"]] = salida
-    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
-    assert cal.migrar(simulacion=True) == 1 and len(s.cal.eventos) == 2, "la simulación no cambia nada"
-    assert cal.migrar() == 1
-    assert list(s.cal.eventos) == [ev["id"]]
-    p = s.cal.eventos[ev["id"]]["extendedProperties"]["private"]
-    assert p["airbnb_tipo"] == "reserva" and p["airbnb_origen"] == "airbnb-calendar"
-    assert cal.migrar() == 0, "idempotente"
 
 
 def test_S_listado_paginado(tmp_path):

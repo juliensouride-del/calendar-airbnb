@@ -25,7 +25,7 @@ def r3():
 
 def analisis(**kw):
     return {"hora_llegada": None, "hora_salida": None, "sofa_cama": "sin_mencion", "cuna": "sin_mencion",
-            "otras_peticiones": [], "resumen": "", **kw}
+            "otras_peticiones": [], **kw}
 
 
 def test_confirmacion_titulos_y_descripcion(r0, cfg):
@@ -46,7 +46,7 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     reglas.marcar_avisado(e)
 
     reglas.fusionar_analisis(e, analisis(hora_llegada="15:05", cuna="si", otras_peticiones=["Entrada anticipada hacia las 12:00"],
-                                         resumen="Llegan en una hora; agradecen la cuna."), "huesped", "23/09")
+                                         ), "huesped", "23/09")
     reglas.aplicar_reglas(e, None, cfg)
     assert e["cuna"] == {"v": True, "f": "huesped"}
     assert reglas.avisos_pendientes(e, cfg) == ["📝 Entrada anticipada hacia las 12:00"]
@@ -55,7 +55,6 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     d = reglas.descripcion_evento(e)
     assert "🕒 Llegada: 15:05   ·   Salida: 11:00" in d
     assert "🍼 Cuna: SÍ (lo indica el huésped)" in d
-    assert "Llegan en una hora" not in d, "las notas de los mensajes no van en el evento"
     assert "👥" not in d, "niños y bebés ya se ven en sofá cama y cuna"
     assert "📝 Peticiones:\n   • Entrada anticipada hacia las 12:00" in d
 
@@ -192,16 +191,15 @@ def test_lo_ultimo_que_dice_el_huesped_manda(r0, cfg):
     reglas.fusionar_analisis(e, analisis(entrada_anticipada="12:00"), "huesped", cfg=cfg)
     reglas.fusionar_analisis(e, analisis(entrada_anticipada="no"), "huesped", cfg=cfg)
     assert e["entrada_anticipada"] is None, "retira la petición"
-    reglas.fusionar_analisis(e, analisis(hora_salida="13:00", resumen="Sale a las 13"), "huesped", "01/10", cfg)
-    reglas.fusionar_analisis(e, analisis(hora_salida="13:00", resumen="Sale a las 13"), "huesped", "01/10", cfg)
-    assert e["salida_tardia"] == "13:00" and len(e["notas"]) == 1, "re-procesar no duplica notas"
+    reglas.fusionar_analisis(e, analisis(hora_salida="13:00"), "huesped", "01/10", cfg)
+    assert e["salida_tardia"] == "13:00"
     reglas.fusionar_analisis(e, analisis(hora_salida="10:00"), "huesped", cfg=cfg)
     assert e["salida_tardia"] is None
 
     # Re-procesar la reserva desde su confirmación: se olvida lo deducido de los mensajes
     e.update(acuerdo_entrada="13:00", peticiones=["Trona"])
     reglas.resetear_mensajes(e)
-    assert e["hora_llegada"] is None and e["peticiones"] == [] and e["notas"] == []
+    assert e["hora_llegada"] is None and e["peticiones"] == [] and not e["sin_analizar"]
     assert e["acuerdo_entrada"] == "13:00" and e["codigo"] == "HMTSBCMZH9"
 
 
@@ -246,10 +244,10 @@ def test_respuesta_gemini_se_valida_y_normaliza():
         {"text": "pensando...", "thought": True},
         {"text": '```json\n{"hora_llegada":"9:30","hora_salida":"25:00","sofa_cama":"SI","cuna":"si",'
                  '"entrada_anticipada":"12:00","salida_tardia":"null",'
-                 '"otras_peticiones":["Trona",""],"resumen":" ok "}\n```'},
+                 '"otras_peticiones":["Trona",""]}\n```'},
     ]}}]})
     assert a == {"hora_llegada": "09:30", "hora_salida": None, "entrada_anticipada": "12:00", "salida_tardia": None,
-                 "sofa_cama": "sin_mencion", "cuna": "si", "otras_peticiones": ["Trona"], "resumen": "ok"}
+                 "sofa_cama": "sin_mencion", "cuna": "si", "otras_peticiones": ["Trona"]}
     sin_campos = interpretar_respuesta({"candidates": [{"content": {"parts": [{"text": '{"entrada_anticipada":"si"}'}]}}]})
     assert sin_campos["entrada_anticipada"] == "si" and sin_campos["salida_tardia"] is None
     with pytest.raises(RuntimeError, match="SAFETY"):

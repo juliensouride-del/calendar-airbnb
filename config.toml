@@ -35,9 +35,6 @@ hora_salida_por_defecto = "11:00"
 # indicando que no se encontró la confirmación. Solo para alojamientos de esta configuración.
 # false = no se crea; solo se avisa si el huésped pide algo.
 crear_evento_desde_mensaje = true
-# Recordatorios de los eventos nuevos (minutos antes). Sin esta línea se usan los
-# del calendario; [] = sin recordatorios.
-# recordatorios_minutos = [60, 1440]
 
 [calendario.colores]
 # 1 Lavanda · 2 Salvia · 3 Uva · 4 Flamenco · 5 Plátano · 6 Mandarina
@@ -64,7 +61,6 @@ max_reintentos = 3
 # Destinatario de los avisos. "" = la propia cuenta de Yahoo (se envían por SMTP de Yahoo).
 email = ""
 peticiones = true      # sofá cama, cuna y otras peticiones especiales
-horas = false          # también cuando el huésped indique hora de llegada/salida
 errores = true         # correos que no se pueden procesar: se avisa SOLO al desarrollador (secreto
                        # ALERTA_EMAIL y ntfy), nunca al anfitrión
 modificaciones = true  # modificaciones de reserva (se revisan a mano)
@@ -85,7 +81,7 @@ timeout_s = 30
 #   alias:              nombre corto para el título del evento
 #   id_anuncio:         nº de airbnb.com/rooms/<nº> (lo más fiable)
 #   otros_nombres:      (opcional) otros títulos con los que aparece en los correos
-#   direccion:          (opcional) ubicación del evento
+#   direccion:          (opcional) dirección del piso: ubicación del evento, con mapa en Calendar
 #   capacidad_sin_sofa: (opcional) personas que caben SIN abrir el sofá cama; si la
 #                       reserva lo supera se marca "sofá cama" como probable
 #   locker:             (opcional) enlace del locker de llaves (se añade a la descripción)

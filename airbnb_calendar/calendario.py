@@ -9,9 +9,6 @@ Los eventos llevan propiedades privadas (no visibles en el calendario) para
 encontrarlos después, el estado completo de la reserva en JSON y una marca de
 origen (airbnb_origen) que permite borrarlos todos sin tocar otros eventos.
 
-Las reservas del formato anterior (dos eventos: entrada y salida) se convierten
-en un único evento la próxima vez que llega un correo suyo.
-
 Cambios a mano: el script recuerda (airbnb_escrito) lo último que escribió en cada
 campo. Si el anfitrión cambia el título, el color o la hora de inicio o de fin, ese
 campo ya no se toca (mover el evento cuenta como horario acordado). La descripción
@@ -42,8 +39,7 @@ ALCANCE = "https://www.googleapis.com/auth/calendar.events"
 
 P_ORIGEN = "airbnb_origen"            # marca de los eventos creados por este script
 ORIGEN = "airbnb-calendar"
-P_TIPO = "airbnb_tipo"                # 'reserva' (formato anterior: 'entrada' | 'salida')
-TIPOS_PROPIOS = ("reserva", "entrada", "salida")
+P_TIPO = "airbnb_tipo"                # 'reserva'
 P_CODIGO = "airbnb_codigo"
 P_ALOJAMIENTO = "airbnb_alojamiento"  # hash del nombre normalizado (los valores de filtro deben ser simples)
 P_CHECKIN = "airbnb_checkin"
@@ -94,25 +90,21 @@ class Calendario:
     def buscar_eventos_reserva(self, codigo, alojamiento, checkin, checkout) -> dict:
         """
         {'evento': evento|None, 'sobrantes': [...]}. Por código si lo hay; si no, por alojamiento + entrada.
-        'sobrantes' son eventos de más de la misma reserva (el check-out del formato anterior).
+        'sobrantes' son eventos duplicados de la misma reserva: se borran al guardarla.
         """
         candidatos = self._listar({P_CODIGO: codigo}) if codigo else []
         # Fallback por alojamiento + entrada (p. ej. evento creado desde un mensaje, sin código)
         if not candidatos and alojamiento and checkin:
             candidatos = self._listar({P_ALOJAMIENTO: _hash(alojamiento), P_CHECKIN: checkin})
-        propios = [ev for ev in candidatos if _props(ev).get(P_TIPO) in TIPOS_PROPIOS
+        propios = [ev for ev in candidatos if _props(ev).get(P_TIPO) == "reserva"
                    and not (codigo and _props(ev).get(P_CODIGO) not in (None, codigo))]   # misma fecha, otra reserva
-        propios.sort(key=lambda ev: TIPOS_PROPIOS.index(_props(ev)[P_TIPO]))
         return {"evento": propios[0] if propios else None, "sobrantes": propios[1:]}
 
     def eventos_propios(self) -> list[dict]:
-        """Todos los eventos creados por este script (también los del formato anterior, sin marca de origen)."""
-        vistos: dict[str, dict] = {}
-        for filtros in ({P_ORIGEN: ORIGEN}, *({P_TIPO: t} for t in TIPOS_PROPIOS)):
-            for ev in self._listar(filtros):
-                if _props(ev).get(P_TIPO) in TIPOS_PROPIOS:      # doble comprobación antes de borrar nada
-                    vistos[ev["id"]] = ev
-        return sorted(vistos.values(), key=lambda ev: (ev.get("start") or {}).get("dateTime") or "")
+        """Todos los eventos creados por este script (con su marca de origen)."""
+        evs = [ev for ev in self._listar({P_ORIGEN: ORIGEN})
+               if _props(ev).get(P_TIPO) == "reserva"]          # doble comprobación antes de borrar nada
+        return sorted(evs, key=lambda ev: (ev.get("start") or {}).get("dateTime") or "")
 
     def _listar(self, filtros: dict, **extra) -> list[dict]:
         params = [("privateExtendedProperty", f"{k}={v}") for k, v in filtros.items()]
@@ -136,11 +128,6 @@ class Calendario:
         ev = eventos.get("evento")
         cuerpo = self._cuerpo(ev, estado, limpieza)
         if ev is None:
-            if alojamiento and alojamiento.direccion:
-                cuerpo["location"] = alojamiento.direccion
-            if self.cfg.recordatorios_minutos is not None:
-                cuerpo["reminders"] = {"useDefault": False, "overrides": [
-                    {"method": "popup", "minutes": m} for m in self.cfg.recordatorios_minutos]}
             eventos["evento"] = self._pedir("POST", self.url, json=cuerpo)
             self.stats["creados"] += 1
             log.info("Evento creado: %s (%s → %s)", cuerpo["summary"], inicio, fin)
@@ -150,7 +137,7 @@ class Calendario:
             log.info("Evento actualizado: %s", eventos["evento"].get("summary") or ev.get("summary"))
         for sobrante in eventos.get("sobrantes") or []:
             self.borrar_evento(sobrante)
-            log.info("Evento del formato anterior eliminado (reserva unificada): %s", sobrante.get("summary"))
+            log.info("Evento duplicado de la reserva eliminado: %s", sobrante.get("summary"))
         eventos["sobrantes"] = []
         self._actualizar_siguientes(estado)
         self._actualizar_lockers_compartidos(estado)
@@ -165,10 +152,6 @@ class Calendario:
             fin = inicio + timedelta(minutes=self.cfg.duracion_evento_min)
         return inicio, fin
 
-    def _fechas(self, inicio: datetime, fin: datetime) -> dict:
-        return {"start": {"dateTime": inicio.isoformat(), "timeZone": self.cfg.zona_horaria},
-                "end": {"dateTime": fin.isoformat(), "timeZone": self.cfg.zona_horaria}}
-
     def _cuerpo(self, ev: dict | None, estado: dict, limpieza: dict | None, reservas: list[dict] | None = None) -> dict:
         """
         Lo que hay que escribir en el evento (para PATCH o POST). Lo que el anfitrión haya cambiado a mano
@@ -179,13 +162,17 @@ class Calendario:
         inicio, fin = self._horario(estado)
         color = ("cancelada" if estado["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else "reserva")
+        alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
         nuevo = {"summary": reglas.titulo_evento(estado, limpieza), "colorId": self.cfg.colores[color],
+                 "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(fin),
                  "auto": reglas.descripcion_evento(estado, limpieza, self.cfg)}
         previo = _escrito(ev)
         actual, manual = self._leer_evento(ev)
         escrito, cuerpo = {}, {}
         for k, v in nuevo.items():
+            if v is None:
+                continue                            # sin valor (p. ej. piso sin dirección): no se toca
             if previo and k in previo and _h(actual.get(k)) != previo[k]:
                 escrito[k] = previo[k]              # cambiado a mano: se respeta (y lo seguirá siendo)
                 continue
@@ -217,7 +204,7 @@ class Calendario:
             texto = re.sub(r"<[^>]+>", "\n", desc)
             manual = "\n".join(m.group(0) for m in reglas.ETIQUETA_ACUERDO.finditer(texto))
             auto = desc
-        actual = {"summary": ev.get("summary"), "colorId": ev.get("colorId"), "auto": auto,
+        actual = {"summary": ev.get("summary"), "colorId": ev.get("colorId"), "location": ev.get("location"), "auto": auto,
                   "inicio": _local_evento(ev.get("start"), self.tz), "fin": _local_evento(ev.get("end"), self.tz)}
         return actual, manual
 
@@ -338,26 +325,6 @@ class Calendario:
                 alertas.append(e)
         return alertas
 
-    def migrar(self, simulacion: bool = False) -> int:
-        """Convierte las reservas del formato anterior (entrada + salida) en un único evento."""
-        grupos: dict[str, list[dict]] = {}
-        for ev in self.eventos_propios():
-            p = _props(ev)
-            if p.get(P_TIPO) in ("entrada", "salida"):
-                clave = p.get(P_CODIGO) or f"{p.get(P_ALOJAMIENTO)}|{p.get(P_CHECKIN)}"
-                grupos.setdefault(clave, []).append(ev)
-        for clave, evs in grupos.items():
-            evs.sort(key=lambda ev: TIPOS_PROPIOS.index(_props(ev)[P_TIPO]))
-            estado = leer_estado({"evento": evs[0], "sobrantes": evs[1:]})
-            if not estado:
-                log.warning("Reserva %s sin estado legible: no se migra", clave)
-                continue
-            log.info("%s %s", "Se migraría" if simulacion else "Migrando", evs[0].get("summary"))
-            if not simulacion:
-                self.guardar_reserva(estado, {"evento": evs[0], "sobrantes": evs[1:]},
-                                     self.cfg.alojamiento_por_nombre(estado["alojamiento"]))
-        return len(grupos)
-
     def _propiedades(self, estado: dict, limpieza: dict | None, anterior: dict | None) -> dict:
         datos = json.dumps(estado, ensure_ascii=False, separators=(",", ":"))
         trozos = [datos[i:i + TAM_TROZO] for i in range(0, len(datos), TAM_TROZO)] or [""]
@@ -408,7 +375,7 @@ class Calendario:
 
 
 def leer_estado(eventos: dict) -> dict | None:
-    """Estado JSON guardado en el evento de la reserva (o en los sobrantes del formato anterior)."""
+    """Estado JSON guardado en el evento de la reserva (o en un duplicado suyo)."""
     for ev in (eventos.get("evento"), *(eventos.get("sobrantes") or [])):
         p = _props(ev)
         n = int(p.get(P_ESTADO_N) or 0)

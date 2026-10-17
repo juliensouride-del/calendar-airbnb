@@ -195,7 +195,7 @@ class Sincronizador:
         log.info("  Análisis (%s): %s", r.fuente, r.analisis)
         reglas.fusionar_analisis(estado, r.analisis, r.fuente, ctx["fecha_corta"], self.cfg)
         if r.error:
-            estado["notas"] = (estado["notas"] + [{"f": ctx["fecha_corta"], "t": "⚠️ Mensaje sin analizar por la IA; revísalo en Yahoo Mail."}])[-5:]
+            estado["sin_analizar"] = True
             if self.registro.puede_avisar("gemini", self.ahora):
                 self.tecnico.enviar("⚠️ Airbnb → Calendar: Gemini no responde",
                                         "Los mensajes se están analizando solo con palabras clave (sin horas de llegada/salida).\n\n"

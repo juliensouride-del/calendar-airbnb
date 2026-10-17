@@ -15,7 +15,7 @@ on:
       modo:
         description: "Qué ejecutar"
         type: choice
-        options: [sincronizar, comprobar, diagnosticar, migrar-simulacion, migrar, recalcular-simulacion, recalcular, purgar-simulacion, purgar]
+        options: [sincronizar, comprobar, diagnosticar, recalcular-simulacion, recalcular, purgar-simulacion, purgar]
         default: sincronizar
       desde:
         description: "Solo sincronizar: procesar correos desde esta fecha (yyyy-mm-dd). Vacío = últimos días"
@@ -100,8 +100,6 @@ jobs:
             comprobar)    python sincronizar.py --comprobar ;;
             diagnosticar) python sincronizar.py --diagnosticar ;;
             purgar-simulacion) python sincronizar.py --purgar --dry-run ;;
-            migrar-simulacion) python sincronizar.py --migrar --dry-run ;;
-            migrar)       python sincronizar.py --migrar ;;
             recalcular-simulacion) python sincronizar.py --recalcular --dry-run ;;
             recalcular)   python sincronizar.py --recalcular ;;
             purgar)

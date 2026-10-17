@@ -55,8 +55,6 @@ INSTRUCCIONES = "\n".join([
     "  sobre cómo funciona algo del apartamento o cómo se entra (llaves, código, dirección), agradecimientos,",
     "  ni peticiones que ya figuren como registradas con los mismos detalles (si cambia la hora, la fecha o",
     "  la cantidad, sí inclúyela).",
-    "- resumen: una frase breve en español con lo relevante para preparar la estancia;",
-    "  cadena vacía si el mensaje no aporta nada relevante para eso.",
 ])
 
 ESQUEMA = {
@@ -69,12 +67,11 @@ ESQUEMA = {
         "sofa_cama": {"type": "STRING", "enum": ["si", "no", "sin_mencion"]},
         "cuna": {"type": "STRING", "enum": ["si", "no", "sin_mencion"]},
         "otras_peticiones": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "resumen": {"type": "STRING"},
     },
     "required": ["hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa_cama", "cuna",
-                 "otras_peticiones", "resumen"],
+                 "otras_peticiones"],
     "propertyOrdering": ["hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa_cama", "cuna",
-                         "otras_peticiones", "resumen"],
+                         "otras_peticiones"],
 }
 
 ESPERAS_REINTENTO_S = [2, 6]
@@ -190,7 +187,6 @@ def interpretar_respuesta(resp: dict) -> dict:
         "sofa_cama": tri(o.get("sofa_cama")),
         "cuna": tri(o.get("cuna")),
         "otras_peticiones": [x for x in peticiones if isinstance(x, str) and x.strip()] if isinstance(peticiones, list) else [],
-        "resumen": o["resumen"].strip() if isinstance(o.get("resumen"), str) else "",
     }
 
 

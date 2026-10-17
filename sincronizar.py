@@ -10,8 +10,6 @@ Airbnb (Yahoo Mail) → Google Calendar.
   python sincronizar.py --purgar             los borra (pide confirmación; --si para no preguntar).
                                         Solo toca eventos con las marcas privadas del script.
                                         Para volver a cargarlos: --desde yyyy-mm-dd
-  python sincronizar.py --migrar [--dry-run] convierte las reservas del formato anterior (check-in y
-                                        check-out por separado) en un único evento y recalcula limpiezas
   python sincronizar.py --recalcular [--dry-run] aplica las reglas actuales (horario estándar, limpieza)
                                         a todas las reservas que entran desde hoy, sin leer correos
 
@@ -51,15 +49,14 @@ def main() -> int:
     modo.add_argument("--comprobar", action="store_true")
     modo.add_argument("--diagnosticar", action="store_true")
     modo.add_argument("--purgar", action="store_true", help="borra los eventos creados por este script")
-    modo.add_argument("--migrar", action="store_true", help="unifica las reservas del formato anterior")
     modo.add_argument("--recalcular", action="store_true", help="aplica las reglas actuales a las reservas futuras")
-    ap.add_argument("--dry-run", action="store_true", help="con --purgar, --migrar o --recalcular: solo lista, no cambia nada")
+    ap.add_argument("--dry-run", action="store_true", help="con --purgar o --recalcular: solo lista, no cambia nada")
     ap.add_argument("--si", action="store_true", help="con --purgar: no pide confirmación")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
 
     cfg = cargar_config(args.config)
-    sec = None if args.purgar or args.migrar or args.recalcular else Secretos.desde_entorno()
+    sec = None if args.purgar or args.recalcular else Secretos.desde_entorno()
 
     if args.diagnosticar:
         return diagnosticar(cfg, sec)
@@ -67,8 +64,6 @@ def main() -> int:
     if args.purgar:
         return purgar(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())),
                       simulacion=args.dry_run, confirmado=args.si)
-    if args.migrar:
-        return migrar(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run)
     if args.recalcular:
         return recalcular(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run)
 
@@ -126,24 +121,11 @@ def escribir_resumen(resumen: dict, stats: dict) -> None:
         log.info("\n".join(l))
 
 
-def migrar(calendario: Calendario, simulacion: bool) -> int:
-    n = calendario.migrar(simulacion)
-    if not simulacion:
-        calendario.recalcular_limpiezas(date.today())
-    log.info("✔ %d reserva(s) del formato anterior %s", n, "por migrar (simulación)" if simulacion else "migradas")
-    return 0
-
-
 def recalcular(calendario: Calendario, simulacion: bool) -> int:
     alertas = calendario.recalcular_limpiezas(date.today(), dias=None, simulacion=simulacion)
     log.info("✔ %d reserva(s) futura(s) revisada(s) · %d %s · %d con alerta de limpieza",
              calendario.stats["reservas_revisadas"], calendario.stats["limpiezas_recalculadas"],
              "por actualizar (simulación)" if simulacion else "actualizada(s)", len(alertas))
-    antiguos = [ev for ev in calendario.eventos_propios()
-                if (ev.get("extendedProperties") or {}).get("private", {}).get("airbnb_tipo") in ("entrada", "salida")]
-    if antiguos:
-        log.warning("Hay %d evento(s) del formato anterior (entrada y salida por separado) que no se recalculan:"
-                    " ejecuta antes el modo migrar", len(antiguos))
     return 0
 
 

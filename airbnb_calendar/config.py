@@ -15,7 +15,7 @@ class Alojamiento:
     alias: str                          # nombre corto para el título del evento
     id_anuncio: str = ""                # nº de airbnb.com/rooms/<nº> (lo más fiable)
     otros_nombres: list[str] = field(default_factory=list)
-    direccion: str = ""
+    direccion: str = ""                 # ubicación del evento (Calendar muestra el mapa)
     capacidad_sin_sofa: int | None = None   # personas que caben sin abrir el sofá cama
     locker: str = ""                    # enlace del locker de llaves
     locker_coincide_con: str = ""       # alias de otro alojamiento que comparte el locker...
@@ -36,7 +36,6 @@ class Config:
     hora_entrada_por_defecto: str = "15:00"
     hora_salida_por_defecto: str = "11:00"
     colores: dict[str, str] = field(default_factory=lambda: {"reserva": "10", "alerta_limpieza": "6", "cancelada": "8"})
-    recordatorios_minutos: list[int] | None = None    # None = los del calendario
     crear_evento_desde_mensaje: bool = True
     # Limpieza entre reservas
     limpieza_duracion_min: int = 120
@@ -49,7 +48,6 @@ class Config:
     # Avisos
     email_avisos: str = ""              # '' = la propia cuenta de Yahoo
     avisar_peticiones: bool = True
-    avisar_horas: bool = False
     avisar_errores: bool = True
     avisar_modificaciones: bool = True
     # Gemini
@@ -107,7 +105,6 @@ def cargar_config(ruta: str | Path = "config.toml") -> Config:
         hora_entrada_por_defecto=c.get("hora_entrada_por_defecto", "15:00"),
         hora_salida_por_defecto=c.get("hora_salida_por_defecto", "11:00"),
         colores={"reserva": "10", "alerta_limpieza": "6", "cancelada": "8", **c.get("colores", {})},
-        recordatorios_minutos=c.get("recordatorios_minutos"),
         crear_evento_desde_mensaje=c.get("crear_evento_desde_mensaje", True),
         limpieza_duracion_min=t.get("limpieza", {}).get("duracion_min", 120),
         limpieza_inicio=t.get("limpieza", {}).get("inicio", "08:00"),
@@ -117,7 +114,6 @@ def cargar_config(ruta: str | Path = "config.toml") -> Config:
         max_reintentos=t.get("reglas", {}).get("max_reintentos", 3),
         email_avisos=av.get("email", ""),
         avisar_peticiones=av.get("peticiones", True),
-        avisar_horas=av.get("horas", False),
         avisar_errores=av.get("errores", True),
         avisar_modificaciones=av.get("modificaciones", True),
         usar_gemini=g.get("usar", True),
