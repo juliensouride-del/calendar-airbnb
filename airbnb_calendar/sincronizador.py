@@ -176,9 +176,13 @@ class Sincronizador:
         # No se crea, pero si el huésped pide algo se avisa.
         # (Sin reglas deterministas, para no repetir el aviso con cada mensaje.)
         estado = reglas.crear_estado(d)
+        if self._terminada(estado):
+            # Ni evento ni aviso posible: analizarlo con la IA solo gastaría cuota
+            log.info("  Mensaje de una reserva ya terminada que no está en el calendario: se ignora.")
+            return
         self._analizar_texto_huesped(estado, d, ctx)
         novedades = avisos.avisos_pendientes(estado, self.cfg)
-        if novedades and not self._terminada(estado):
+        if novedades:
             self._avisar_peticiones(estado, novedades, d, ctx, en_calendario=False)
         log.info("  Mensaje de una reserva que no está en el calendario (alojamiento no configurado o "
                  "crear_evento_desde_mensaje = false): no se crean eventos.")

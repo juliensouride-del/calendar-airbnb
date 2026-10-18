@@ -385,6 +385,15 @@ def test_B3_evento_creado_desde_mensaje_lleva_aviso_y_se_completa_con_la_confirm
     assert "creado a partir de un mensaje" not in ev["description"]
 
 
+def test_B5_mensaje_de_anuncio_no_configurado_y_reserva_terminada_no_gasta_ia(tmp_path):
+    s = Entorno(tmp_path)                       # ahora = 08/10; la reserva de ej3 terminó el 27/09
+    for c in cargar_ejemplo("ej3.txt", "2026-09-22"):
+        s.buzon.recibir(replace(c, cuerpo=c.cuerpo.replace("Anton Martin Agradable", "Great Studio")
+                                .replace("Apartamentos de Julian", "Great Studio")))
+    s.ejecutar()
+    assert s.gemini.llamadas == [] and s.cal.eventos == {} and s.avisos == []
+
+
 def test_B4_mensaje_de_un_anuncio_no_configurado_no_crea_evento(tmp_path):
     s = Entorno(tmp_path)
     s.buzon.recibir(replace(MENSAJE_LUCIA, cuerpo=MENSAJE_LUCIA.cuerpo.replace(

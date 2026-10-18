@@ -256,7 +256,8 @@ def es_mensaje_de_cortesia(texto: str) -> bool:
     t = str(texto or "").lower()
     if re.search(r"[0-9?¿]", t):            # una hora, una fecha o una pregunta: siempre a la IA
         return False
-    palabras = re.findall(r"[a-záéíóúüñçàèêëîïôûœäöß']+", t)
+    # Palabras en CUALQUIER alfabeto (griego, cirílico, chino...): si no están en la lista, se analiza
+    palabras = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)*", t)
     return len(palabras) <= 8 and all(p.strip("'") in PALABRAS_CORTESIA for p in palabras)
 
 

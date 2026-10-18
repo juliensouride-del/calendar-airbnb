@@ -263,6 +263,7 @@ def test_mensajes_solo_de_cortesia_no_van_a_la_ia(texto):
                                    "Perfect, we land at 11am", "Gracias, llegaremos tarde", "Ok, we will need the sofa bed",
                                    "Thank you, can we leave our bags?", "Merci, on arrive vers 18h",
                                    "Great, early check-in possible?", "Thanks we are here",
-                                   "Perfect thanks, we are 3 people now", "We are planning to be out right before 11"])
+                                   "Perfect thanks, we are 3 people now", "We are planning to be out right before 11",
+                                   "Σας ευχαριστώ πολύ", "Мы приедем в три часа", "我们下午三点到", "شكرا جزيلا"])
 def test_cualquier_dato_o_pregunta_va_a_la_ia(texto):
     assert not gemini.es_mensaje_de_cortesia(texto)
