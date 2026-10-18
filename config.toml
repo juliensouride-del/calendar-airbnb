@@ -12,7 +12,8 @@
 carpetas = ["INBOX", "Archive"]
 # Dominios o direcciones de los remitentes de Airbnb.
 remitentes = ["airbnb.com"]
-# Días hacia atrás que revisa cada ejecución (margen si GitHub Actions se retrasa o falla).
+# Días hacia atrás que revisa cada ejecución, contados desde la última ejecución que terminó bien
+# (si la automatización estuvo caída una semana, al volver recupera esa semana).
 ventana_dias = 3
 # Fecha (yyyy-mm-dd) desde la que se procesan correos. "" = desde la primera ejecución
 # (no se cargan reservas antiguas).

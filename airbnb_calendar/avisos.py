@@ -17,7 +17,6 @@ def avisos_pendientes(e: dict, cfg: Config) -> list[str]:
         return []
     av, av0 = [], e.get("avisado") or {}
     if cfg.avisar_peticiones:
-        # Entrar antes / salir después es una petición (aunque [avisos] horas esté desactivado)
         if e.get("entrada_anticipada") and e["entrada_anticipada"] != av0.get("entrada_anticipada"):
             av.append(f"⏰ Pide ENTRAR ANTES de las {cfg.hora_entrada_por_defecto}: "
                       + _texto_solicitud(e["entrada_anticipada"]))

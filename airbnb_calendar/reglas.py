@@ -94,22 +94,22 @@ def fusionar_analisis(e: dict, a: dict | None, fuente: str, cfg: Config | None =
 def _fusionar_solicitud(actual: str | None, pedida, hora_dicha, estandar: str | None, antes: bool) -> str | None:
     """
     Petición de entrar antes / salir después tras un mensaje nuevo (lo más reciente manda):
-     - pide una hora concreta → esa hora; 'si' sin hora → no borra una hora pedida antes; 'no' → la anula.
+     - pide una hora concreta → esa hora; 'no' → la anula.
+     - 'si' sin hora → la hora a la que dice que llega (sale), si es antes (después) del horario estándar;
+       si no la dice, no borra una hora pedida antes.
      - si no pide nada pero dice a qué hora llega (sale): antes (después) del horario estándar es en la
        práctica una petición; dentro del horario, la petición anterior ya no hace falta.
     """
     if es_hora_valida(pedida):
         return pedida
-    if pedida == "si":
-        return actual or "si"
     if pedida == "no":
         return None
-    hora = normalizar_hora(hora_dicha) if es_hora_valida(hora_dicha) else None
-    if hora and estandar:
-        if antes and hora < MADRUGADA:
-            return None                     # llegar a las 00:30 es llegar tarde (de noche), no pedir entrar antes
-        return hora if (hora < estandar if antes else hora > estandar) else None
-    return actual
+    hora = normalizar_hora(hora_dicha) if es_hora_valida(hora_dicha) and estandar else None
+    # Llegar a las 00:30 es llegar tarde (de noche), no pedir entrar antes
+    fuera_de_horario = hora if hora and (MADRUGADA <= hora < estandar if antes else hora > estandar) else None
+    if pedida == "si":
+        return fuera_de_horario or actual or "si"
+    return fuera_de_horario if hora else actual
 
 
 def resetear_mensajes(e: dict) -> dict:

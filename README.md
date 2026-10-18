@@ -86,14 +86,14 @@ Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cad
 - **No duplica nada.** Cada correo se identifica por su UID de IMAP y su `Message-ID` (el mismo aunque se archive) y queda registrado. Cada reserva se encuentra en el calendario por su código, guardado como propiedad privada del evento, junto con su estado completo (JSON).
 - **Yahoo por semanas.** Yahoo devuelve como mucho 1 000 resultados por búsqueda y descarta el resto sin avisar: se busca por tramos de una semana.
 - **Manda lo último que dice el huésped.** Los correos se procesan en orden: un mensaje nuevo sustituye la hora de llegada o salida y puede pedir, cambiar o retirar la petición de horario. Llegar entre las 00:00 y las 06:00 cuenta como llegar tarde.
-- **Gemini, con cabeza.** Los mensajes que son solo cortesía («Thanks!», «Vale, perfecto», «👍») no se envían a la IA: todas sus palabras deben ser de cortesía, sin números ni preguntas. Si Gemini falla en el día a día, se usan palabras clave (detectan sofá, cuna y peticiones de horario, sin horas). En una recarga, si Gemini no responde ni esperando, la recarga se detiene en lugar de guardar un análisis peor.
-- **Errores.** Un correo que falla se reintenta en las siguientes ejecuciones y, tras 3 intentos, se avisa al desarrollador. Si el calendario no es accesible (ID o permisos), la ejecución se detiene sin contar fallos. La ejecución nunca se pone en rojo en GitHub (para que GitHub no envíe correos al propietario del repositorio): el aviso llega por correo (`ALERTA_EMAIL`) y por [ntfy.sh](https://ntfy.sh).
+- **Gemini, con cabeza.** No se envían a la IA los mensajes de reservas que ya han terminado (no hay nada que preparar ni que avisar) ni los que son solo cortesía («Thanks!», «Vale, perfecto», «👍»): todas sus palabras deben ser de cortesía, sin números ni preguntas. Si Gemini falla en el día a día, se usan palabras clave (detectan sofá, cuna y peticiones de horario, sin horas) y el desarrollador recibe un aviso al día (que distingue la cuota diaria agotada de un error de clave o de modelo). En una recarga, si Gemini no responde ni esperando, la recarga se detiene en lugar de guardar un análisis peor.
+- **Errores.** Un correo que falla se reintenta en las siguientes ejecuciones y, tras 3 intentos, se avisa al desarrollador. Si falla el envío de un aviso al anfitrión, el calendario se actualiza igual y el aviso se reintenta. Si el calendario no es accesible (ID o permisos), la ejecución se detiene sin contar fallos. Si la automatización está caída varios días, al volver recupera los correos desde la última ejecución que terminó bien. La ejecución nunca se pone en rojo en GitHub (para que GitHub no envíe correos al propietario del repositorio): el aviso llega por correo (`ALERTA_EMAIL`) y por [ntfy.sh](https://ntfy.sh).
 
 | Pieza | Plan gratuito | Uso |
 | --- | --- | --- |
 | GitHub Actions | 2 000 min/mes en privado (ilimitado en público) | ~8 ejecuciones al día de < 1 min |
 | Google Calendar API | 1 000 000 peticiones/día | unas decenas al día |
-| Gemini API | cuota diaria gratuita de AI Studio | un análisis por mensaje de huésped (no los de cortesía) |
+| Gemini API | cuota diaria gratuita de AI Studio | un análisis por mensaje de huésped (no los de cortesía ni los de reservas terminadas) |
 
 ---
 
@@ -132,7 +132,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 | Modo | Qué hace |
 | --- | --- |
 | `sincronizar` | lo mismo que las ejecuciones automáticas: procesa los correos nuevos |
-| `recargar` | con `desde` (y opcionalmente `hasta`): vuelve a procesar todos los correos del tramo en orden, sin avisos al anfitrión, y al final pone al día todas las reservas futuras. Cada reserva se reconstruye desde su confirmación. Hasta ~5,5 h por ejecución |
+| `recargar` | con `desde` (y opcionalmente `hasta`): vuelve a procesar todos los correos del tramo en orden, sin avisos al anfitrión, y al final pone al día todas las reservas futuras. Cada reserva se reconstruye desde su confirmación; los mensajes de reservas ya terminadas no se analizan con la IA. Hasta ~5,5 h por ejecución |
 | `comprobar` | verifica Yahoo, Google Calendar, Gemini y los avisos, sin escribir nada |
 | `diagnosticar` | muestra lo que se extrae de los correos de los últimos 7 días, sin tocar el calendario |
 | `recalcular-simulacion` / `recalcular` | aplica las reglas actuales (horario, limpieza, formato, lockers) a todas las reservas futuras, sin leer correos |
@@ -156,7 +156,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 92 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 103 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 

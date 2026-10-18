@@ -22,6 +22,7 @@ class Registro:
         self.fallos: dict[str, int] = d.get("fallos", {})           # id → nº de intentos fallidos
         self.fecha_fallos: dict[str, str] = d.get("fecha_fallos", {})   # id → fecha ISO del correo que falla
         self.ultimo_aviso: dict[str, str] = d.get("ultimo_aviso", {})   # tipo → fecha ISO
+        self.ultima_ok: str | None = d.get("ultima_ok")         # ISO; última ejecución normal que terminó bien
 
     def fecha_inicio(self, procesar_desde: str, ahora: datetime) -> datetime:
         """Desde cuándo se procesan correos: config.procesar_desde o la primera ejecución."""
@@ -60,7 +61,8 @@ class Registro:
 
     def guardar(self) -> None:
         datos = {"inicio": self.inicio, "procesados": dict(sorted(self.procesados.items(), key=lambda x: x[1])),
-                 "fallos": self.fallos, "fecha_fallos": self.fecha_fallos, "ultimo_aviso": self.ultimo_aviso}
+                 "fallos": self.fallos, "fecha_fallos": self.fecha_fallos, "ultimo_aviso": self.ultimo_aviso,
+                 "ultima_ok": self.ultima_ok}
         self.ruta.parent.mkdir(parents=True, exist_ok=True)
         # Escritura atómica: nunca queda un estado.json a medias
         fd, tmp = tempfile.mkstemp(dir=self.ruta.parent, suffix=".tmp")

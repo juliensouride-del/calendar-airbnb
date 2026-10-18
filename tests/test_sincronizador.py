@@ -96,6 +96,8 @@ class GeminiFalso:
             raise requests.ReadTimeout("timeout")
         if self.modo == "falla":
             return Respuesta(503, texto='{"error":"overloaded"}')
+        if self.modo == "cuota":
+            return Respuesta(429, texto='{"error": {"code": 429, "details": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}}')
         txt = json["contents"][0]["parts"][0]["text"]
         huesped = txt.split('"""')[1]
         enviado = re.search(r"Mensaje enviado el: \d{4}-\d{2}-\d{2} (\d{2}):(\d{2})", txt)
@@ -111,6 +113,7 @@ class GeminiFalso:
         if re.search(r"out right before 11", huesped, re.I): r["hora_salida"] = "11:00"
         if re.search(r"before 5pm", huesped, re.I): r["hora_llegada"] = "17:00"
         if re.search(r"check-in early", huesped, re.I): r["entrada_anticipada"] = "si"
+        if re.search(r"arrive at 12", huesped, re.I): r["hora_llegada"] = "12:00"
         return Respuesta(200, {"candidates": [{"content": {"parts": [{"text": __import__("json").dumps(r)}]}}]})
 
 
@@ -139,12 +142,19 @@ class Entorno:
         self.tecnicos: list[tuple[str, str]] = []        # al desarrollador (ntfy)
         self.ruta_estado = tmp_path / "estado.json"
         self.ahora = datetime(2026, 10, 8, 12, tzinfo=UTC)
+        self.fallar_avisos = 0                           # envíos al anfitrión que fallan (SMTP caído)
+
+    def avisar(self, asunto, cuerpo):
+        if self.fallar_avisos:
+            self.fallar_avisos -= 1
+            raise OSError("SMTP de Yahoo no responde")
+        self.avisos.append((asunto, cuerpo))
 
     def ejecutar(self, desde: datetime | None = None):
         """Una ejecución completa, como en GitHub Actions: carga el registro, procesa y lo guarda.
         desde: carga manual (--desde), que vuelve a procesar todos los correos del tramo."""
         registro = Registro(self.ruta_estado)
-        notificador = type("N", (), {"enviar": lambda _, a, c: self.avisos.append((a, c))})()
+        notificador = type("N", (), {"enviar": lambda _, a, c: self.avisar(a, c)})()
         tecnico = type("T", (), {"enviar": lambda _, a, c: self.tecnicos.append((a, c))})()
         analizador = AnalizadorMensajes(self.cfg, "clave-falsa", sesion=self.gemini, dormir=lambda s: None)
         Sincronizador(self.cfg, self.buzon, Calendario(self.cfg, self.cal, dormir=lambda s: None), analizador, notificador,
@@ -491,6 +501,7 @@ def test_G_eml_reales_confirmacion_y_mensaje_con_hora_sofa_y_cuna(tmp_path):
 def test_H_modelo_gemini_colgado_timeout_y_respaldo(tmp_path):
     s = Entorno(tmp_path, colgado="gemini-principal", crear_evento_desde_mensaje=True,
                 gemini_modelos_respaldo=["gemini-respaldo"])
+    s.ahora = datetime(2026, 9, 22, 12, tzinfo=UTC)
     for c in cargar_ejemplo("ej3.txt", "2026-09-22")[:2]:
         s.buzon.recibir(c)
     s.ejecutar()
@@ -873,3 +884,87 @@ def test_U_registro_olvida_los_fallos_de_correos_fuera_de_la_ventana(tmp_path):
     assert reg.fallos == {"reciente": 1}
     reg.guardar()
     assert Registro(tmp_path / "estado.json").fecha_fallos == {"reciente": "2026-10-07T00:00:00+00:00"}
+
+
+# ---------------------------------------------------------------------------
+#  Robustez: correos repetidos, cuota de Gemini, caídas largas y SMTP
+# ---------------------------------------------------------------------------
+
+
+def test_V_confirmacion_vista_otra_vez_no_borra_lo_que_dijo_el_huesped(tmp_path):
+    """Fuera de una recarga, una confirmación que vuelve a aparecer (otro UID) no reinicia la reserva."""
+    s = Entorno(tmp_path)
+    s.buzon.recibir(CONF_LUCIA)
+    s.buzon.recibir(MENSAJE_LUCIA)
+    s.ejecutar()
+    llamadas = len(s.gemini.llamadas)
+    s.buzon.recibir(CONF_LUCIA)
+    s.ejecutar()
+    assert s.cal.ev("HMTEST0002")["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
+    assert s.asuntos == ["🔔 Airbnb · Corazón de Madrid · 26/11–02/12 · sofá cama"], "ni «Ya NO necesita sofá cama» ni avisos repetidos"
+    assert len(s.gemini.llamadas) == llamadas, "el mensaje inicial ya se analizó"
+
+
+def test_W_reserva_terminada_no_gasta_ia(tmp_path):
+    """Recarga real del 18/10: 521 análisis de Gemini en reservas ya terminadas agotaron la cuota diaria."""
+    s = Entorno(tmp_path)
+    s.ahora = datetime(2026, 12, 5, 12, tzinfo=UTC)            # Lucía salió el 02/12
+    s.buzon.recibir(CONF_LUCIA)
+    s.buzon.recibir(MENSAJE_LUCIA)
+    s.ejecutar(desde=datetime(2026, 9, 1, tzinfo=UTC))
+    assert s.gemini.llamadas == []
+    assert s.cal.ev("HMTEST0002")["summary"] == "🏠 Corazón de Madrid · 2 pers", "el evento se crea con los datos de la reserva"
+    assert "sin analizar" not in s.cal.ev("HMTEST0002")["description"]
+    assert s.avisos == []
+
+
+def test_X_si_falla_el_aviso_al_anfitrion_el_calendario_se_actualiza_igual(tmp_path):
+    s = Entorno(tmp_path)
+    s.buzon.recibir(CONF_LUCIA)
+    s.ejecutar()
+    s.buzon.recibir(MENSAJE_LUCIA)
+    s.fallar_avisos = 1
+    reg = s.ejecutar()
+    assert s.cal.ev("HMTEST0002")["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
+    assert reg.fallos, "el aviso se reintentará en la próxima ejecución"
+    s.ejecutar()
+    assert s.asuntos == ["🔔 Airbnb · Corazón de Madrid · 26/11–02/12 · sofá cama"]
+    s.ejecutar()
+    assert len(s.avisos) == 1 and not Registro(s.ruta_estado).fallos
+
+
+def test_Y_tras_varios_dias_caido_se_recuperan_los_correos_pendientes(tmp_path):
+    s = Entorno(tmp_path, procesar_desde="", ventana_dias=3)
+    s.ahora = datetime(2026, 10, 1, 7, tzinfo=UTC)
+    s.ejecutar()                                               # instalación: 01/10 a las 07:00 UTC
+    s.buzon.recibir(CONF_LUCIA)                                # llega el 01/10 a las 08:00 UTC
+    s.ahora = datetime(2026, 10, 8, 12, tzinfo=UTC)            # 7 días sin ejecuciones correctas
+    s.ejecutar()
+    assert s.cal.ev("HMTEST0002"), "el correo del 01/10 no se pierde"
+    reg = Registro(s.ruta_estado)
+    assert reg.ultima_ok == s.ahora.isoformat()
+
+
+def test_Z_cuota_diaria_de_gemini_agotada_aviso_claro_al_desarrollador(tmp_path):
+    s = Entorno(tmp_path, gemini="cuota")
+    s.buzon.recibir(CONF_LUCIA)
+    s.ejecutar()
+    assert len(s.tecnicos) == 1
+    asunto, cuerpo = s.tecnicos[0]
+    assert asunto == "⚠️ Airbnb → Calendar: cuota diaria de Gemini agotada"
+    assert "se renueva hacia las 9:00" in cuerpo and "GEMINI_API_KEY" not in cuerpo
+    assert "sin analizar por la IA" in s.cal.ev("HMTEST0002")["description"]
+
+
+def test_Z2_la_descripcion_muestra_la_hora_acordada(tmp_path):
+    s = Entorno(tmp_path)
+    s.buzon.recibir(CONF_LUCIA)
+    s.buzon.recibir(_mensaje_lucia("We will arrive at 12:00.", "2026-10-03 10:00"))
+    s.ejecutar()
+    ev = s.cal.ev("HMTEST0002")
+    assert "⏰ pide entrar 12:00" in ev["summary"] and "llega 12:00" not in ev["summary"], "sin repetir la hora"
+    ev["description"] = "#entrada 13:00\n" + ev["description"]       # Julien ofrece las 13:00
+    Calendario(s.cfg, s.cal, dormir=lambda _: None).recalcular_limpiezas(datetime(2026, 10, 8).date())
+    ev = s.cal.ev("HMTEST0002")
+    assert "entra 13:00 ✅" in ev["summary"]
+    assert "🕒 Llegada: 13:00" in ev["description"], ev["description"]

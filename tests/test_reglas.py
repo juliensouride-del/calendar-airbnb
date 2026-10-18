@@ -161,6 +161,15 @@ def test_valores_por_defecto_si_no_hay_informacion(r0, cfg):
     assert "🛋️ Sofá cama: SÍ (" in d
 
 
+def test_pide_entrar_antes_y_dice_a_que_hora_llega(r0, cfg):
+    """Caso real (recarga del 18/10): 'llegamos a las 13:00, ¿podemos entrar antes?' → pide entrar a las 13:00."""
+    e = reglas.crear_estado(r0)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="13:00", entrada_anticipada="si"), "huesped", cfg=cfg)
+    assert e["entrada_anticipada"] == "13:00"
+    assert avisos.avisos_pendientes(e, cfg) == ["⏰ Pide ENTRAR ANTES de las 15:00: a las 13:00"]
+    assert formato.titulo_evento(e) == "🏠 Corazón de Madrid · 2 pers · ⏰ pide entrar 13:00"
+
+
 def test_llegar_de_madrugada_es_llegar_tarde_no_entrar_antes(r0, cfg):
     e = reglas.crear_estado(r0)
     reglas.fusionar_analisis(e, analisis(hora_llegada="00:30"), "huesped", cfg=cfg)

@@ -40,14 +40,14 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
     if e.get("acuerdo_entrada"):
         partes.append(f"entra {e['acuerdo_entrada']} ✅")
     else:
-        if e["hora_llegada"]:
+        if e["hora_llegada"] and e["hora_llegada"] != e.get("entrada_anticipada"):
             partes.append("llega " + e["hora_llegada"])
         if e.get("entrada_anticipada"):
             partes.append("⏰ pide entrar " + (e["entrada_anticipada"] if es_hora_valida(e["entrada_anticipada"]) else "antes"))
     if e.get("acuerdo_salida"):
         partes.append(f"sale {e['acuerdo_salida']} ✅")
     else:
-        if e["hora_salida"]:
+        if e["hora_salida"] and e["hora_salida"] != e.get("salida_tardia"):
             partes.append("sale " + e["hora_salida"])
         if e.get("salida_tardia"):
             partes.append("⌛ pide salir " + (e["salida_tardia"] if es_hora_valida(e["salida_tardia"]) else "después"))
@@ -88,8 +88,8 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
         bloques.append(avisos)
 
         # Sin información que diga otra cosa: horario estándar (o el acordado) y sin sofá cama ni cuna
-        llegada = e["hora_llegada"] or e.get("acuerdo_entrada") or (cfg.hora_entrada_por_defecto if cfg else "15:00")
-        salida = e["hora_salida"] or e.get("acuerdo_salida") or (cfg.hora_salida_por_defecto if cfg else "11:00")
+        llegada = e.get("acuerdo_entrada") or e["hora_llegada"] or (cfg.hora_entrada_por_defecto if cfg else "15:00")
+        salida = e.get("acuerdo_salida") or e["hora_salida"] or (cfg.hora_salida_por_defecto if cfg else "11:00")
         datos = [f"🕒 Llegada: {llegada}   ·   Salida: {salida}",
                  "🛋️ Sofá cama: " + _texto_marca(e, "sofa"),
                  "🍼 Cuna: " + _texto_marca(e, "cuna")]

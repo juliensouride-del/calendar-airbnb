@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from . import avisos, formato, reglas
 from .calendario import CalendarioInaccesible, leer_estado
 from .config import Config
-from .gemini import GeminiAgotado, es_mensaje_de_cortesia
+from .gemini import GeminiAgotado, cuota_diaria_agotada, es_mensaje_de_cortesia
 from .parser import DatosCorreo, parsear_correo
 from .registro import Registro
 from .yahoo import Correo, es_remitente
@@ -48,7 +48,11 @@ class Sincronizador:
         # tras varios intentos, se daría por perdido aunque el problema sea la configuración
         self.cal.comprobar_acceso()
         inicio = self.registro.fecha_inicio(self.cfg.procesar_desde, self.ahora)
-        desde = self.desde or max(inicio, self.ahora - timedelta(days=self.cfg.ventana_dias))
+        # La ventana se cuenta desde la última ejecución completa: si la automatización ha estado caída
+        # más días que la ventana (contraseña caducada, calendario inaccesible...), no se pierde ningún correo
+        ultima = min(datetime.fromisoformat(self.registro.ultima_ok), self.ahora) if self.registro.ultima_ok else self.ahora
+        ventana = max(inicio, ultima - timedelta(days=self.cfg.ventana_dias))
+        desde = self.desde or ventana
         # Carga manual (--desde): se reprocesa todo el tramo (p. ej. tras una purga); es idempotente
         excluir = set() if self.desde else set(self.registro.procesados)
         correos = (self.buzon.correos_desde(desde, self.cfg.carpetas, self.cfg.remitentes, excluir, hasta=self.hasta)
@@ -61,10 +65,12 @@ class Sincronizador:
             if i % 100 == 0:
                 log.info("── Progreso: %d de %d correos (hasta el %s)", i, len(correos),
                          c.fecha.astimezone(self.tz).strftime("%d/%m/%Y"))
-        self.registro.limpiar(self.ahora - timedelta(days=self.cfg.ventana_dias + 7))
+        self.registro.limpiar(ventana - timedelta(days=7))
         # Limpiezas de los próximos días, aunque no haya llegado ningún correo (cambios de fechas, migración…)
         self.resumen["alertas_limpieza"] = self.cal.recalcular_limpiezas(self.ahora.astimezone(self.tz).date())
         self.resumen["correos"] = len(correos)
+        if not self.desde:
+            self.registro.ultima_ok = self.ahora.isoformat()
         return len(correos)
 
     # ------------------------------------------------------------------ correo
@@ -135,10 +141,12 @@ class Sincronizador:
     def _confirmacion_o_mensaje(self, d: DatosCorreo, ctx: dict, eventos: dict | None = None) -> None:
         eventos = eventos if eventos is not None else self._buscar(d)
         estado = leer_estado(eventos)
-        if estado and d.tipo == "confirmacion":
-            # La confirmación es el primer correo de la reserva: si ya existe el evento es que se están
-            # re-procesando correos (--desde). Se reconstruye todo lo deducido de los mensajes, en orden,
-            # para que mande lo último que dijo el huésped y no queden interpretaciones antiguas.
+        # Fuera de una recarga, la confirmación de una reserva que ya está en el calendario es el mismo correo otra
+        # vez (otro UID, o un reintento porque falló el aviso): lo deducido de los mensajes posteriores se conserva
+        repetida = bool(estado) and d.tipo == "confirmacion" and not self.desde and not estado.get("desde_mensaje")
+        if estado and d.tipo == "confirmacion" and self.desde:
+            # Recarga (--desde): la confirmación es el primer correo de la reserva. Se reconstruye todo lo deducido
+            # de los mensajes, en orden, para que mande lo último que dijo el huésped y no queden interpretaciones antiguas.
             reglas.resetear_mensajes(estado)
         if estado is None:
             estado = reglas.crear_estado()
@@ -147,15 +155,24 @@ class Sincronizador:
         if d.tipo == "confirmacion":
             estado["desde_mensaje"] = False
         reglas.actualizar_con_datos(estado, d)
-        self._analizar_texto_huesped(estado, d, ctx)
+        if not repetida:
+            self._analizar_texto_huesped(estado, d, ctx)
         alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
         reglas.aplicar_reglas(estado, alojamiento, self.cfg)
         novedades = avisos.avisos_pendientes(estado, self.cfg)
-        # Primero el aviso: si después fallara el guardado se reintenta (mejor un aviso repetido que uno perdido)
+        # Primero el aviso: si después fallara el guardado se reintenta (mejor un aviso repetido que uno perdido).
+        # Si falla el aviso, el calendario se actualiza igual y el aviso queda pendiente para el reintento.
+        fallo_aviso = None
         if novedades and not self._terminada(estado):
-            self._avisar_peticiones(estado, novedades, d, ctx, en_calendario=True)
-        avisos.marcar_avisado(estado)
+            try:
+                self._avisar_peticiones(estado, novedades, d, ctx, en_calendario=True)
+            except Exception as err:                     # noqa: BLE001 — SMTP caído: el calendario no debe esperar
+                fallo_aviso = err
+        if not fallo_aviso:
+            avisos.marcar_avisado(estado)
         self.cal.guardar_reserva(estado, eventos, alojamiento)
+        if fallo_aviso:
+            raise fallo_aviso
 
     def _cancelacion(self, d: DatosCorreo) -> None:
         eventos = self._buscar(d)
@@ -176,10 +193,6 @@ class Sincronizador:
         # No se crea, pero si el huésped pide algo se avisa.
         # (Sin reglas deterministas, para no repetir el aviso con cada mensaje.)
         estado = reglas.crear_estado(d)
-        if self._terminada(estado):
-            # Ni evento ni aviso posible: analizarlo con la IA solo gastaría cuota
-            log.info("  Mensaje de una reserva ya terminada que no está en el calendario: se ignora.")
-            return
         self._analizar_texto_huesped(estado, d, ctx)
         novedades = avisos.avisos_pendientes(estado, self.cfg)
         if novedades:
@@ -193,8 +206,12 @@ class Sincronizador:
         texto = _texto_huesped(d)
         if not texto:
             return
+        if self._terminada(estado):
+            # Ni aviso posible ni nada que preparar: analizarlo solo gastaría cuota (p. ej. en una recarga de meses)
+            log.info("  Reserva ya terminada: el mensaje no se analiza con la IA")
+            return
         if es_mensaje_de_cortesia(texto):
-            log.info("  Mensaje solo de cortesía (%r): no se analiza con la IA", texto[:60])
+            log.info("  Mensaje solo de cortesía: no se analiza con la IA")
             return
         r = self.analizador.analizar(texto, {
             "alojamiento": estado["alojamiento"], "checkin": estado["checkin"], "checkout": estado["checkout"],
@@ -206,10 +223,17 @@ class Sincronizador:
         reglas.fusionar_analisis(estado, r.analisis, r.fuente, self.cfg)
         if r.error:
             estado["sin_analizar"] = True
-            if self.registro.puede_avisar("gemini", self.ahora):
+            if not self.registro.puede_avisar("gemini", self.ahora):
+                return
+            sin_ia = "Mientras tanto, los mensajes se analizan solo con palabras clave (sin horas de llegada/salida)."
+            if cuota_diaria_agotada(r.error):
+                self.tecnico.enviar("⚠️ Airbnb → Calendar: cuota diaria de Gemini agotada",
+                                    f"La cuota gratuita de Gemini se ha agotado por hoy y se renueva hacia las 9:00 (hora de Madrid). {sin_ia}\n\n"
+                                    "Los eventos afectados lo indican en la descripción. No hace falta hacer nada.")
+            else:
                 self.tecnico.enviar("⚠️ Airbnb → Calendar: Gemini no responde",
-                                        "Los mensajes se están analizando solo con palabras clave (sin horas de llegada/salida).\n\n"
-                                        f"Error: {r.error}\n\nComprueba el secreto GEMINI_API_KEY y [gemini] modelo en config.toml.")
+                                    f"{sin_ia}\n\nError: {r.error}\n\n"
+                                    "Comprueba el secreto GEMINI_API_KEY y [gemini] modelo en config.toml.")
 
     def _terminada(self, estado: dict) -> bool:
         """Reserva que ya ha terminado: no tiene sentido avisar al anfitrión de sus peticiones."""

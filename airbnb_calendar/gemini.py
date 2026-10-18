@@ -127,10 +127,15 @@ class AnalizadorMensajes:
             ultimo = f"HTTP {resp.status_code}: {resp.text[:300]}"
             if resp.status_code != 429 and resp.status_code < 500 or intento == len(esperas):
                 break
-            if resp.status_code == 429 and "PerDay" in resp.text:
-                break                   # cuota diaria agotada: esperar unos minutos no sirve
+            if cuota_diaria_agotada(ultimo):
+                break                   # esperar unos minutos no sirve
             self.dormir(max(esperas[intento], _espera_sugerida(resp.text) if self.paciente else 0))
         raise RuntimeError(ultimo)
+
+
+def cuota_diaria_agotada(error: str | None) -> bool:
+    """¿El error es la cuota diaria gratuita agotada? (429 con 'GenerateRequestsPerDay...' en el cuerpo)."""
+    return "HTTP 429" in (error or "") and "PerDay" in error
 
 
 def _espera_sugerida(texto: str) -> float:
