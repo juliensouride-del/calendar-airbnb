@@ -158,12 +158,18 @@
     "INBOX:1274556880:376065": "2026-10-21T00:16:13+00:00",
     "mid:<Lpp42GHVS2--mQwJq4Y4pQ@geopod-ismtpd-70>": "2026-10-21T00:16:13+00:00",
     "INBOX:1274556880:376067": "2026-10-21T06:39:58+00:00",
-    "mid:<CfLkdIp3T92Z8dy7LOP-WQ@geopod-ismtpd-33>": "2026-10-21T06:39:58+00:00"
+    "mid:<CfLkdIp3T92Z8dy7LOP-WQ@geopod-ismtpd-33>": "2026-10-21T06:39:58+00:00",
+    "INBOX:1274556880:376070": "2026-10-21T09:08:05+00:00",
+    "mid:<PmbTtzsnScO0HIaw4eG3Uw@geopod-ismtpd-84>": "2026-10-21T09:08:05+00:00",
+    "INBOX:1274556880:376071": "2026-10-21T09:31:09+00:00",
+    "mid:<dFcw_GECSiaCSJ-5jimUKA@geopod-ismtpd-90>": "2026-10-21T09:31:09+00:00",
+    "INBOX:1274556880:376073": "2026-10-21T09:37:34+00:00",
+    "mid:<xgcsA7kzTfCu3odEkLQNYQ@geopod-ismtpd-23>": "2026-10-21T09:37:34+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-13T18:30:54.058448+00:00"
   },
-  "ultima_ok": "2026-10-21T08:35:23.204713+00:00"
+  "ultima_ok": "2026-10-21T10:33:37.011372+00:00"
 }
