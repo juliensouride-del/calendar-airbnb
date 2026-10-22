@@ -130,9 +130,11 @@ def escribir_resumen(resumen: dict, stats: dict) -> None:
 
 def recalcular(calendario: Calendario, simulacion: bool) -> int:
     alertas = calendario.recalcular_limpiezas(date.today(), dias=None, simulacion=simulacion)
-    log.info("✔ %d reserva(s) futura(s) revisada(s) · %d %s · %d con alerta de limpieza",
-             calendario.stats["reservas_revisadas"], calendario.stats["limpiezas_recalculadas"],
-             "por actualizar (simulación)" if simulacion else "actualizada(s)", len(alertas))
+    st = calendario.stats
+    cambios = ("%d evento(s) por actualizar y %d por crear (simulación)" if simulacion
+               else "%d evento(s) actualizado(s) y %d creado(s)") % (st["limpiezas_recalculadas"], st["creados"])
+    log.info("✔ %d reserva(s) en curso o futura(s) revisada(s) · %s · %d con alerta de limpieza",
+             st["reservas_revisadas"], cambios, len(alertas))
     return 0
 
 

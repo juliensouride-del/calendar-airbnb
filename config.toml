@@ -25,8 +25,8 @@ procesar_desde = ""
 # ("Hacer cambios en eventos").
 id = "PEGA_AQUI_EL_ID_DEL_CALENDARIO"
 zona_horaria = "Europe/Madrid"
-# Cada reserva es UN evento que va de la hora de entrada a la de salida.
-# duracion_evento_min solo se usa si falta la fecha de salida.
+# Cada reserva son DOS eventos cortos: la ENTRADA (el día de llegada, a la hora de entrada)
+# y la SALIDA (el día de salida, a la hora de salida). Cada uno dura duracion_evento_min.
 duracion_evento_min = 30
 # Horario estándar (salvo acuerdo expreso): nunca se entra antes ni se sale después.
 # Si el huésped llega más tarde o sale antes, el evento usa su hora.
@@ -41,13 +41,14 @@ crear_evento_desde_mensaje = true
 [calendario.colores]
 # 1 Lavanda · 2 Salvia · 3 Uva · 4 Flamenco · 5 Plátano · 6 Mandarina
 # 7 Pavo real · 8 Grafito · 9 Arándano · 10 Albahaca · 11 Tomate
-reserva = "10"
-alerta_limpieza = "6"   # reservas con [ALERTA LIMPIEZA / AJUSTE HORARIO]
+reserva = "10"          # eventos de entrada
+alerta_limpieza = "6"   # entradas con [ALERTA LIMPIEZA / AJUSTE HORARIO]
+salida = "11"           # eventos de salida
 cancelada = "8"
 
 [limpieza]
 # Cuando un huésped sale el mismo día (o el anterior) en que entra el siguiente, el
-# evento del que entra lleva [LIMPIEZA OK] o [ALERTA LIMPIEZA / AJUSTE HORARIO] según
+# evento de entrada del que llega lleva [LIMPIEZA OK] o [ALERTA LIMPIEZA / AJUSTE HORARIO] según
 # quepa la limpieza entre la salida y la entrada, dentro del horario del equipo.
 duracion_min = 120
 inicio = "08:00"
@@ -83,6 +84,7 @@ timeout_s = 30
 #   alias:              nombre corto para el título del evento
 #   id_anuncio:         nº de airbnb.com/rooms/<nº> (lo más fiable)
 #   otros_nombres:      (opcional) otros títulos con los que aparece en los correos
+#   direccion:          (opcional) dirección del piso: ubicación de los eventos, con mapa en Calendar
 #   capacidad_sin_sofa: (opcional) personas que caben SIN abrir el sofá cama; si la
 #                       reserva lo supera se marca "sofá cama" como probable
 #   locker:             (opcional) enlace del locker de llaves (se añade a la descripción)
@@ -94,6 +96,7 @@ timeout_s = 30
 nombre = "Espacioso y luminoso apartamento Corazón de Madrid"
 alias = "Tirso"
 id_anuncio = "809290025626258590"
+direccion = "Plaza de Tirso de Molina 18, Madrid"
 capacidad_sin_sofa = 2
 locker = "https://access.keynest.com/D996FCE173C5EEAF6762ECE86EC18F0C"
 
@@ -101,6 +104,7 @@ locker = "https://access.keynest.com/D996FCE173C5EEAF6762ECE86EC18F0C"
 nombre = "Lavapies - Peaceful 2 bedrooms Fresh A/C"
 alias = "Torrecilla"
 id_anuncio = "1065868788427158053"
+direccion = "Calle de la Torrecilla del Leal 22, Madrid"
 capacidad_sin_sofa = 3
 locker = "https://access.keynest.com/02AB83A59B49935C9BB1F5F643C249ED"
 # Comparte locker con Buenavista: si entran los dos el mismo día, Torrecilla usa este
@@ -112,5 +116,6 @@ nombre = "Anton Martin Agradable, Anton Martin - Apartament."
 alias = "Buenavista"
 id_anuncio = "1025328659441162105"
 otros_nombres = ["Apartamentos de Julian, Anton Martin - Apartament."]
+direccion = "Calle de Buenavista 14, Madrid"
 capacidad_sin_sofa = 2
 locker = "https://access.keynest.com/02AB83A59B49935C9BB1F5F643C249ED"

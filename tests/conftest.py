@@ -1,6 +1,7 @@
 """Utilidades compartidas por las pruebas (correos reales de ./ejemplos)."""
 from __future__ import annotations
 
+import copy
 import re
 import sys
 from dataclasses import dataclass
@@ -43,7 +44,7 @@ class Ejemplo:
 
 
 def config_prueba(**cambios) -> Config:
-    cfg = Config(calendar_id="cal-prueba", alojamientos=ALOJAMIENTOS_PRUEBA, gemini_modelo="gemini-principal")
+    cfg = Config(calendar_id="cal-prueba", alojamientos=copy.deepcopy(ALOJAMIENTOS_PRUEBA), gemini_modelo="gemini-principal")
     for k, v in cambios.items():
         setattr(cfg, k, v)
     return cfg

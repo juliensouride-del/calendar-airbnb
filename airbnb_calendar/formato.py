@@ -13,10 +13,10 @@ from .reglas import es_hora_valida, personas_que_duermen
 DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 
-def prefijo_limpieza(l: dict | None) -> str:
+def etiqueta_limpieza(l: dict | None) -> str:
     if not l:
         return ""
-    return "[LIMPIEZA OK] " if l["ok"] else "[ALERTA LIMPIEZA / AJUSTE HORARIO] "
+    return "[LIMPIEZA OK]" if l["ok"] else "[ALERTA LIMPIEZA / AJUSTE HORARIO]"
 
 
 def lineas_limpieza(l: dict | None, cfg: Config) -> list[str]:
@@ -32,11 +32,9 @@ def lineas_limpieza(l: dict | None, cfg: Config) -> list[str]:
             " llegue más tarde."]
 
 
-def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
-    """'[LIMPIEZA OK] 🏠 Lavapiés · 3 pers · llega 17:30 · sale 10:00 · 🛋️ sofá cama · 🍼 cuna'"""
-    partes = ["🏠 " + (e["alias"] or e["alojamiento"] or "Airbnb")]
-    if e["total"]:
-        partes.append(f"{e['total']} pers")
+def titulo_entrada(e: dict, limpieza: dict | None = None) -> str:
+    """'🟢 ENTRADA Torrecilla · [LIMPIEZA OK] · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🛋️ sofá cama · 🍼 cuna'"""
+    partes = ["🟢 ENTRADA " + _nombre(e), etiqueta_limpieza(limpieza), _personas(e)]
     if e.get("acuerdo_entrada"):
         partes.append(f"entra {e['acuerdo_entrada']} ✅")
     else:
@@ -44,6 +42,16 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
             partes.append("llega " + e["hora_llegada"])
         if e.get("entrada_anticipada"):
             partes.append("⏰ pide entrar " + (e["entrada_anticipada"] if es_hora_valida(e["entrada_anticipada"]) else "antes"))
+    if e["sofa"] and e["sofa"]["v"]:
+        partes.append("🛋️ sofá cama")
+    if e["cuna"] and e["cuna"]["v"]:
+        partes.append("🍼 cuna")
+    return _titulo(e, partes)
+
+
+def titulo_salida(e: dict) -> str:
+    """'🔴 SALIDA Torrecilla · 3 pers · sale 10:00 · ⌛ pide salir 13:00'"""
+    partes = ["🔴 SALIDA " + _nombre(e), _personas(e)]
     if e.get("acuerdo_salida"):
         partes.append(f"sale {e['acuerdo_salida']} ✅")
     else:
@@ -51,12 +59,20 @@ def titulo_evento(e: dict, limpieza: dict | None = None) -> str:
             partes.append("sale " + e["hora_salida"])
         if e.get("salida_tardia"):
             partes.append("⌛ pide salir " + (e["salida_tardia"] if es_hora_valida(e["salida_tardia"]) else "después"))
-    if e["sofa"] and e["sofa"]["v"]:
-        partes.append("🛋️ sofá cama")
-    if e["cuna"] and e["cuna"]["v"]:
-        partes.append("🍼 cuna")
-    t = " · ".join(partes)
-    return "❌ CANCELADA · " + t if e["cancelada"] else prefijo_limpieza(limpieza) + t
+    return _titulo(e, partes)
+
+
+def _nombre(e: dict) -> str:
+    return e["alias"] or e["alojamiento"] or "Airbnb"
+
+
+def _personas(e: dict) -> str:
+    return f"{e['total']} pers" if e["total"] else ""
+
+
+def _titulo(e: dict, partes: list[str]) -> str:
+    t = " · ".join(p for p in partes if p)
+    return "❌ CANCELADA · " + t if e["cancelada"] else t
 
 
 def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None = None) -> str:
@@ -67,7 +83,8 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
       3. Peticiones del huésped.
       4. Locker.
       y al final, el huésped y el código de la reserva.
-    No se repiten el alojamiento ni las fechas, que ya se ven en el evento.
+    Va igual en los dos eventos de la reserva (el de salida, sin limpieza), así que lleva las dos fechas.
+    No se repite el alojamiento, que ya está en el título.
     """
     # Las etiquetas #entrada / #salida las escribe el anfitrión en su parte de la descripción
     # (encima de la línea automática); el script las lee pero no las reescribe.
@@ -90,7 +107,8 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
         # Sin información que diga otra cosa: horario estándar (o el acordado) y sin sofá cama ni cuna
         llegada = e.get("acuerdo_entrada") or e["hora_llegada"] or (cfg.hora_entrada_por_defecto if cfg else "15:00")
         salida = e.get("acuerdo_salida") or e["hora_salida"] or (cfg.hora_salida_por_defecto if cfg else "11:00")
-        datos = [f"🕒 Llegada: {llegada}   ·   Salida: {salida}",
+        datos = [f"🕒 Llegada: {fecha_dia_es(e['checkin'])} a las {llegada}   ·   "
+                 f"Salida: {fecha_dia_es(e['checkout'])} a las {salida}",
                  "🛋️ Sofá cama: " + _texto_marca(e, "sofa"),
                  "🍼 Cuna: " + _texto_marca(e, "cuna")]
         if limpieza and cfg and limpieza["ok"]:
@@ -156,6 +174,14 @@ def fecha_larga_es(iso: str | None) -> str:
         return "?"
     d = date.fromisoformat(iso)
     return f"{DIAS_ES[d.weekday()]} {d:%d/%m/%Y}"
+
+
+def fecha_dia_es(iso: str | None) -> str:
+    """'2026-11-26' → 'jue 26/11'"""
+    if not iso:
+        return "?"
+    d = date.fromisoformat(iso)
+    return f"{DIAS_ES[d.weekday()][:3]} {d:%d/%m}"
 
 
 def fecha_corta_es(iso: str | None) -> str:
