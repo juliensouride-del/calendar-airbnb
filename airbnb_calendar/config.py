@@ -35,7 +35,8 @@ class Config:
     duracion_evento_min: int = 30
     hora_entrada_por_defecto: str = "15:00"
     hora_salida_por_defecto: str = "11:00"
-    colores: dict[str, str] = field(default_factory=lambda: {"reserva": "10", "alerta_limpieza": "6", "cancelada": "8"})
+    colores: dict[str, str] = field(default_factory=lambda: {"reserva": "10", "alerta_limpieza": "6", "salida": "11",
+                                                             "cancelada": "8"})
     crear_evento_desde_mensaje: bool = True
     # Limpieza entre reservas
     limpieza_duracion_min: int = 120
@@ -104,7 +105,7 @@ def cargar_config(ruta: str | Path = "config.toml") -> Config:
         duracion_evento_min=c.get("duracion_evento_min", 30),
         hora_entrada_por_defecto=c.get("hora_entrada_por_defecto", "15:00"),
         hora_salida_por_defecto=c.get("hora_salida_por_defecto", "11:00"),
-        colores={"reserva": "10", "alerta_limpieza": "6", "cancelada": "8", **c.get("colores", {})},
+        colores={"reserva": "10", "alerta_limpieza": "6", "salida": "11", "cancelada": "8", **c.get("colores", {})},
         crear_evento_desde_mensaje=c.get("crear_evento_desde_mensaje", True),
         limpieza_duracion_min=t.get("limpieza", {}).get("duracion_min", 120),
         limpieza_inicio=t.get("limpieza", {}).get("inicio", "08:00"),

@@ -176,7 +176,7 @@ class Sincronizador:
 
     def _cancelacion(self, d: DatosCorreo) -> None:
         eventos = self._buscar(d)
-        if not eventos["evento"]:
+        if not (eventos["entrada"] or eventos["salida"]):
             log.info("  Cancelación de una reserva que no está en el calendario (%s).", d.codigo)
             return
         estado = leer_estado(eventos) or reglas.crear_estado(d)
@@ -188,7 +188,7 @@ class Sincronizador:
         eventos = self._buscar(d)
         # Sin evento (p. ej. la confirmación es anterior a lo cargado): se crea con lo que haya en el mensaje,
         # solo si el alojamiento está en config.toml (los mensajes de otros anuncios no llenan el calendario)
-        if eventos["evento"] or (self.cfg.crear_evento_desde_mensaje and d.alojamiento_configurado):
+        if eventos["entrada"] or eventos["salida"] or (self.cfg.crear_evento_desde_mensaje and d.alojamiento_configurado):
             return self._confirmacion_o_mensaje(d, ctx, eventos)
         # No se crea, pero si el huésped pide algo se avisa.
         # (Sin reglas deterministas, para no repetir el aviso con cada mensaje.)

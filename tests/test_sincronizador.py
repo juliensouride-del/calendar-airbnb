@@ -10,6 +10,7 @@ import json
 import re
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 import requests
@@ -38,7 +39,8 @@ class Respuesta:
 
 
 class CalendarFalso:
-    """API REST v3 de Google Calendar en memoria (list con privateExtendedProperty, insert, patch, delete)."""
+    """API REST v3 de Google Calendar en memoria (list con privateExtendedProperty y timeMin/timeMax, insert, patch,
+    delete)."""
 
     def __init__(self):
         self.eventos: dict[str, dict] = {}
@@ -50,12 +52,19 @@ class CalendarFalso:
         if metodo == "GET":
             pares = params.items() if isinstance(params, dict) else (params or [])
             filtros = [v.split("=", 1) for k, v in pares if k == "privateExtendedProperty"]
+            rango = {k: datetime.fromisoformat(v) for k, v in pares if k in ("timeMin", "timeMax")}
             items = [e for e in self.eventos.values()
-                     if all(e["extendedProperties"]["private"].get(k) == v for k, v in filtros)]
+                     if all(e["extendedProperties"]["private"].get(k) == v for k, v in filtros)
+                     and ("timeMin" not in rango or _instante(e["end"]) > rango["timeMin"])
+                     and ("timeMax" not in rango or _instante(e["start"]) < rango["timeMax"])]
             return Respuesta(200, {"items": copy.deepcopy(items)})
         if self.fallar_escrituras:
             self.fallar_escrituras -= 1
             return Respuesta(503, texto="backendError")
+        if "start" in (json or {}) or "end" in (json or {}):
+            actual = self.eventos.get(url.rsplit("/", 1)[1], {}) if metodo == "PATCH" else {}
+            if _instante(json.get("end") or actual["end"]) <= _instante(json.get("start") or actual["start"]):
+                return Respuesta(400, texto="The specified time range is empty.")
         if metodo == "POST":
             ev = copy.deepcopy(json)
             ev["id"] = f"ev{next(self.ids)}"
@@ -76,12 +85,19 @@ class CalendarFalso:
             return Respuesta(200, copy.deepcopy(ev))
         raise AssertionError(metodo)
 
-    def ev(self, codigo_o_alias):
+    def ev(self, codigo_o_alias, parte="entrada"):
+        """Evento de esa parte de la reserva (un evento sin parte es del formato anterior y hace de entrada)."""
         for e in self.eventos.values():
             p = e["extendedProperties"]["private"]
-            if p.get("airbnb_codigo") == codigo_o_alias or codigo_o_alias in e["summary"]:
+            if ((p.get("airbnb_codigo") == codigo_o_alias or codigo_o_alias in e["summary"])
+                    and (p.get("airbnb_parte") or "entrada") == parte):
                 return e
         return None
+
+
+def _instante(campo):
+    d = datetime.fromisoformat(campo["dateTime"].replace("Z", "+00:00"))
+    return d if d.tzinfo else d.replace(tzinfo=ZoneInfo(campo.get("timeZone") or "Europe/Madrid"))
 
 
 class GeminiFalso:
@@ -200,10 +216,13 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     s = Entorno(tmp_path)
     s.buzon.recibir(CONF_LUCIA)
     s.ejecutar()
-    assert len(s.cal.eventos) == 1, "un único evento por reserva"
-    entrada = s.cal.ev("HMTEST0002")
-    assert entrada["summary"] == "🏠 Corazón de Madrid · 2 pers"
-    assert hora(entrada) == "2026-11-26 15:00" and hora(entrada, "end") == "2026-12-02 11:00", "de la entrada a la salida"
+    assert len(s.cal.eventos) == 2, "una entrada y una salida por reserva"
+    entrada, salida = s.cal.ev("HMTEST0002"), s.cal.ev("HMTEST0002", "salida")
+    assert entrada["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers"
+    assert hora(entrada) == "2026-11-26 15:00" and hora(entrada, "end") == "2026-11-26 15:30"
+    assert salida["summary"] == "🔴 SALIDA Corazón de Madrid · 2 pers"
+    assert hora(salida) == "2026-12-02 11:00" and hora(salida, "end") == "2026-12-02 11:30"
+    assert salida["colorId"] == "11"
     assert entrada["start"]["timeZone"] == "Europe/Madrid"
     assert entrada["colorId"] == "10"
     assert entrada["extendedProperties"]["private"]["airbnb_origen"] == "airbnb-calendar"
@@ -212,9 +231,9 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
 
     s.buzon.recibir(MENSAJE_LUCIA)
     s.ejecutar()
-    assert len(s.cal.eventos) == 1, "no se duplican eventos"
+    assert len(s.cal.eventos) == 2, "no se duplican eventos"
     entrada = s.cal.ev("HMTEST0002")
-    assert entrada["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
+    assert entrada["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
     assert hora(entrada) == "2026-11-26 18:00", "el evento se mueve a la hora de llegada"
     assert "Hora prevista" not in entrada["description"], "la hora ya está en el título"
     assert len(s.avisos) == 1 and "sofá cama" in s.asuntos[0]
@@ -229,12 +248,12 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     s.buzon.recibir(CANC_LUCIA)
     s.ejecutar()
     entrada = s.cal.ev("HMTEST0002")
-    assert entrada["summary"].startswith("❌ CANCELADA · 🏠 Corazón de Madrid")
+    assert entrada["summary"].startswith("❌ CANCELADA · 🟢 ENTRADA Corazón de Madrid")
     assert entrada["colorId"] == "8"
     assert entrada["description"] == "—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n👤 Lucia Romero · Código HMTEST0002", \
         "cancelada: sin datos de preparación"
     assert "👤 Lucia Romero" in entrada["description"]
-    assert len(s.cal.eventos) == 1 and len(s.avisos) == 1
+    assert len(s.cal.eventos) == 2 and len(s.avisos) == 1
 
 
 def _mensaje_lucia(texto, fecha_hora):
@@ -284,9 +303,9 @@ def test_A4_recarga_manual_reconstruye_la_reserva_con_lo_ultimo_del_huesped(tmp_
 
     s.ejecutar(desde=datetime(2026, 9, 1, tzinfo=UTC))
     ev = s.cal.ev("HMTEST0002")
-    assert ev["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama", ev["summary"]
+    assert ev["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama", ev["summary"]
     assert "Petición antigua" not in ev["description"]
-    assert len(s.cal.eventos) == 1
+    assert len(s.cal.eventos) == 2
 
 
 def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp_path):
@@ -300,10 +319,11 @@ def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
     ev = s.cal.ev("HMTEST0002")
-    assert ev["summary"] == "🏠 Tirso · 2 pers · entra 16:00 ✅"
-    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada: 16:00   ·   Salida: 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Lucia Romero · Código HMTEST0002", \
+    assert ev["summary"] == "🟢 ENTRADA Tirso · 2 pers · entra 16:00 ✅"
+    assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada: jue 26/11 a las 16:00   ·   Salida: mié 02/12 a las 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Lucia Romero · Código HMTEST0002", \
         "del formato anterior solo se conservan las etiquetas de acuerdo"
-    assert leer_estado({"evento": ev})["alias"] == "Tirso"
+    assert s.cal.ev("HMTEST0002", "salida")["summary"] == "🔴 SALIDA Tirso · 2 pers"
+    assert leer_estado(cal.buscar_eventos_reserva("HMTEST0002", None, None, None))["alias"] == "Tirso"
     escrituras = cal.stats["limpiezas_recalculadas"]
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
     assert cal.stats["limpiezas_recalculadas"] == escrituras, "si ya está al día no se reescribe"
@@ -353,7 +373,7 @@ def test_A7_calendario_inaccesible_detiene_la_ejecucion_sin_contar_fallos(tmp_pa
     assert s.tecnicos == [] and s.avisos == []
     s.cal.request = original
     s.ejecutar()
-    assert len(s.cal.eventos) == 1
+    assert len(s.cal.eventos) == 2
 
 
 def test_B_mensajes_de_reserva_que_no_esta_en_el_calendario(tmp_path):
@@ -383,14 +403,14 @@ def test_B3_evento_creado_desde_mensaje_lleva_aviso_y_se_completa_con_la_confirm
     s = Entorno(tmp_path)                       # por defecto se crean eventos desde mensajes
     s.buzon.recibir(MENSAJE_LUCIA)
     s.ejecutar()
-    assert len(s.cal.eventos) == 1
+    assert len(s.cal.eventos) == 2
     ev = next(iter(s.cal.eventos.values()))
     assert ev["description"].endswith("Se completará si llega."), ev["description"]
     assert "ℹ️ Evento creado a partir de un mensaje del huésped" in ev["description"]
     # Llega la confirmación: es el mismo evento, se completa y desaparece el aviso
     s.buzon.recibir(replace(CONF_LUCIA, fecha_hora="2026-10-04 09:00", fecha_ref="2026-10-04"))
     s.ejecutar()
-    assert len(s.cal.eventos) == 1
+    assert len(s.cal.eventos) == 2
     ev = s.cal.ev("HMTEST0002")
     assert "creado a partir de un mensaje" not in ev["description"]
 
@@ -419,15 +439,16 @@ def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
     for c in cargar_ejemplo("ej3.txt", "2026-09-22") + cargar_ejemplo("ej2.txt", "2026-10-01"):
         s.buzon.recibir(c)
     s.ejecutar()
-    assert len(s.cal.eventos) == 2
+    assert len(s.cal.eventos) == 4
     e3 = s.cal.ev("Antón Martín")
-    assert e3["summary"] == "🏠 Antón Martín · 3 pers · llega 15:05 · sale 11:00 · 🍼 cuna"
+    assert e3["summary"] == "🟢 ENTRADA Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
     assert hora(e3) == "2026-09-23 15:05"
+    assert s.cal.ev("Antón Martín", "salida")["summary"] == "🔴 SALIDA Antón Martín · 3 pers · sale 11:00"
     assert "🍼 Cuna: SÍ (lo indica el huésped)" in e3["description"]
-    assert "🕒 Llegada: 15:05   ·   Salida: 11:00" in e3["description"]
+    assert "🕒 Llegada: mié 23/09 a las 15:05   ·   Salida: dom 27/09 a las 11:00" in e3["description"]
     assert "Pregunta si puede entrar hacia las 12:00" in e3["description"]
     e2 = s.cal.ev("Lavapiés")
-    assert e2["summary"] == "🏠 Lavapiés · 3 pers · llega 15:00"
+    assert e2["summary"] == "🟢 ENTRADA Lavapiés · 3 pers · llega 15:00"
     assert e2["start"]["dateTime"].startswith("2026-10-09")
     # Un único aviso (cuna + petición, en el primer mensaje); las horas no avisan (avisar_horas = false)
     assert len(s.avisos) == 1 and "cuna" in s.asuntos[0] and "petición" in s.asuntos[0]
@@ -472,11 +493,11 @@ def test_G_eml_reales_confirmacion_y_mensaje_con_hora_sofa_y_cuna(tmp_path):
     conf = cargar_eml("confirmed.eml")
     s.buzon.recibir(conf)
     s.ejecutar()
-    assert len(s.cal.eventos) == 1
+    assert len(s.cal.eventos) == 2
     entrada = s.cal.ev("HMTEST0001")
-    assert entrada["summary"] == "🏠 Antón Martín · 2 pers"
+    assert entrada["summary"] == "🟢 ENTRADA Antón Martín · 2 pers"
     assert hora(entrada) == "2026-10-20 15:00"
-    assert entrada["end"]["dateTime"].startswith("2026-10-23")
+    assert hora(s.cal.ev("HMTEST0001", "salida")) == "2026-10-23 11:00"
 
     # Mensaje con la plantilla real de cunasolicitud.eml, adaptado a la reserva de Laura
     base = cargar_eml("cunasolicitud.eml")
@@ -490,9 +511,9 @@ def test_G_eml_reales_confirmacion_y_mensaje_con_hora_sofa_y_cuna(tmp_path):
     s.buzon.recibir(replace(base, fecha_hora="2026-10-07 09:00", fecha_ref="2026-10-07", cuerpo=cuerpo,
                             asunto="RE: Reservation for Apartamentos de Julian, Anton Martin - Apartame..., Oct 20 – 23"))
     s.ejecutar()
-    assert len(s.cal.eventos) == 1, "no se duplican eventos"
+    assert len(s.cal.eventos) == 2, "no se duplican eventos"
     entrada = s.cal.ev("HMTEST0001")
-    assert entrada["summary"].startswith("🏠 Antón Martín · 2 pers · llega 18:00"), entrada["summary"]
+    assert entrada["summary"].startswith("🟢 ENTRADA Antón Martín · 2 pers · llega 18:00"), entrada["summary"]
     assert "🛋️ sofá cama" in entrada["summary"] and "🍼 cuna" in entrada["summary"]
     assert "Alojamiento" not in entrada["description"]
     assert len(s.avisos) == 1
@@ -515,7 +536,7 @@ def test_I_error_temporal_de_calendar_se_reintenta_y_luego_es_definitivo(tmp_pat
     s.buzon.recibir(CONF_LUCIA)
     s.cal.fallar_escrituras = 1
     reg = s.ejecutar()
-    assert len(s.cal.eventos) == 1 and not reg.fallos, "un micro-corte se resuelve dentro de la misma ejecución"
+    assert len(s.cal.eventos) == 2 and not reg.fallos, "un micro-corte se resuelve dentro de la misma ejecución"
 
     s = Entorno(tmp_path / "corte")
     s.buzon.recibir(CONF_LUCIA)
@@ -523,7 +544,7 @@ def test_I_error_temporal_de_calendar_se_reintenta_y_luego_es_definitivo(tmp_pat
     reg = s.ejecutar()
     assert s.cal.eventos == {} and s.avisos == [] and reg.fallos, "se reintentará en la próxima ejecución"
     s.ejecutar()
-    assert len(s.cal.eventos) == 1 and not Registro(s.ruta_estado).fallos
+    assert len(s.cal.eventos) == 2 and not Registro(s.ruta_estado).fallos
 
     s2 = Entorno(tmp_path / "otro")
     s2.buzon.recibir(CONF_LUCIA)
@@ -551,7 +572,7 @@ def test_J_remitente_que_no_es_de_airbnb_y_primera_ejecucion_sin_correos_antiguo
     s2.ahora += timedelta(hours=2)
     s2.ejecutar()
     assert len(s2.avisos) == 1 and "NO está en el calendario" not in s2.avisos[0][1]
-    assert len(s2.cal.eventos) == 1, "el mensaje crea el evento aunque la confirmación sea anterior"
+    assert len(s2.cal.eventos) == 2, "el mensaje crea los eventos aunque la confirmación sea anterior"
     assert "creado a partir de un mensaje" in next(iter(s2.cal.eventos.values()))["description"]
 
 
@@ -576,15 +597,15 @@ def test_K_estado_largo_se_trocea_y_al_acortarse_se_borran_los_trozos_sobrantes(
 
 
 # ---------------------------------------------------------------------------
-#  Evento único, limpieza entre reservas y purga
+#  Limpieza entre reservas, horarios acordados y purga
 # ---------------------------------------------------------------------------
 
 
 def _reserva(codigo, checkin, checkout, alojamiento="Lavapies - Peaceful 2 bedrooms Fresh A/C", **kw):
     from airbnb_calendar import reglas
     e = reglas.crear_estado()
-    e.update(codigo=codigo, alojamiento=alojamiento, alias="Lavapiés", checkin=checkin, checkout=checkout,
-             hora_checkin="15:00", hora_checkout="11:00", total=2, **kw)
+    e.update({"codigo": codigo, "alojamiento": alojamiento, "alias": "Lavapiés", "checkin": checkin, "checkout": checkout,
+              "hora_checkin": "15:00", "hora_checkout": "11:00", "total": 2, **kw})
     return e
 
 
@@ -598,20 +619,21 @@ def test_L_rotacion_limpieza_ok_alerta_y_recalculo_al_cambiar_la_salida(tmp_path
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
     ev = s.cal.ev("ENTRA2")
-    assert ev["summary"] == "[LIMPIEZA OK] 🏠 Lavapiés · 2 pers"
+    assert ev["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 2 pers"
     assert "🧹 Limpieza: 05/11 de 11:00 a 15:00 (el huésped anterior sale ese día a las 11:00)" in ev["description"]
-    assert not s.cal.ev("SALE1")["summary"].startswith("["), "la reserva sin huésped anterior no lleva etiqueta"
+    assert s.cal.ev("SALE1")["summary"] == "🟢 ENTRADA Lavapiés · 2 pers", "la reserva sin huésped anterior no lleva etiqueta"
+    assert "Limpieza" not in s.cal.ev("ENTRA2", "salida")["description"], "la salida no lleva nada de limpieza"
 
     # El huésped saliente dice que se va a las 13:30: sin acuerdo expreso se mantiene la salida estándar (11:00)
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", hora_salida="13:30"))
     ev = s.cal.ev("ENTRA2")
-    assert ev["summary"] == "[LIMPIEZA OK] 🏠 Lavapiés · 2 pers", "se recalcula y sigue OK"
+    assert ev["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 2 pers", "se recalcula y sigue OK"
     assert "sale ese día a las 11:00" in ev["description"]
-    assert s.cal.ev("SALE1")["end"]["dateTime"].startswith("2026-11-05T11:00")
+    assert s.cal.ev("SALE1", "salida")["start"]["dateTime"].startswith("2026-11-05T11:00")
 
     # Si cancela el que sale, ya no hay rotación
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", hora_salida="13:30", cancelada=True))
-    assert s.cal.ev("ENTRA2")["summary"] == "🏠 Lavapiés · 2 pers"
+    assert s.cal.ev("ENTRA2")["summary"] == "🟢 ENTRADA Lavapiés · 2 pers"
 
 
 def test_L2_recalcular_corrige_el_horario_de_eventos_antiguos(tmp_path):
@@ -623,10 +645,9 @@ def test_L2_recalcular_corrige_el_horario_de_eventos_antiguos(tmp_path):
     _guardar(cal, _reserva("SOLA3", "2026-12-01", "2026-12-04"))
     # Eventos guardados con las reglas anteriores (llegada anticipada / salida tardía del huésped)
     s.cal.ev("ENTRA2")["start"]["dateTime"] = "2026-11-05T12:30:00"
-    s.cal.ev("SOLA3")["end"]["dateTime"] = "2026-12-04T13:00:00"
-    s.cal.ev("SOLA3")["extendedProperties"]["private"]["airbnb_limpieza"] = ""
-    for c in ("ENTRA2", "SOLA3"):
-        del s.cal.ev(c)["extendedProperties"]["private"]["airbnb_escrito"]   # sin huella: versión anterior
+    s.cal.ev("SOLA3", "salida")["start"]["dateTime"] = "2026-12-04T13:00:00"
+    for c, parte in (("ENTRA2", "entrada"), ("SOLA3", "salida")):
+        del s.cal.ev(c, parte)["extendedProperties"]["private"]["airbnb_escrito"]   # sin huella: versión anterior
 
     # Simulación: cuenta los cambios pero no escribe nada
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None, simulacion=True)
@@ -638,7 +659,7 @@ def test_L2_recalcular_corrige_el_horario_de_eventos_antiguos(tmp_path):
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
     assert cal.stats["limpiezas_recalculadas"] == 2
     assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T15:00:00"
-    assert s.cal.ev("SOLA3")["end"]["dateTime"] == "2026-12-04T11:00:00"
+    assert s.cal.ev("SOLA3", "salida")["start"]["dateTime"] == "2026-12-04T11:00:00"
     # Ya está todo al día: una segunda pasada no toca nada
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
     assert cal.stats["limpiezas_recalculadas"] == 2
@@ -657,7 +678,7 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
     cal.recalcular_limpiezas(date(2026, 10, 13))
     ev = s.cal.ev("ENTRA2")
     assert ev["start"]["dateTime"] == "2026-11-05T12:00:00", "el evento se mueve a la hora acordada"
-    assert ev["summary"].startswith("[ALERTA LIMPIEZA / AJUSTE HORARIO]") and "entra 12:00 ✅" in ev["summary"]
+    assert ev["summary"] == "🟢 ENTRADA Lavapiés · [ALERTA LIMPIEZA / AJUSTE HORARIO] · 2 pers · entra 12:00 ✅"
     assert ev["description"].startswith("#entrada 12h\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n"), "lo escrito a mano se conserva (como texto)"
 
     # Llega un correo nuevo de la reserva (p. ej. mensaje del huésped pidiendo las 10:00): el acuerdo sigue
@@ -668,11 +689,13 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
     cal.guardar_reserva(e, eventos, None)
     assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T12:00:00"
 
-    # Un acuerdo de salida tardía del huésped anterior también cuenta para la limpieza
+    # Un acuerdo de salida tardía del huésped anterior también cuenta para la limpieza (la etiqueta vale
+    # en cualquiera de los dos eventos: aquí, en el de entrada)
     sale = s.cal.ev("SALE1")
     sale["description"] = "#salida 13:30\n" + sale["description"]
     cal.recalcular_limpiezas(date(2026, 10, 13))
-    assert s.cal.ev("SALE1")["end"]["dateTime"] == "2026-11-05T13:30:00"
+    assert s.cal.ev("SALE1", "salida")["start"]["dateTime"] == "2026-11-05T13:30:00"
+    assert s.cal.ev("SALE1", "salida")["summary"] == "🔴 SALIDA Lavapiés · 2 pers · sale 13:30 ✅"
 
     # Si Julien borra la etiqueta, vuelve el horario estándar
     ev = s.cal.ev("ENTRA2")
@@ -707,7 +730,10 @@ def test_L5_cambios_a_mano_en_el_evento_no_se_sobrescriben(tmp_path):
     assert ev["colorId"] == "3"
     assert ev["description"].startswith("Traer toallas extra\n\n—— Airbnb")
     assert "📝 Peticiones:\n   • Trona" in ev["description"], "la parte automática sí se actualiza"
-    assert ev["end"]["dateTime"].startswith("2026-11-08T11:00"), "lo no tocado sigue siendo automático"
+    assert ev["end"]["dateTime"].startswith("2026-11-05T14:00"), "el final sigue a la hora acordada"
+    salida = s.cal.ev("ENTRA2", "salida")
+    assert salida["start"]["dateTime"].startswith("2026-11-08T11:00"), "lo no tocado sigue siendo automático"
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · 2 pers"
 
     # Si edita también la parte automática, la descripción pasa a ser suya
     ev["description"] = ev["description"].replace("Trona", "Trona (ya está en el piso)")
@@ -776,13 +802,196 @@ def test_L9_direccion_del_piso_como_ubicacion_y_cambiada_a_mano_se_respeta(tmp_p
     assert "location" not in s.cal.ev("SOLO1"), "piso sin dirección: no se toca la ubicación"
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
     assert s.cal.ev("ENTRA2")["location"] == "Calle de la Torrecilla del Leal 22, Madrid"
-    s.cal.ev("ENTRA2")["location"] = "Portal B, 2º izq."               # cambiada a mano: se respeta
-    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="18:00"))
-    assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq."
-    assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T18:00:00", "el resto sigue al día"
+    assert s.cal.ev("ENTRA2", "salida")["location"] == "Calle de la Torrecilla del Leal 22, Madrid"
+    s.cal.ev("ENTRA2", "salida")["location"] = "Portal B, 2º izq."     # cambiada a mano: se respeta
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="18:00", hora_salida="10:00"))
+    assert s.cal.ev("ENTRA2", "salida")["location"] == "Portal B, 2º izq."
+    assert s.cal.ev("ENTRA2", "salida")["start"]["dateTime"] == "2026-11-08T10:00:00", "el resto sigue al día"
+    assert s.cal.ev("ENTRA2")["location"] == "Calle de la Torrecilla del Leal 22, Madrid"
+
+
+# ---------------------------------------------------------------------------
+#  Entrada y salida: dos eventos por reserva
+# ---------------------------------------------------------------------------
+
+
+def _duracion_min(ev):
+    return (datetime.fromisoformat(ev["end"]["dateTime"]) - datetime.fromisoformat(ev["start"]["dateTime"])).seconds // 60
+
+
+def test_N1_una_confirmacion_crea_una_entrada_y_una_salida_cortas_con_la_ubicacion(tmp_path):
+    s = Entorno(tmp_path)
+    s.cfg.alojamientos[0].direccion = "Plaza de Tirso de Molina 18, Madrid"
+    s.buzon.recibir(CONF_LUCIA)
+    s.ejecutar()
+    assert len(s.cal.eventos) == 2
+    entrada, salida = s.cal.ev("HMTEST0002"), s.cal.ev("HMTEST0002", "salida")
+    assert (hora(entrada), hora(entrada, "end")) == ("2026-11-26 15:00", "2026-11-26 15:30")
+    assert (hora(salida), hora(salida, "end")) == ("2026-12-02 11:00", "2026-12-02 11:30")
+    assert [_duracion_min(ev) for ev in s.cal.eventos.values()] == [30, 30]
+    assert entrada["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers"
+    assert salida["summary"] == "🔴 SALIDA Corazón de Madrid · 2 pers"
+    assert (entrada["colorId"], salida["colorId"]) == ("10", "11")
+    assert entrada["location"] == salida["location"] == "Plaza de Tirso de Molina 18, Madrid"
+    assert "🕒 Llegada: jue 26/11 a las 15:00   ·   Salida: mié 02/12 a las 11:00" in salida["description"]
+
+
+def test_N1b_titulos_completos_de_la_entrada_y_la_salida(tmp_path):
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", total=3, hora_llegada="18:30", entrada_anticipada="12:00",
+                           hora_salida="10:00", salida_tardia="13:00", sofa={"v": True, "f": "huesped"},
+                           cuna={"v": True, "f": "huesped"}))
+    entrada, salida = s.cal.ev("ENTRA2"), s.cal.ev("ENTRA2", "salida")
+    assert entrada["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🛋️ sofá cama · 🍼 cuna"
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · 3 pers · sale 10:00 · ⌛ pide salir 13:00"
+    assert hora(entrada) == "2026-11-05 18:30" and hora(salida) == "2026-11-08 10:00"
+    assert "🧹 Limpieza" in entrada["description"] and "Limpieza" not in salida["description"]
+
+
+def test_N2_mover_el_evento_de_salida_es_un_acuerdo_y_cambia_la_limpieza_del_siguiente(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    assert s.cal.ev("ENTRA2")["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 2 pers"
+    # Julien arrastra el evento de salida a las 14:00 (Calendar mueve el inicio y el final)
+    sale = s.cal.ev("SALE1", "salida")
+    sale["start"]["dateTime"], sale["end"]["dateTime"] = "2026-11-05T14:00:00+01:00", "2026-11-05T14:30:00+01:00"
+    assert leer_estado(cal.buscar_eventos_reserva("SALE1", None, None, None))["acuerdo_salida"] == "14:00"
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    sale = s.cal.ev("SALE1", "salida")
+    assert sale["start"]["dateTime"] == "2026-11-05T14:00:00+01:00", "se respeta"
+    assert sale["summary"] == "🔴 SALIDA Lavapiés · 2 pers · sale 14:00 ✅"
+    entra = s.cal.ev("ENTRA2")
+    assert entra["summary"] == "🟢 ENTRADA Lavapiés · [ALERTA LIMPIEZA / AJUSTE HORARIO] · 2 pers"
+    assert entra["colorId"] == "6"
+    # Un correo nuevo de la reserva que sale no deshace el acuerdo
+    eventos = cal.buscar_eventos_reserva("SALE1", None, None, None)
+    e = leer_estado(eventos)
+    e["peticiones"] = ["Trona"]
+    cal.guardar_reserva(e, eventos, None)
+    assert s.cal.ev("SALE1", "salida")["start"]["dateTime"] == "2026-11-05T14:00:00+01:00"
+    assert s.cal.ev("ENTRA2")["colorId"] == "6"
+
+
+def _evento_antiguo(s, codigo, checkin, checkout, inicio, fin, notas=""):
+    """Un evento de la entrada a la salida, sin airbnb_parte, como lo escribía la versión anterior.
+    inicio/fin: lo que hay ahora en el evento (distinto de 15:00/11:00 si el anfitrión lo movió a mano)."""
+    from airbnb_calendar.calendario import SEPARADOR, _h, _hash
+    estado = _reserva(codigo, checkin, checkout)
+    auto = f"🕒 Llegada: 15:00   ·   Salida: 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 ? · Código {codigo}"
+    escrito = {"summary": _h("🏠 Lavapiés · 2 pers"), "colorId": _h("10"), "inicio": _h(f"{checkin}T15:00"),
+               "fin": _h(f"{checkout}T11:00"), "auto": _h(auto)}
+    s.cal.eventos[codigo] = {
+        "id": codigo, "summary": "🏠 Lavapiés · 2 pers", "colorId": "10",
+        "start": {"dateTime": inicio, "timeZone": "Europe/Madrid"}, "end": {"dateTime": fin, "timeZone": "Europe/Madrid"},
+        "description": (notas + "\n\n" if notas else "") + SEPARADOR + "\n" + auto,
+        "extendedProperties": {"private": {
+            "airbnb_origen": "airbnb-calendar", "airbnb_tipo": "reserva", "airbnb_codigo": codigo,
+            "airbnb_alojamiento": _hash(estado["alojamiento"]), "airbnb_checkin": checkin, "airbnb_checkout": checkout,
+            "airbnb_limpieza": "", "airbnb_estado_n": "1", "airbnb_estado_0": json.dumps(estado, ensure_ascii=False),
+            "airbnb_escrito": json.dumps(escrito)}}}
+
+
+def test_N3_evento_antiguo_de_toda_la_estancia_pasa_a_entrada_y_salida_sin_perder_acuerdos(tmp_path):
+    from datetime import date
+
+    from airbnb_calendar.calendario import SEPARADOR
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    # Julien había movido a mano el inicio (entra a las 16:00) y el final (sale a las 13:00)
+    _evento_antiguo(s, "ANTIGUO", "2026-11-05", "2026-11-08", "2026-11-05T16:00:00+01:00", "2026-11-08T13:00:00+01:00",
+                    notas="Llaves en el buzón")
+
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert len(s.cal.eventos) == 2
+    entrada, salida = s.cal.ev("ANTIGUO"), s.cal.ev("ANTIGUO", "salida")
+    assert entrada["id"] == "ANTIGUO" and entrada["extendedProperties"]["private"]["airbnb_parte"] == "entrada"
+    assert entrada["start"]["dateTime"] == "2026-11-05T16:00:00+01:00", "el inicio movido a mano se conserva"
+    assert entrada["end"]["dateTime"] == "2026-11-05T16:30:00", "se acorta"
+    assert entrada["summary"] == "🟢 ENTRADA Lavapiés · 2 pers · entra 16:00 ✅"
+    assert entrada["description"].startswith("#salida 13:00\nLlaves en el buzón\n\n" + SEPARADOR + "\n"), \
+        "el final movido a mano pasa a etiqueta, y las notas se conservan"
+    assert (salida["start"]["dateTime"], salida["end"]["dateTime"]) == ("2026-11-08T13:00:00", "2026-11-08T13:30:00")
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · 2 pers · sale 13:00 ✅"
+
+    antes = copy.deepcopy(s.cal.eventos)
+    escrituras = cal.stats["limpiezas_recalculadas"]
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert s.cal.eventos == antes and cal.stats["limpiezas_recalculadas"] == escrituras, "otra pasada no cambia nada"
+
+
+def test_N4_recalcular_con_la_salida_fuera_del_rango_no_la_duplica_y_lee_sus_acuerdos(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("LARGA", "2026-11-10", "2026-11-20"))       # la salida queda después de hoy + 30 días
+    salida = s.cal.ev("LARGA", "salida")
+    salida["description"] = "#entrada 13:00\n" + salida["description"]   # acuerdo escrito en el evento de salida
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert sorted(ev["extendedProperties"]["private"]["airbnb_parte"] for ev in s.cal.eventos.values()) == ["entrada", "salida"]
+    assert s.cal.ev("LARGA", "salida")["id"] == salida["id"]
+    assert s.cal.ev("LARGA")["start"]["dateTime"] == "2026-11-10T13:00:00"
+    assert s.cal.ev("LARGA")["summary"] == "🟢 ENTRADA Lavapiés · 2 pers · entra 13:00 ✅"
+
+
+def test_N6_estancias_en_curso_se_revisan_sin_perder_la_limpieza_y_los_eventos_antiguos_se_convierten(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-10-01", "2026-10-05"))
+    _guardar(cal, _reserva("ENCURSO", "2026-10-05", "2026-10-20"))
+    assert s.cal.ev("ENCURSO")["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 2 pers"
+    # Hoy 13/10: SALE1 y la entrada de ENCURSO quedan antes del rango de fechas consultado
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert s.cal.ev("ENCURSO")["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 2 pers", "la limpieza ya pasada no se pierde"
+    assert cal.stats["limpiezas_recalculadas"] == 0 and cal.stats["reservas_revisadas"] == 1
+
+    s2 = Entorno(tmp_path / "antiguo")
+    cal2 = Calendario(s2.cfg, s2.cal, dormir=lambda _: None)
+    _evento_antiguo(s2, "ANTIGUO", "2026-10-10", "2026-10-15", "2026-10-10T15:00:00", "2026-10-15T11:00:00")
+    cal2.recalcular_limpiezas(date(2026, 10, 13))
+    assert len(s2.cal.eventos) == 2
+    assert s2.cal.ev("ANTIGUO")["end"]["dateTime"] == "2026-10-10T15:30:00"
+    assert s2.cal.ev("ANTIGUO", "salida")["start"]["dateTime"] == "2026-10-15T11:00:00"
+
+
+def test_N7_conversion_cortada_a_medias_converge_en_la_siguiente_ejecucion(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _evento_antiguo(s, "ANTIGUO", "2026-11-05", "2026-11-08", "2026-11-05T15:00:00", "2026-11-08T13:00:00+01:00")
+    original = s.cal.request
+    s.cal.request = lambda metodo, url, **kw: (Respuesta(503, texto="backendError") if metodo == "POST"
+                                              else original(metodo, url, **kw))
+    eventos = cal.buscar_eventos_reserva("ANTIGUO", None, None, None)
+    with pytest.raises(RuntimeError):
+        cal.guardar_reserva(leer_estado(eventos), eventos, None)     # llega un correo; Google falla al crear la salida
+    assert len(s.cal.eventos) == 1 and s.cal.ev("ANTIGUO")["description"].startswith("#salida 13:00\n")
+    s.cal.request = original
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert len(s.cal.eventos) == 2
+    assert s.cal.ev("ANTIGUO", "salida")["start"]["dateTime"] == "2026-11-08T13:00:00", "el acuerdo sigue en la etiqueta"
+
+
+def test_N5_cancelacion_los_dos_eventos_en_gris(tmp_path):
+    s = Entorno(tmp_path)
+    s.buzon.recibir(CONF_LUCIA)
+    s.buzon.recibir(CANC_LUCIA)
+    s.ejecutar()
+    assert len(s.cal.eventos) == 2
+    entrada, salida = s.cal.ev("HMTEST0002"), s.cal.ev("HMTEST0002", "salida")
+    assert entrada["summary"] == "❌ CANCELADA · 🟢 ENTRADA Corazón de Madrid · 2 pers"
+    assert salida["summary"] == "❌ CANCELADA · 🔴 SALIDA Corazón de Madrid · 2 pers"
+    assert (entrada["colorId"], salida["colorId"]) == ("8", "8")
 
 
 def test_L10_ubicacion_puesta_a_mano_antes_de_que_el_script_la_escribiera_se_respeta(tmp_path):
+    from datetime import date
     s = Entorno(tmp_path)
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))     # el piso aún no tiene dirección en config.toml
@@ -793,6 +1002,12 @@ def test_L10_ubicacion_puesta_a_mano_antes_de_que_el_script_la_escribiera_se_res
     assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T18:00:00", "el resto sigue al día"
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="19:00"))
     assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq.", "y lo sigue siendo"
+
+    _evento_antiguo(s, "ANTIGUO", "2026-11-10", "2026-11-12", "2026-11-10T15:00:00", "2026-11-12T11:00:00")
+    s.cal.ev("ANTIGUO")["location"] = "Portal C, bajo"
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert s.cal.ev("ANTIGUO")["location"] == "Portal C, bajo", "la conversión de un evento antiguo tampoco la pisa"
+    assert s.cal.ev("ANTIGUO", "salida")["location"] == "Calle de la Torrecilla del Leal 22, Madrid"
 
 
 def test_L4_leer_acuerdos():
@@ -832,11 +1047,11 @@ def test_O_purga_solo_borra_eventos_propios(tmp_path, monkeypatch):
                                  "extendedProperties": {"private": {"otra_app": "1"}}}
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
     assert sincronizar.purgar(cal, simulacion=True, confirmado=False) == 0
-    assert len(s.cal.eventos) == 2, "--dry-run no borra nada"
+    assert len(s.cal.eventos) == 3, "--dry-run no borra nada"
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _: "no")
     sincronizar.purgar(cal, simulacion=False, confirmado=False)
-    assert len(s.cal.eventos) == 2, "sin confirmar no se borra"
+    assert len(s.cal.eventos) == 3, "sin confirmar no se borra"
     sincronizar.purgar(cal, simulacion=False, confirmado=True)
     assert list(s.cal.eventos) == ["personal"]
 
@@ -856,16 +1071,16 @@ def test_Q_cada_ejecucion_recalcula_limpiezas_sin_correos_nuevos(tmp_path):
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
-    assert s.cal.ev("ENTRA2")["summary"].startswith("[LIMPIEZA OK]")
+    assert s.cal.ev("ENTRA2")["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 2 pers"
     # Cambio de fechas fuera de este flujo (p. ej. modificación revisada a mano): la salida pasa al 03/11
-    sale = next(e for e in s.cal.eventos.values() if e["extendedProperties"]["private"].get("airbnb_codigo") == "SALE1")
-    s.cal.eventos.pop(sale["id"])
+    for sale in [e for e in s.cal.eventos.values() if e["extendedProperties"]["private"].get("airbnb_codigo") == "SALE1"]:
+        s.cal.eventos.pop(sale["id"])
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-03"))
     ev = s.cal.ev("ENTRA2")
-    ev["summary"] = "[LIMPIEZA OK] 🏠 Lavapiés · 2 pers"                       # sigue con la etiqueta antigua
+    ev["summary"] = "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 2 pers"            # sigue con la etiqueta antigua
     ev["extendedProperties"]["private"]["airbnb_limpieza"] = "obsoleta"
     s.ejecutar()                                                              # sin correos
-    assert s.cal.ev("ENTRA2")["summary"] == "🏠 Lavapiés · 2 pers"
+    assert s.cal.ev("ENTRA2")["summary"] == "🟢 ENTRADA Lavapiés · 2 pers"
 
 
 def test_S_listado_paginado(tmp_path):
@@ -927,7 +1142,7 @@ def test_V_confirmacion_vista_otra_vez_no_borra_lo_que_dijo_el_huesped(tmp_path)
     llamadas = len(s.gemini.llamadas)
     s.buzon.recibir(CONF_LUCIA)
     s.ejecutar()
-    assert s.cal.ev("HMTEST0002")["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
+    assert s.cal.ev("HMTEST0002")["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
     assert s.asuntos == ["🔔 Airbnb · Corazón de Madrid · 26/11–02/12 · sofá cama"], "ni «Ya NO necesita sofá cama» ni avisos repetidos"
     assert len(s.gemini.llamadas) == llamadas, "el mensaje inicial ya se analizó"
 
@@ -940,7 +1155,7 @@ def test_W_reserva_terminada_no_gasta_ia(tmp_path):
     s.buzon.recibir(MENSAJE_LUCIA)
     s.ejecutar(desde=datetime(2026, 9, 1, tzinfo=UTC))
     assert s.gemini.llamadas == []
-    assert s.cal.ev("HMTEST0002")["summary"] == "🏠 Corazón de Madrid · 2 pers", "el evento se crea con los datos de la reserva"
+    assert s.cal.ev("HMTEST0002")["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers", "el evento se crea con los datos de la reserva"
     assert "sin analizar" not in s.cal.ev("HMTEST0002")["description"]
     assert s.avisos == []
 
@@ -952,7 +1167,7 @@ def test_X_si_falla_el_aviso_al_anfitrion_el_calendario_se_actualiza_igual(tmp_p
     s.buzon.recibir(MENSAJE_LUCIA)
     s.fallar_avisos = 1
     reg = s.ejecutar()
-    assert s.cal.ev("HMTEST0002")["summary"] == "🏠 Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
+    assert s.cal.ev("HMTEST0002")["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
     assert reg.fallos, "el aviso se reintentará en la próxima ejecución"
     s.ejecutar()
     assert s.asuntos == ["🔔 Airbnb · Corazón de Madrid · 26/11–02/12 · sofá cama"]
@@ -991,7 +1206,104 @@ def test_Z2_la_descripcion_muestra_la_hora_acordada(tmp_path):
     ev = s.cal.ev("HMTEST0002")
     assert "⏰ pide entrar 12:00" in ev["summary"] and "llega 12:00" not in ev["summary"], "sin repetir la hora"
     ev["description"] = "#entrada 13:00\n" + ev["description"]       # Julien ofrece las 13:00
-    Calendario(s.cfg, s.cal, dormir=lambda _: None).recalcular_limpiezas(datetime(2026, 10, 8).date())
+    Calendario(s.cfg, s.cal, dormir=lambda _: None).recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
     ev = s.cal.ev("HMTEST0002")
     assert "entra 13:00 ✅" in ev["summary"]
-    assert "🕒 Llegada: 13:00" in ev["description"], ev["description"]
+    assert "🕒 Llegada: jue 26/11 a las 13:00" in ev["description"], ev["description"]
+
+
+def test_N8_evento_antiguo_movido_a_otro_dia_se_acorta_desde_su_inicio(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    # Julien había arrastrado el evento entero: el huésped llegó al día siguiente a las 10:00
+    _evento_antiguo(s, "ANTIGUO", "2026-11-05", "2026-11-08", "2026-11-06T10:00:00+01:00", "2026-11-09T06:00:00+01:00")
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    entrada = s.cal.ev("ANTIGUO")
+    assert (entrada["start"]["dateTime"], entrada["end"]["dateTime"]) == ("2026-11-06T10:00:00+01:00", "2026-11-06T10:30:00")
+    assert len(s.cal.eventos) == 2
+    antes = copy.deepcopy(s.cal.eventos)
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert s.cal.eventos == antes, "la segunda pasada no deja el evento vacío ni cambia nada"
+
+
+def test_N9_final_alargado_a_mano_y_despues_otra_hora_de_inicio(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    # Julien alarga a mano el final de los dos eventos (arrastra solo el borde de abajo)
+    s.cal.ev("ENTRA2")["end"]["dateTime"] = "2026-11-05T16:00:00+01:00"
+    s.cal.ev("ENTRA2", "salida")["end"]["dateTime"] = "2026-11-08T12:00:00+01:00"
+
+    eventos = cal.buscar_eventos_reserva("ENTRA2", None, None, None)
+    e = leer_estado(eventos)
+    e["hora_llegada"] = "15:30"
+    cal.guardar_reserva(e, eventos, None)
+    entrada = s.cal.ev("ENTRA2")
+    assert (entrada["start"]["dateTime"], entrada["end"]["dateTime"]) == ("2026-11-05T15:30:00", "2026-11-05T16:00:00+01:00"), \
+        "el final a mano se respeta mientras quede después del inicio"
+
+    # El huésped escribe que llega a las 18:00 y Julien acuerda la salida a las 13:00
+    eventos = cal.buscar_eventos_reserva("ENTRA2", None, None, None)
+    e = leer_estado(eventos)
+    e["hora_llegada"] = "18:00"
+    cal.guardar_reserva(e, eventos, None)
+    salida = s.cal.ev("ENTRA2", "salida")
+    salida["description"] = "#salida 13:00\n" + salida["description"]
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    entrada, salida = s.cal.ev("ENTRA2"), s.cal.ev("ENTRA2", "salida")
+    assert (entrada["start"]["dateTime"], entrada["end"]["dateTime"]) == ("2026-11-05T18:00:00", "2026-11-05T18:30:00")
+    assert (salida["start"]["dateTime"], salida["end"]["dateTime"]) == ("2026-11-08T13:00:00", "2026-11-08T13:30:00")
+    antes = copy.deepcopy(s.cal.eventos)
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert s.cal.eventos == antes
+    vacio = s.cal.request("PATCH", f"{cal.url}/{entrada['id']}", json={"end": {"dateTime": "2026-11-05T18:00:00"}})
+    assert vacio.status_code == 400, "la imitación rechaza un rango vacío, como Google"
+
+
+def test_N10_confirmacion_cortada_al_poner_el_codigo_no_duplica_la_salida(tmp_path):
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva(None, "2026-11-05", "2026-11-08"))          # creada desde un mensaje: sin código
+    original = s.cal.request
+    s.cal.request = lambda metodo, url, **kw: (
+        Respuesta(503, texto="backendError")
+        if metodo == "PATCH" and kw["json"]["extendedProperties"]["private"]["airbnb_parte"] == "salida"
+        else original(metodo, url, **kw))
+    with pytest.raises(RuntimeError):
+        _guardar(cal, _reserva("COD1", "2026-11-05", "2026-11-08"))    # llega la confirmación; falla la salida
+    s.cal.request = original
+    _guardar(cal, _reserva("COD1", "2026-11-05", "2026-11-08"))        # se reintenta el correo
+    partes = [ev["extendedProperties"]["private"] for ev in s.cal.eventos.values()]
+    assert sorted(f"{p['airbnb_parte']} {p.get('airbnb_codigo')}" for p in partes) == ["entrada COD1", "salida COD1"]
+
+
+def test_N11_recalcular_borra_los_duplicados_de_una_reserva(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _evento_antiguo(s, "DUP", "2026-11-05", "2026-11-08", "2026-11-05T15:00:00", "2026-11-08T11:00:00")
+    s.cal.eventos["DUP-bis"] = {**copy.deepcopy(s.cal.eventos["DUP"]), "id": "DUP-bis"}
+    cal.recalcular_limpiezas(date(2026, 10, 13), simulacion=True)
+    assert sorted(s.cal.eventos) == ["DUP", "DUP-bis"], "la simulación no borra nada"
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert sorted((ev["id"], ev["extendedProperties"]["private"].get("airbnb_parte")) for ev in s.cal.eventos.values()) == \
+        [("DUP", "entrada"), ("ev1", "salida")]
+
+
+def test_N12_recalcular_dice_cuantos_eventos_crea(tmp_path, monkeypatch, caplog):
+    import logging
+    from datetime import date
+
+    import sincronizar
+    monkeypatch.setattr(sincronizar, "date", type("Hoy", (date,), {"today": staticmethod(lambda: date(2026, 10, 13))}))
+    caplog.set_level(logging.INFO)
+    s = Entorno(tmp_path)
+    _evento_antiguo(s, "ANTIGUO", "2026-11-05", "2026-11-08", "2026-11-05T15:00:00", "2026-11-08T11:00:00")
+    sincronizar.recalcular(Calendario(s.cfg, s.cal, dormir=lambda _: None), simulacion=True)
+    sincronizar.recalcular(Calendario(s.cfg, s.cal, dormir=lambda _: None), simulacion=False)
+    assert [r.getMessage() for r in caplog.records if r.getMessage().startswith("✔")] == [
+        "✔ 1 reserva(s) en curso o futura(s) revisada(s) · 1 evento(s) por actualizar y 1 por crear (simulación)"
+        " · 0 con alerta de limpieza",
+        "✔ 1 reserva(s) en curso o futura(s) revisada(s) · 1 evento(s) actualizado(s) y 1 creado(s) · 0 con alerta de limpieza"]
