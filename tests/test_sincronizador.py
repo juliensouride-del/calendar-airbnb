@@ -1283,6 +1283,29 @@ def test_N10_confirmacion_cortada_al_poner_el_codigo_no_duplica_la_salida(tmp_pa
     assert sorted(f"{p['airbnb_parte']} {p.get('airbnb_codigo')}" for p in partes) == ["entrada COD1", "salida COD1"]
 
 
+def test_N13_recalcular_desde_una_fecha_pasada_convierte_las_reservas_ya_terminadas(tmp_path, monkeypatch):
+    from datetime import date
+
+    import sincronizar
+    monkeypatch.setattr(sincronizar, "date", type("Hoy", (date,), {"today": staticmethod(lambda: date(2026, 10, 22))}))
+    s = Entorno(tmp_path)
+    _evento_antiguo(s, "SEPT", "2026-09-10", "2026-09-14", "2026-09-10T15:00:00", "2026-09-14T11:00:00")
+    sincronizar.recalcular(Calendario(s.cfg, s.cal, dormir=lambda _: None), simulacion=False)
+    assert len(s.cal.eventos) == 1, "sin --desde, una reserva terminada no se toca"
+
+    sincronizar.recalcular(Calendario(s.cfg, s.cal, dormir=lambda _: None), simulacion=False, desde=date(2026, 9, 1))
+    entrada, salida = s.cal.ev("SEPT"), s.cal.ev("SEPT", "salida")
+    assert len(s.cal.eventos) == 2
+    assert (hora(entrada), hora(entrada, "end")) == ("2026-09-10 15:00", "2026-09-10 15:30")
+    assert (hora(salida), hora(salida, "end")) == ("2026-09-14 11:00", "2026-09-14 11:30")
+
+    antes = copy.deepcopy(s.cal.eventos)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    sincronizar.recalcular(cal, simulacion=False, desde=date(2026, 9, 1))
+    assert s.cal.eventos == antes and (cal.stats["creados"], cal.stats["limpiezas_recalculadas"]) == (0, 0), \
+        "otra pasada no escribe nada"
+
+
 def test_O2_purga_hasta_una_fecha_borra_las_reservas_terminadas_y_los_eventos_sin_marca(tmp_path, capsys):
     from datetime import date
 

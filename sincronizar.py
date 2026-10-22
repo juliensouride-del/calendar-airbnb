@@ -17,7 +17,9 @@ Airbnb (Yahoo Mail) → Google Calendar.
                                         Con --hasta yyyy-mm-dd, solo los de reservas que terminaron
                                         antes de ese día. Para volver a cargarlos: --desde yyyy-mm-dd
   python sincronizar.py --recalcular [--dry-run] aplica las reglas actuales (horario estándar, limpieza)
-                                        a todas las reservas que entran desde hoy, sin leer correos
+                                        a todas las reservas que entran desde hoy, sin leer correos.
+                                        Con --desde yyyy-mm-dd, a las que salen desde ese día
+                                        (también las ya terminadas)
 
 Secretos (variables de entorno): YAHOO_USUARIO, YAHOO_CLAVE_APP, GOOGLE_SERVICE_ACCOUNT_JSON,
 CALENDAR_ID y, opcionales, GEMINI_API_KEY, ALERTA_EMAIL y ALERTA_NTFY_TOPIC (avisos técnicos
@@ -49,7 +51,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="config.toml")
     ap.add_argument("--estado", default="estado/estado.json", help="registro de correos procesados")
-    ap.add_argument("--desde", help="yyyy-mm-dd: procesa los correos desde esa fecha (carga manual)")
+    ap.add_argument("--desde", help="yyyy-mm-dd: procesa los correos desde esa fecha (carga manual); con --recalcular, "
+                                    "revisa las reservas que salen desde ese día, aunque ya hayan terminado")
     ap.add_argument("--hasta", help="yyyy-mm-dd (excluida): límite de la carga manual; con --purgar, borra solo "
                                     "las reservas que terminaron antes de ese día")
     modo = ap.add_mutually_exclusive_group()
@@ -75,7 +78,8 @@ def main() -> int:
         return purgar(calendario, simulacion=args.dry_run, confirmado=args.si,
                       hasta=date.fromisoformat(args.hasta) if args.hasta else None)
     if args.recalcular:
-        return recalcular(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run)
+        return recalcular(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run,
+                          desde=date.fromisoformat(args.desde) if args.desde else None)
 
     calendario = Calendario(cfg, sesion_cuenta_servicio(sec.google_service_account_json))
     # Carga manual (--desde): Gemini espera al límite de peticiones y, si aun así falla, la carga se detiene
@@ -134,8 +138,8 @@ def escribir_resumen(resumen: dict, stats: dict) -> None:
         log.info("\n".join(l))
 
 
-def recalcular(calendario: Calendario, simulacion: bool) -> int:
-    alertas = calendario.recalcular_limpiezas(date.today(), dias=None, simulacion=simulacion)
+def recalcular(calendario: Calendario, simulacion: bool, desde: date | None = None) -> int:
+    alertas = calendario.recalcular_limpiezas(desde or date.today(), dias=None, simulacion=simulacion)
     st = calendario.stats
     cambios = ("%d evento(s) por actualizar y %d por crear (simulación)" if simulacion
                else "%d evento(s) actualizado(s) y %d creado(s)") % (st["limpiezas_recalculadas"], st["creados"])
