@@ -64,7 +64,10 @@ class CalendarFalso:
             return Respuesta(503, texto="backendError")
         if "start" in (json or {}) or "end" in (json or {}):
             actual = self.eventos.get(url.rsplit("/", 1)[1], {}) if metodo == "PATCH" else {}
-            if _instante(json.get("end") or actual["end"]) <= _instante(json.get("start") or actual["start"]):
+            inicio, fin = json.get("start") or actual["start"], json.get("end") or actual["end"]
+            if ("date" in inicio) != ("date" in fin):
+                return Respuesta(400, texto="Start and end times must either both be date or both be dateTime.")
+            if _instante(fin) <= _instante(inicio):
                 return Respuesta(400, texto="The specified time range is empty.")
         if metodo == "POST":
             ev = copy.deepcopy(json)
@@ -1229,6 +1232,23 @@ def test_N8_evento_antiguo_movido_a_otro_dia_se_acorta_desde_su_inicio(tmp_path)
     antes = copy.deepcopy(s.cal.eventos)
     cal.recalcular_limpiezas(date(2026, 10, 13))
     assert s.cal.eventos == antes, "la segunda pasada no deja el evento vacío ni cambia nada"
+
+
+def test_N14_evento_antiguo_pasado_a_dia_completo_a_mano_se_convierte_sin_tocar_sus_fechas(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _evento_antiguo(s, "TODOELDIA", "2026-10-21", "2026-10-30", "2026-10-21T15:00:00+02:00", "2026-10-30T11:00:00+01:00")
+    # Julien lo convirtió a mano en un evento de día completo, solo el 22/10
+    s.cal.ev("TODOELDIA")["start"], s.cal.ev("TODOELDIA")["end"] = {"date": "2026-10-22"}, {"date": "2026-10-23"}
+    cal.recalcular_limpiezas(date(2026, 10, 22))
+    entrada, salida = s.cal.ev("TODOELDIA"), s.cal.ev("TODOELDIA", "salida")
+    assert (entrada["start"], entrada["end"]) == ({"date": "2026-10-22"}, {"date": "2026-10-23"})
+    assert entrada["summary"] == "🟢 ENTRADA Lavapiés · 2 pers"
+    assert (salida["start"]["dateTime"], salida["end"]["dateTime"]) == ("2026-10-30T11:00:00", "2026-10-30T11:30:00")
+    antes = copy.deepcopy(s.cal.eventos)
+    cal.recalcular_limpiezas(date(2026, 10, 22))
+    assert s.cal.eventos == antes, "la segunda pasada no cambia nada"
 
 
 def test_N9_final_alargado_a_mano_y_despues_otra_hora_de_inicio(tmp_path):

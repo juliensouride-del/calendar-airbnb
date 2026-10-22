@@ -203,7 +203,11 @@ class Calendario:
         if actual.get("location") and "location" not in previo:
             previo["location"] = _h(None)          # antes el script no escribía la ubicación: la que haya es del anfitrión
 
+        dia_completo = bool(ev and (ev.get("start") or {}).get("date"))
+
         def respetado(k: str) -> bool:
+            if dia_completo and k in ("inicio", "fin"):
+                return True     # pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora
             return k in previo and _h(actual.get(k)) != previo[k]     # cambiado a mano desde la última escritura
 
         # El final se cuenta desde el inicio que va a quedar en el evento (el movido a mano, si lo hay)
@@ -231,7 +235,7 @@ class Calendario:
             if v is None:
                 continue
             if respetado(k):
-                escrito[k] = previo[k]              # se respeta (y lo seguirá siendo)
+                escrito[k] = previo.get(k, _h(actual.get(k)))   # se respeta (y lo seguirá siendo)
                 continue
             escrito[k] = _h(v)
             if k in ("inicio", "fin"):
