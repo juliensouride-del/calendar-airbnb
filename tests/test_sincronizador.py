@@ -46,6 +46,7 @@ class CalendarFalso:
         self.eventos: dict[str, dict] = {}
         self.ids = itertools.count(1)
         self.fallar_escrituras = 0
+        self.cuenta = "airbnb@pruebas.iam.gserviceaccount.com"   # cuenta de servicio que crea los eventos
 
     def request(self, metodo, url, params=None, json=None, timeout=None):
         assert url.startswith("https://www.googleapis.com/calendar/v3/calendars/cal-prueba/events")
@@ -54,7 +55,7 @@ class CalendarFalso:
             filtros = [v.split("=", 1) for k, v in pares if k == "privateExtendedProperty"]
             rango = {k: datetime.fromisoformat(v) for k, v in pares if k in ("timeMin", "timeMax")}
             items = [e for e in self.eventos.values()
-                     if all(e["extendedProperties"]["private"].get(k) == v for k, v in filtros)
+                     if all(e.get("extendedProperties", {}).get("private", {}).get(k) == v for k, v in filtros)
                      and ("timeMin" not in rango or _instante(e["end"]) > rango["timeMin"])
                      and ("timeMax" not in rango or _instante(e["start"]) < rango["timeMax"])]
             return Respuesta(200, {"items": copy.deepcopy(items)})
@@ -68,6 +69,7 @@ class CalendarFalso:
         if metodo == "POST":
             ev = copy.deepcopy(json)
             ev["id"] = f"ev{next(self.ids)}"
+            ev["creator"] = {"email": self.cuenta}
             ev["extendedProperties"]["private"] = {k: v for k, v in ev["extendedProperties"]["private"].items() if v is not None}
             self.eventos[ev["id"]] = ev
             return Respuesta(200, copy.deepcopy(ev))
@@ -96,6 +98,8 @@ class CalendarFalso:
 
 
 def _instante(campo):
+    if "date" in campo:                         # evento de día completo
+        return datetime.fromisoformat(campo["date"]).replace(tzinfo=ZoneInfo("Europe/Madrid"))
     d = datetime.fromisoformat(campo["dateTime"].replace("Z", "+00:00"))
     return d if d.tzinfo else d.replace(tzinfo=ZoneInfo(campo.get("timeZone") or "Europe/Madrid"))
 
@@ -1277,6 +1281,44 @@ def test_N10_confirmacion_cortada_al_poner_el_codigo_no_duplica_la_salida(tmp_pa
     _guardar(cal, _reserva("COD1", "2026-11-05", "2026-11-08"))        # se reintenta el correo
     partes = [ev["extendedProperties"]["private"] for ev in s.cal.eventos.values()]
     assert sorted(f"{p['airbnb_parte']} {p.get('airbnb_codigo')}" for p in partes) == ["entrada COD1", "salida COD1"]
+
+
+def test_O2_purga_hasta_una_fecha_borra_las_reservas_terminadas_y_los_eventos_sin_marca(tmp_path, capsys):
+    from datetime import date
+
+    import sincronizar
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("AGOSTO", "2026-08-20", "2026-08-25"))
+    _guardar(cal, _reserva("CRUZA", "2026-08-29", "2026-09-03"))
+    _guardar(cal, _reserva("SEPTIEMBRE", "2026-09-10", "2026-09-12"))
+
+    def sin_marca(id, inicio, fin, creador=s.cal.cuenta, **kw):
+        s.cal.eventos[id] = {"id": id, "summary": id, "creator": {"email": creador}, "start": inicio, "end": fin, **kw}
+    madrid = lambda t: {"dateTime": t, "timeZone": "Europe/Madrid"}     # noqa: E731
+    # Primeras versiones del script: sin airbnb_origen
+    sin_marca("Antiguo julio", madrid("2026-07-10T15:00:00+02:00"), madrid("2026-07-14T11:00:00+02:00"),
+              extendedProperties={"private": {"airbnb_tipo": "entrada", "airbnb_codigo": "VIEJO1"}})
+    sin_marca("Antiguo todo el día", {"date": "2026-08-30"}, {"date": "2026-09-01"})
+    sin_marca("Antiguo que cruza", madrid("2026-08-31T15:00:00+02:00"), madrid("2026-09-02T11:00:00+02:00"))
+    sin_marca("Dentista", madrid("2026-08-05T10:00:00+02:00"), madrid("2026-08-05T11:00:00+02:00"),
+              creador="anfitriona@example.com")
+    todos = sorted(s.cal.eventos)
+
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None, creador=s.cal.cuenta)
+    assert sincronizar.purgar(cal, simulacion=True, confirmado=False, hasta=date(2026, 9, 1)) == 0
+    assert sorted(s.cal.eventos) == todos, "--dry-run no borra nada"
+    assert capsys.readouterr().out.splitlines() == [
+        "  2026-07-10 15:00  Antiguo julio  (sin marca)",
+        "  2026-08-20 15:00  🟢 ENTRADA Lavapiés · 2 pers",
+        "  2026-08-25 11:00  🔴 SALIDA Lavapiés · 2 pers",
+        "  2026-08-30  Antiguo todo el día  (sin marca)"]
+
+    sincronizar.purgar(cal, simulacion=False, confirmado=True, hasta=date(2026, 9, 1))
+    quedan = sorted("{airbnb_codigo} {airbnb_parte}".format(**ev["extendedProperties"]["private"])
+                    if ev.get("extendedProperties") else ev["summary"] for ev in s.cal.eventos.values())
+    assert quedan == ["Antiguo que cruza", "CRUZA entrada", "CRUZA salida", "Dentista",
+                      "SEPTIEMBRE entrada", "SEPTIEMBRE salida"]
 
 
 def test_N11_recalcular_borra_los_duplicados_de_una_reserva(tmp_path):
