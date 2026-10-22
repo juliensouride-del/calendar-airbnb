@@ -10,8 +10,8 @@ encontrarlos después, el estado completo de la reserva en JSON y una marca de
 origen (airbnb_origen) que permite borrarlos todos sin tocar otros eventos.
 
 Cambios a mano: el script recuerda (airbnb_escrito) lo último que escribió en cada
-campo. Si el anfitrión cambia el título, el color o la hora de inicio o de fin, ese
-campo ya no se toca (mover el evento cuenta como horario acordado). La descripción
+campo. Si el anfitrión cambia el título, el color, la ubicación o la hora de inicio o de
+fin, ese campo ya no se toca (mover el evento cuenta como horario acordado). La descripción
 tiene dos partes separadas por SEPARADOR: lo de encima es del anfitrión y se conserva
 siempre; lo de debajo es automático (si lo edita, la descripción pasa a ser suya).
 Para fijar una hora acordada también vale escribir '#entrada HH:MM' o '#salida HH:MM'.
@@ -155,20 +155,26 @@ class Calendario:
     def _cuerpo(self, ev: dict | None, estado: dict, limpieza: dict | None, reservas: list[dict] | None = None) -> dict:
         """
         Lo que hay que escribir en el evento (para PATCH o POST). Lo que el anfitrión haya cambiado a mano
-        desde la última escritura del script (título, color, hora de inicio o de fin, o la parte automática
+        desde la última escritura del script (título, color, ubicación, hora de inicio o de fin, o la parte automática
         de la descripción) NO se toca; su parte de la descripción (encima del separador) se conserva siempre.
         """
         self._preparar(estado, reservas)
         inicio, fin = self._horario(estado)
         color = ("cancelada" if estado["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else "reserva")
+        alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
         nuevo = {"summary": formato.titulo_evento(estado, limpieza), "colorId": self.cfg.colores[color],
+                 "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(fin),
                  "auto": formato.descripcion_evento(estado, limpieza, self.cfg)}
         previo = _escrito(ev)
         actual, manual = self._leer_evento(ev)
+        if actual.get("location") and "location" not in previo:
+            previo["location"] = _h(None)          # antes el script no escribía la ubicación: la que haya es del anfitrión
         escrito, cuerpo = {}, {}
         for k, v in nuevo.items():
+            if v is None:
+                continue
             if previo and k in previo and _h(actual.get(k)) != previo[k]:
                 escrito[k] = previo[k]              # cambiado a mano: se respeta (y lo seguirá siendo)
                 continue
@@ -200,7 +206,7 @@ class Calendario:
             texto = re.sub(r"<[^>]+>", "\n", desc)
             manual = "\n".join(m.group(0) for m in reglas.ETIQUETA_ACUERDO.finditer(texto))
             auto = desc
-        actual = {"summary": ev.get("summary"), "colorId": ev.get("colorId"), "auto": auto,
+        actual = {"summary": ev.get("summary"), "colorId": ev.get("colorId"), "location": ev.get("location"), "auto": auto,
                   "inicio": _local_evento(ev.get("start"), self.tz), "fin": _local_evento(ev.get("end"), self.tz)}
         return actual, manual
 

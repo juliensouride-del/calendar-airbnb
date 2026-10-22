@@ -15,6 +15,7 @@ class Alojamiento:
     alias: str                          # nombre corto para el título del evento
     id_anuncio: str = ""                # nº de airbnb.com/rooms/<nº> (lo más fiable)
     otros_nombres: list[str] = field(default_factory=list)
+    direccion: str = ""                 # ubicación de los eventos (Calendar muestra el mapa)
     capacidad_sin_sofa: int | None = None   # personas que caben sin abrir el sofá cama
     locker: str = ""                    # enlace del locker de llaves
     locker_coincide_con: str = ""       # alias de otro alojamiento que comparte el locker...

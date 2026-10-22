@@ -83,6 +83,7 @@ timeout_s = 30
 #   alias:              nombre corto para el título del evento
 #   id_anuncio:         nº de airbnb.com/rooms/<nº> (lo más fiable)
 #   otros_nombres:      (opcional) otros títulos con los que aparece en los correos
+#   direccion:          (opcional) dirección del piso: ubicación de los eventos, con mapa en Calendar
 #   capacidad_sin_sofa: (opcional) personas que caben SIN abrir el sofá cama; si la
 #                       reserva lo supera se marca "sofá cama" como probable
 #   locker:             (opcional) enlace del locker de llaves (se añade a la descripción)
@@ -94,6 +95,7 @@ timeout_s = 30
 nombre = "Espacioso y luminoso apartamento Corazón de Madrid"
 alias = "Tirso"
 id_anuncio = "809290025626258590"
+direccion = "Plaza de Tirso de Molina 18, Madrid"
 capacidad_sin_sofa = 2
 locker = "https://access.keynest.com/D996FCE173C5EEAF6762ECE86EC18F0C"
 
@@ -101,6 +103,7 @@ locker = "https://access.keynest.com/D996FCE173C5EEAF6762ECE86EC18F0C"
 nombre = "Lavapies - Peaceful 2 bedrooms Fresh A/C"
 alias = "Torrecilla"
 id_anuncio = "1065868788427158053"
+direccion = "Calle de la Torrecilla del Leal 22, Madrid"
 capacidad_sin_sofa = 3
 locker = "https://access.keynest.com/02AB83A59B49935C9BB1F5F643C249ED"
 # Comparte locker con Buenavista: si entran los dos el mismo día, Torrecilla usa este
@@ -112,5 +115,6 @@ nombre = "Anton Martin Agradable, Anton Martin - Apartament."
 alias = "Buenavista"
 id_anuncio = "1025328659441162105"
 otros_nombres = ["Apartamentos de Julian, Anton Martin - Apartament."]
+direccion = "Calle de Buenavista 14, Madrid"
 capacidad_sin_sofa = 2
 locker = "https://access.keynest.com/02AB83A59B49935C9BB1F5F643C249ED"

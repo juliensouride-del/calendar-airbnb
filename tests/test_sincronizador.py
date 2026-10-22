@@ -768,6 +768,33 @@ def test_L8_la_sugerencia_de_etiqueta_en_la_parte_automatica_no_es_un_acuerdo(tm
     assert s.cal.ev("ENTRA2")["start"]["dateTime"].startswith("2026-11-05T15:00")
 
 
+def test_L9_direccion_del_piso_como_ubicacion_y_cambiada_a_mano_se_respeta(tmp_path):
+    s = Entorno(tmp_path)
+    s.cfg.alojamientos[1].direccion = "Calle de la Torrecilla del Leal 22, Madrid"
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SOLO1", "2026-11-05", "2026-11-08", alojamiento=s.cfg.alojamientos[0].nombre))
+    assert "location" not in s.cal.ev("SOLO1"), "piso sin dirección: no se toca la ubicación"
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    assert s.cal.ev("ENTRA2")["location"] == "Calle de la Torrecilla del Leal 22, Madrid"
+    s.cal.ev("ENTRA2")["location"] = "Portal B, 2º izq."               # cambiada a mano: se respeta
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="18:00"))
+    assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq."
+    assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T18:00:00", "el resto sigue al día"
+
+
+def test_L10_ubicacion_puesta_a_mano_antes_de_que_el_script_la_escribiera_se_respeta(tmp_path):
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))     # el piso aún no tiene dirección en config.toml
+    s.cal.ev("ENTRA2")["location"] = "Portal B, 2º izq."
+    s.cfg.alojamientos[1].direccion = "Calle de la Torrecilla del Leal 22, Madrid"
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="18:00"))
+    assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq."
+    assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T18:00:00", "el resto sigue al día"
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="19:00"))
+    assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq.", "y lo sigue siendo"
+
+
 def test_L4_leer_acuerdos():
     from airbnb_calendar.reglas import leer_acuerdos
     assert leer_acuerdos("#entrada 12:00\n#Salida: 13.30") == {"acuerdo_entrada": "12:00", "acuerdo_salida": "13:30"}
