@@ -12,10 +12,14 @@ Airbnb (Yahoo Mail) → Google Calendar.
                                         últimos 7 días, SIN tocar el calendario ni el registro
   python sincronizar.py --purgar --dry-run   lista los eventos creados por este script
   python sincronizar.py --purgar             los borra (pide confirmación; --si para no preguntar).
-                                        Solo toca eventos con las marcas privadas del script.
-                                        Para volver a cargarlos: --desde yyyy-mm-dd
+                                        Solo toca eventos con las marcas privadas del script o
+                                        creados por su cuenta de servicio (primeras versiones).
+                                        Con --hasta yyyy-mm-dd, solo los de reservas que terminaron
+                                        antes de ese día. Para volver a cargarlos: --desde yyyy-mm-dd
   python sincronizar.py --recalcular [--dry-run] aplica las reglas actuales (horario estándar, limpieza)
-                                        a todas las reservas que entran desde hoy, sin leer correos
+                                        a todas las reservas que entran desde hoy, sin leer correos.
+                                        Con --desde yyyy-mm-dd, a las que salen desde ese día
+                                        (también las ya terminadas)
 
 Secretos (variables de entorno): YAHOO_USUARIO, YAHOO_CLAVE_APP, GOOGLE_SERVICE_ACCOUNT_JSON,
 CALENDAR_ID y, opcionales, GEMINI_API_KEY, ALERTA_EMAIL y ALERTA_NTFY_TOPIC (avisos técnicos
@@ -31,7 +35,7 @@ import sys
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 
-from airbnb_calendar.calendario import Calendario, sesion_cuenta_servicio
+from airbnb_calendar.calendario import P_ORIGEN, Calendario, sesion_cuenta_servicio
 from airbnb_calendar.config import Secretos, cargar_config
 from airbnb_calendar.gemini import AnalizadorMensajes
 from airbnb_calendar.ntfy import NotificadorNtfy, Varios
@@ -47,8 +51,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="config.toml")
     ap.add_argument("--estado", default="estado/estado.json", help="registro de correos procesados")
-    ap.add_argument("--desde", help="yyyy-mm-dd: procesa los correos desde esa fecha (carga manual)")
-    ap.add_argument("--hasta", help="yyyy-mm-dd (excluida): límite de la carga manual")
+    ap.add_argument("--desde", help="yyyy-mm-dd: procesa los correos desde esa fecha (carga manual); con --recalcular, "
+                                    "revisa las reservas que salen desde ese día, aunque ya hayan terminado")
+    ap.add_argument("--hasta", help="yyyy-mm-dd (excluida): límite de la carga manual; con --purgar, borra solo "
+                                    "las reservas que terminaron antes de ese día")
     modo = ap.add_mutually_exclusive_group()
     modo.add_argument("--comprobar", action="store_true")
     modo.add_argument("--diagnosticar", action="store_true")
@@ -66,10 +72,14 @@ def main() -> int:
         return diagnosticar(cfg, sec)
 
     if args.purgar:
-        return purgar(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())),
-                      simulacion=args.dry_run, confirmado=args.si)
+        sesion = sesion_cuenta_servicio(Secretos.google_desde_entorno())
+        # Los eventos de las primeras versiones no llevan marca: se reconocen por la cuenta que los creó
+        calendario = Calendario(cfg, sesion, creador=sesion.credentials.service_account_email)
+        return purgar(calendario, simulacion=args.dry_run, confirmado=args.si,
+                      hasta=date.fromisoformat(args.hasta) if args.hasta else None)
     if args.recalcular:
-        return recalcular(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run)
+        return recalcular(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run,
+                          desde=date.fromisoformat(args.desde) if args.desde else None)
 
     calendario = Calendario(cfg, sesion_cuenta_servicio(sec.google_service_account_json))
     # Carga manual (--desde): Gemini espera al límite de peticiones y, si aun así falla, la carga se detiene
@@ -128,8 +138,8 @@ def escribir_resumen(resumen: dict, stats: dict) -> None:
         log.info("\n".join(l))
 
 
-def recalcular(calendario: Calendario, simulacion: bool) -> int:
-    alertas = calendario.recalcular_limpiezas(date.today(), dias=None, simulacion=simulacion)
+def recalcular(calendario: Calendario, simulacion: bool, desde: date | None = None) -> int:
+    alertas = calendario.recalcular_limpiezas(desde or date.today(), dias=None, simulacion=simulacion)
     st = calendario.stats
     cambios = ("%d evento(s) por actualizar y %d por crear (simulación)" if simulacion
                else "%d evento(s) actualizado(s) y %d creado(s)") % (st["limpiezas_recalculadas"], st["creados"])
@@ -151,12 +161,15 @@ class NotificadorSilencioso:
         log.info("Aviso omitido (carga manual): %s", asunto)
 
 
-def purgar(calendario: Calendario, simulacion: bool, confirmado: bool) -> int:
-    eventos = calendario.eventos_propios()
+def purgar(calendario: Calendario, simulacion: bool, confirmado: bool, hasta: date | None = None) -> int:
+    eventos = calendario.eventos_propios(hasta)
     for ev in eventos:
-        inicio = ((ev.get("start") or {}).get("dateTime") or "")[:16].replace("T", " ")
-        print(f"  {inicio}  {ev.get('summary', '')}")
-    log.info("%d evento(s) creados por Airbnb → Calendar", len(eventos))
+        inicio = ev.get("start") or {}
+        dia = (inicio.get("dateTime") or inicio.get("date") or "")[:16].replace("T", " ")
+        marca = "" if (ev.get("extendedProperties") or {}).get("private", {}).get(P_ORIGEN) else "  (sin marca)"
+        print(f"  {dia}  {ev.get('summary', '')}{marca}")
+    log.info("%d evento(s) creados por Airbnb → Calendar%s", len(eventos),
+             f" de reservas que terminaron antes del {hasta}" if hasta else "")
     if simulacion or not eventos:
         return 0
     if not confirmado:

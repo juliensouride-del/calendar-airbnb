@@ -97,10 +97,11 @@ def sesion_cuenta_servicio(json_credenciales: str):
 
 
 class Calendario:
-    def __init__(self, cfg: Config, sesion, dormir=time.sleep):
+    def __init__(self, cfg: Config, sesion, dormir=time.sleep, creador: str | None = None):
         self.cfg = cfg
         self.sesion = sesion
         self.dormir = dormir
+        self.creador = creador          # correo de la cuenta de servicio: reconoce los eventos sin marca de origen
         self.url = API.format(cal=quote(cfg.calendar_id, safe=""))
         self.tz = ZoneInfo(cfg.zona_horaria)
         self.stats = {"creados": 0, "actualizados": 0, "limpiezas_recalculadas": 0}
@@ -126,11 +127,21 @@ class Calendario:
                    and not (codigo and _props(ev).get(P_CODIGO) not in (None, codigo))]   # misma fecha, otra reserva
         return _por_parte(propios)
 
-    def eventos_propios(self) -> list[dict]:
-        """Todos los eventos creados por este script (con su marca de origen)."""
-        evs = [ev for ev in self._listar({P_ORIGEN: ORIGEN})
-               if _props(ev).get(P_TIPO) == "reserva"]          # doble comprobación antes de borrar nada
-        return sorted(evs, key=lambda ev: (ev.get("start") or {}).get("dateTime") or "")
+    def eventos_propios(self, hasta: date | None = None) -> list[dict]:
+        """
+        Los eventos de reservas creados por este script: con su marca de origen o, los de las primeras versiones (sin
+        marca), creados por la cuenta de servicio. Con `hasta`, solo los de reservas que terminaron antes de ese día.
+        """
+        # Los eventos sin marca no se pueden filtrar por propiedad: se lista todo y se filtra aquí
+        rango = {"timeMax": datetime.combine(hasta, datetime.min.time(), self.tz).isoformat()} if hasta else {}
+        evs = [ev for ev in self._listar({}, **rango)
+               if self._es_propio(ev) and (hasta is None or _terminado(ev, hasta, self.tz))]
+        return sorted(evs, key=_inicio)
+
+    def _es_propio(self, ev: dict) -> bool:
+        if _props(ev).get(P_ORIGEN) == ORIGEN:
+            return _props(ev).get(P_TIPO) == "reserva"          # doble comprobación antes de borrar nada
+        return self.creador is not None and (ev.get("creator") or {}).get("email") == self.creador
 
     def _listar(self, filtros: dict, **extra) -> list[dict]:
         params = [("privateExtendedProperty", f"{k}={v}") for k, v in filtros.items()]
@@ -192,7 +203,11 @@ class Calendario:
         if actual.get("location") and "location" not in previo:
             previo["location"] = _h(None)          # antes el script no escribía la ubicación: la que haya es del anfitrión
 
+        dia_completo = bool(ev and (ev.get("start") or {}).get("date"))
+
         def respetado(k: str) -> bool:
+            if dia_completo and k in ("inicio", "fin"):
+                return True     # pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora
             return k in previo and _h(actual.get(k)) != previo[k]     # cambiado a mano desde la última escritura
 
         # El final se cuenta desde el inicio que va a quedar en el evento (el movido a mano, si lo hay)
@@ -220,7 +235,7 @@ class Calendario:
             if v is None:
                 continue
             if respetado(k):
-                escrito[k] = previo[k]              # se respeta (y lo seguirá siendo)
+                escrito[k] = previo.get(k, _h(actual.get(k)))   # se respeta (y lo seguirá siendo)
                 continue
             escrito[k] = _h(v)
             if k in ("inicio", "fin"):
@@ -563,6 +578,25 @@ def _local_evento(campo: dict | None, tz: ZoneInfo | None = None) -> str | None:
     zona = tz or ZoneInfo((campo or {}).get("timeZone") or "Europe/Madrid")
     d = datetime.fromisoformat(t.replace("Z", "+00:00"))
     return _local(d.astimezone(zona) if d.tzinfo else d)
+
+
+def _terminado(ev: dict, hasta: date, tz: ZoneInfo) -> bool:
+    """
+    ¿Terminó antes del día `hasta`? Con marca cuenta la salida de la reserva, así una reserva que cruza ese día se
+    conserva entera (también su entrada); sin marca, el final del evento.
+    """
+    p = _props(ev)
+    if p.get(P_ORIGEN) == ORIGEN:
+        return (p.get(P_CHECKOUT) or p.get(P_CHECKIN, "")) < hasta.isoformat()
+    fin = ev.get("end") or {}
+    # Un evento de día completo termina al empezar su end.date (que no se incluye)
+    return (_local_evento(fin, tz) or fin.get("date", "") + "T00:00") <= f"{hasta}T00:00"
+
+
+def _inicio(ev: dict) -> str:
+    """Inicio tal como lo da la API: dateTime o, si es de día completo, date."""
+    inicio = ev.get("start") or {}
+    return inicio.get("dateTime") or inicio.get("date") or ""
 
 
 def _huella(limpieza: dict | None) -> str:

@@ -18,15 +18,15 @@ on:
         options: [sincronizar, recargar, comprobar, diagnosticar, recalcular-simulacion, recalcular, purgar-simulacion, purgar]
         default: sincronizar
       desde:
-        description: "Solo recargar: volver a procesar los correos desde esta fecha (yyyy-mm-dd), p. ej. 6 meses atrás"
+        description: "recargar: volver a procesar los correos desde esta fecha (yyyy-mm-dd) · recalcular: revisar también las reservas ya terminadas que salen desde esta fecha (vacío = desde hoy)"
         type: string
         default: ""
       hasta:
-        description: "Solo recargar: hasta esta fecha, sin incluirla (yyyy-mm-dd). Vacío = hoy"
+        description: "recargar: hasta esta fecha, sin incluirla (yyyy-mm-dd), vacío = hoy · purgar: borrar solo las reservas que terminaron antes de esta fecha, vacío = todas"
         type: string
         default: ""
       confirmar:
-        description: "Solo purgar: escribe BORRAR para eliminar TODOS los eventos creados por el script"
+        description: "Solo purgar: escribe BORRAR para eliminar los eventos creados por el script (todos, o los de antes de hasta)"
         type: string
         default: ""
 
@@ -100,14 +100,14 @@ jobs:
           case "$MODO" in
             comprobar)    python sincronizar.py --comprobar ;;
             diagnosticar) python sincronizar.py --diagnosticar ;;
-            purgar-simulacion) python sincronizar.py --purgar --dry-run ;;
-            recalcular-simulacion) python sincronizar.py --recalcular --dry-run ;;
-            recalcular)   python sincronizar.py --recalcular ;;
+            purgar-simulacion) python sincronizar.py --purgar --dry-run ${HASTA:+--hasta "$HASTA"} ;;
+            recalcular-simulacion) python sincronizar.py --recalcular --dry-run ${DESDE:+--desde "$DESDE"} ;;
+            recalcular)   python sincronizar.py --recalcular ${DESDE:+--desde "$DESDE"} ;;
             purgar)
               if [ "$CONFIRMAR" != "BORRAR" ]; then
                 echo "::error::Para purgar escribe BORRAR en el campo confirmar. No se ha borrado nada."; exit 1
               fi
-              python sincronizar.py --purgar --si ;;
+              python sincronizar.py --purgar --si ${HASTA:+--hasta "$HASTA"} ;;
             recargar)
               if [ -z "$DESDE" ]; then
                 echo "::error::Para recargar indica la fecha en el campo desde (yyyy-mm-dd)."; exit 1

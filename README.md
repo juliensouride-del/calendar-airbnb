@@ -141,8 +141,8 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 | `recargar` | con `desde` (y opcionalmente `hasta`): vuelve a procesar todos los correos del tramo en orden, sin avisos al anfitrión, y al final pone al día todas las reservas futuras. Cada reserva se reconstruye desde su confirmación; los mensajes de reservas ya terminadas no se analizan con la IA. Hasta ~5,5 h por ejecución |
 | `comprobar` | verifica Yahoo, Google Calendar, Gemini y los avisos, sin escribir nada |
 | `diagnosticar` | muestra lo que se extrae de los correos de los últimos 7 días, sin tocar el calendario |
-| `recalcular-simulacion` / `recalcular` | aplica las reglas actuales (horario, limpieza, formato, lockers) a todas las reservas en curso y futuras, sin leer correos |
-| `purgar-simulacion` / `purgar` | lista / borra todos los eventos creados por el script (escribiendo `BORRAR` en `confirmar`); los eventos personales no se tocan |
+| `recalcular-simulacion` / `recalcular` | aplica las reglas actuales (horario, limpieza, formato, lockers) a todas las reservas en curso y futuras, sin leer correos. Con `desde`, revisa las reservas que salen desde esa fecha, también las ya terminadas |
+| `purgar-simulacion` / `purgar` | lista / borra todos los eventos creados por el script (escribiendo `BORRAR` en `confirmar`), también los de las primeras versiones, que no llevan marca; los eventos personales no se tocan. Con `hasta`, solo los de reservas que terminaron antes de esa fecha. Una reserva que la cruza se conserva entera |
 
 **Entorno de pruebas.** Con `entorno = pruebas` se usa el calendario de pruebas (`CALENDAR_ID_PRUEBAS` y `GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS`; si faltan, no se ejecuta y nunca toca el calendario real), el registro va en la rama `estado-pruebas` y los avisos de peticiones van solo a `ALERTA_EMAIL` con `[PRUEBAS]`. Las ejecuciones programadas son siempre de producción.
 
