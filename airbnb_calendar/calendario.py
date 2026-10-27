@@ -67,14 +67,16 @@ ESPERAS_S = (2, 5, 15)                # backoff ante cortes momentáneos de Goog
 class Parte:
     fecha: str                                      # campo del estado con el día del evento
     hora: Callable[[dict, Config], str]
-    titulo: Callable[[dict, dict | None], str]
+    titulo: Callable[[dict, dict | None, Config], str]
+    descripcion: Callable[[dict, dict | None, Config], str]
     color: str                                      # clave de [calendario.colores]
     con_limpieza: bool                              # la limpieza solo importa al huésped que entra
 
 
 PARTES = {
-    "entrada": Parte("checkin", reglas.hora_entrada, formato.titulo_entrada, "reserva", True),
-    "salida": Parte("checkout", reglas.hora_salida, lambda e, _: formato.titulo_salida(e), "salida", False),
+    "entrada": Parte("checkin", reglas.hora_entrada, formato.titulo_entrada, formato.descripcion_entrada, "reserva", True),
+    "salida": Parte("checkout", reglas.hora_salida, lambda e, _, cfg: formato.titulo_salida(e, cfg),
+                    lambda e, _, cfg: formato.descripcion_salida(e, cfg), "salida", False),
 }
 
 
@@ -221,10 +223,10 @@ class Calendario:
         color = ("cancelada" if estado["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else p.color)
         alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
-        nuevo = {"summary": p.titulo(estado, limpieza), "colorId": self.cfg.colores[color],
+        nuevo = {"summary": p.titulo(estado, limpieza, self.cfg), "colorId": self.cfg.colores[color],
                  "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(inicio + timedelta(minutes=self.cfg.duracion_evento_min)),
-                 "auto": formato.descripcion_evento(estado, limpieza, self.cfg)}
+                 "auto": p.descripcion(estado, limpieza, self.cfg)}
         etiqueta = ""
         if antiguo and estado.get("acuerdo_salida") and not reglas.leer_acuerdos(manual)["acuerdo_salida"]:
             # Al pasar a ser la entrada, un final movido a mano (acuerdo de salida) se apunta como etiqueta para no perderlo
@@ -278,14 +280,14 @@ class Calendario:
             return
         # El nombre corto siempre sale de config.toml (si se cambia allí, se corrigen todos los eventos)
         estado["alias"] = alojamiento.alias or alojamiento.nombre
-        estado["locker"] = alojamiento.locker or None
+        estado["locker"], estado["locker_coincide"] = alojamiento.locker or None, None
         otro = self.cfg.alojamiento_por_nombre(alojamiento.locker_coincide_con)
         if otro and alojamiento.locker_si_coincide and estado["checkin"]:
             if reservas is None:
                 reservas = [e for _, e in self._reservas(otro.nombre, P_CHECKIN, date.fromisoformat(estado["checkin"]))]
             if any(_hash(o["alojamiento"]) == _hash(otro.nombre) and o.get("checkin") == estado["checkin"]
                    and not o.get("cancelada") for o in reservas):
-                estado["locker"] = alojamiento.locker_si_coincide
+                estado["locker"], estado["locker_coincide"] = alojamiento.locker_si_coincide, otro.alias
 
     def _desactualizado(self, ev: dict, parte: str, estado: dict, limpieza: dict | None,
                         reservas: list[dict] | None = None) -> bool:

@@ -30,9 +30,9 @@ def analisis(**kw):
 def test_confirmacion_titulos_y_descripcion(r0, cfg):
     e = reglas.crear_estado(r0)
     reglas.aplicar_reglas(e, None, cfg)
-    assert formato.titulo_entrada(e) == "🟢 ENTRADA Corazón de Madrid · 2 pers"
-    assert formato.titulo_salida(e) == "🔴 SALIDA Corazón de Madrid · 2 pers"
-    d = formato.descripcion_evento(e)
+    assert formato.titulo_entrada(e, None, cfg) == "🟢 ENTRADA Corazón de Madrid · 2 pers"
+    assert formato.titulo_salida(e, cfg) == "🔴 SALIDA Corazón de Madrid · sale 11:00"
+    d = formato.descripcion_entrada(e, None, cfg)
     assert d == "🕒 Llegada: jue 26/11 a las 15:00   ·   Salida: mié 02/12 a las 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Lucia Romero · Código HMTEST0002"
     assert avisos.avisos_pendientes(e, cfg) == []
 
@@ -50,8 +50,8 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     assert e["cuna"] == {"v": True, "f": "huesped"}
     assert avisos.avisos_pendientes(e, cfg) == ["📝 Entrada anticipada hacia las 12:00"]
     avisos.marcar_avisado(e)
-    assert formato.titulo_entrada(e) == "🟢 ENTRADA Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
-    d = formato.descripcion_evento(e)
+    assert formato.titulo_entrada(e, None, cfg) == "🟢 ENTRADA Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
+    d = formato.descripcion_entrada(e, None, cfg)
     assert "🕒 Llegada: mié 23/09 a las 15:05   ·   Salida: dom 27/09 a las 11:00" in d
     assert "🍼 Cuna: SÍ (lo indica el huésped)" in d
     assert "👥" not in d, "niños y bebés ya se ven en sofá cama y cuna"
@@ -62,8 +62,8 @@ def test_bebe_cuna_por_regla_luego_confirmada_por_el_huesped(r3, cfg):
     assert len(e["peticiones"]) == 1
 
     reglas.fusionar_analisis(e, analisis(hora_salida="10:50"), "huesped")
-    assert formato.titulo_salida(e) == "🔴 SALIDA Antón Martín · 3 pers · sale 10:50"
-    assert formato.titulo_entrada(e) == "🟢 ENTRADA Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
+    assert formato.titulo_salida(e, cfg) == "🔴 SALIDA Antón Martín · sale 10:50"
+    assert formato.titulo_entrada(e, None, cfg) == "🟢 ENTRADA Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
     assert avisos.avisos_pendientes(e, cfg) == []
 
 
@@ -85,7 +85,7 @@ def test_sofa_cama_por_capacidad_del_alojamiento(cfg):
     e = reglas.crear_estado(r2)
     reglas.aplicar_reglas(e, Alojamiento("x", "x", capacidad_sin_sofa=2), cfg)
     assert e["sofa"] == {"v": True, "f": "regla"}
-    assert "🛋️ sofá cama" in formato.titulo_entrada(e)
+    assert "🛋️ sofá cama" in formato.titulo_entrada(e, None, cfg)
     e2 = reglas.crear_estado(r2)
     reglas.aplicar_reglas(e2, Alojamiento("x", "x", capacidad_sin_sofa=4), cfg)
     assert e2["sofa"] is None
@@ -97,9 +97,9 @@ def test_cancelacion_titulo_marcado_y_sin_avisos(r0, cfg):
     reglas.fusionar_analisis(e, analisis(sofa_cama="si"), "huesped")
     reglas.actualizar_con_datos(e, r1)
     e["cancelada"] = True
-    assert formato.titulo_entrada(e) == "❌ CANCELADA · 🟢 ENTRADA Corazón de Madrid · 1 pers · 🛋️ sofá cama"
-    assert formato.titulo_salida(e) == "❌ CANCELADA · 🔴 SALIDA Corazón de Madrid · 1 pers"
-    assert formato.descripcion_evento(e) == "👤 Lucia Romero · Código HMTEST0003"
+    assert formato.titulo_entrada(e, None, cfg) == "❌ CANCELADA · 🟢 ENTRADA Corazón de Madrid · 1 pers · 🛋️ sofá cama"
+    assert formato.titulo_salida(e, cfg) == "❌ CANCELADA · 🔴 SALIDA Corazón de Madrid · sale 11:00"
+    assert formato.descripcion_entrada(e, None, cfg) == "👤 Lucia Romero · Código HMTEST0003"
     assert avisos.avisos_pendientes(e, cfg) == []
     assert e["huesped"] == "Lucia Romero"      # "Marc" (más corto y distinto) no lo pisa
 
@@ -134,8 +134,8 @@ def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
     reglas.fusionar_analisis(e, analisis(entrada_anticipada="si"), "huesped")
     av = avisos.avisos_pendientes(e, cfg)
     assert av == ["⏰ Pide ENTRAR ANTES de las 15:00: sin hora concreta (pregunta si es posible)"]
-    assert "⏰ pide entrar antes" in formato.titulo_entrada(e)
-    assert "escribe arriba: #entrada HH:MM" in formato.descripcion_evento(e)
+    assert "⏰ pide entrar antes" in formato.titulo_entrada(e, None, cfg)
+    assert "escribe arriba: #entrada HH:MM" in formato.descripcion_entrada(e, None, cfg)
     avisos.marcar_avisado(e)
     assert avisos.avisos_pendientes(e, cfg) == [], "no se repite"
 
@@ -148,17 +148,17 @@ def test_peticion_de_entrar_antes_se_avisa_aunque_haya_una_anterior(r0, cfg):
 
     # Con acuerdo del anfitrión el título muestra el acuerdo, no la petición
     e["acuerdo_entrada"] = "12:30"
-    assert "pide entrar" not in formato.titulo_entrada(e)
-    assert "escribe arriba" not in formato.descripcion_evento(e)
+    assert "pide entrar" not in formato.titulo_entrada(e, None, cfg)
+    assert "escribe arriba" not in formato.descripcion_entrada(e, None, cfg)
 
 
 def test_valores_por_defecto_si_no_hay_informacion(r0, cfg):
     e = reglas.crear_estado(r0)
-    d = formato.descripcion_evento(e, None, cfg)
+    d = formato.descripcion_entrada(e, None, cfg)
     assert "🕒 Llegada: jue 26/11 a las 15:00   ·   Salida: mié 02/12 a las 11:00" in d
     assert "🛋️ Sofá cama: no\n" in d and "🍼 Cuna: no" in d
     e.update(acuerdo_salida="13:00", hora_llegada="19:00", sofa={"v": True, "f": "regla"})
-    d = formato.descripcion_evento(e, None, cfg)
+    d = formato.descripcion_entrada(e, None, cfg)
     assert "🕒 Llegada: jue 26/11 a las 19:00   ·   Salida: mié 02/12 a las 13:00" in d, "lo que dice el huésped o lo acordado manda"
     assert "🛋️ Sofá cama: SÍ (" in d
 
@@ -169,7 +169,23 @@ def test_pide_entrar_antes_y_dice_a_que_hora_llega(r0, cfg):
     reglas.fusionar_analisis(e, analisis(hora_llegada="13:00", entrada_anticipada="si"), "huesped", cfg=cfg)
     assert e["entrada_anticipada"] == "13:00"
     assert avisos.avisos_pendientes(e, cfg) == ["⏰ Pide ENTRAR ANTES de las 15:00: a las 13:00"]
-    assert formato.titulo_entrada(e) == "🟢 ENTRADA Corazón de Madrid · 2 pers · ⏰ pide entrar 13:00"
+    assert formato.titulo_entrada(e, None, cfg) == "🟢 ENTRADA Corazón de Madrid · 2 pers · ⏰ pide entrar 13:00"
+
+
+def test_sin_acuerdo_el_evento_muestra_el_horario_que_vale_no_el_que_dice_el_huesped(r0, cfg):
+    """Caso real: 'nos vamos a las 14:30' y después retira la petición; igual para entrar a las 13:00."""
+    e = reglas.crear_estado(r0)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="13:00", hora_salida="14:30"), "huesped", cfg=cfg)
+    reglas.fusionar_analisis(e, analisis(entrada_anticipada="no", salida_tardia="no"), "huesped", cfg=cfg)
+    assert formato.titulo_entrada(e, None, cfg) == "🟢 ENTRADA Corazón de Madrid · 2 pers"
+    assert formato.titulo_salida(e, cfg) == "🔴 SALIDA Corazón de Madrid · sale 11:00"
+    d = formato.descripcion_entrada(e, None, cfg)
+    assert "🕒 Llegada: jue 26/11 a las 15:00   ·   Salida: mié 02/12 a las 11:00" in d
+    assert formato.descripcion_salida(e, cfg) == "🕒 Salida: mié 02/12 a las 11:00"
+
+    # Llegar de madrugada sigue siendo llegar tarde: se ve
+    reglas.fusionar_analisis(e, analisis(hora_llegada="00:30"), "huesped", cfg=cfg)
+    assert formato.titulo_entrada(e, None, cfg) == "🟢 ENTRADA Corazón de Madrid · 2 pers · llega 00:30"
 
 
 def test_llegar_de_madrugada_es_llegar_tarde_no_entrar_antes(r0, cfg):
@@ -184,7 +200,7 @@ def test_descripcion_ordenada_avisos_primero_locker_y_huesped_al_final(r0, cfg):
     e = reglas.crear_estado(r0)
     e.update(hora_llegada="18:00", entrada_anticipada="12:30", peticiones=["Trona"], locker="https://k/1",
              sofa={"v": True, "f": "huesped"})
-    d = formato.descripcion_evento(e, None, cfg).split("\n\n")
+    d = formato.descripcion_entrada(e, None, cfg).split("\n\n")
     assert d[0] == "⏰ PIDE ENTRAR ANTES (a las 12:30). Si lo aceptas, escribe arriba: #entrada 12:30"
     assert d[1].startswith("🕒 Llegada: jue 26/11 a las 18:00   ·   Salida: mié 02/12 a las 11:00\n🛋️ Sofá cama: SÍ (lo indica el huésped)")
     assert d[2] == "📝 Peticiones:\n   • Trona"
@@ -229,7 +245,7 @@ def test_estado_antiguo_sin_campos_nuevos(r0, cfg):
         del e[k]
         del e["avisado"][k]
     assert avisos.avisos_pendientes(e, cfg) == []
-    formato.titulo_entrada(e), formato.titulo_salida(e), formato.descripcion_evento(e)
+    formato.titulo_entrada(e, None, cfg), formato.titulo_salida(e, cfg), formato.descripcion_entrada(e, None, cfg)
     reglas.fusionar_analisis(e, analisis(salida_tardia="si"), "palabras")
     assert avisos.avisos_pendientes(e, cfg) == ["⌛ Pide SALIR DESPUÉS de las 11:00: sin hora concreta (pregunta si es posible)"]
 

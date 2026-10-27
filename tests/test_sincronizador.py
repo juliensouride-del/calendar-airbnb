@@ -227,7 +227,7 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     entrada, salida = s.cal.ev("HMTEST0002"), s.cal.ev("HMTEST0002", "salida")
     assert entrada["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers"
     assert hora(entrada) == "2026-11-26 15:00" and hora(entrada, "end") == "2026-11-26 15:30"
-    assert salida["summary"] == "🔴 SALIDA Corazón de Madrid · 2 pers"
+    assert salida["summary"] == "🔴 SALIDA Corazón de Madrid · sale 11:00"
     assert hora(salida) == "2026-12-02 11:00" and hora(salida, "end") == "2026-12-02 11:30"
     assert salida["colorId"] == "11"
     assert entrada["start"]["timeZone"] == "Europe/Madrid"
@@ -329,7 +329,7 @@ def test_A5_nombre_corto_de_config_y_formato_antiguo_se_corrigen_sin_correos(tmp
     assert ev["summary"] == "🟢 ENTRADA Tirso · 2 pers · entra 16:00 ✅"
     assert ev["description"] == "#entrada 16:00\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n🕒 Llegada: jue 26/11 a las 16:00   ·   Salida: mié 02/12 a las 11:00\n🛋️ Sofá cama: no\n🍼 Cuna: no\n\n👤 Lucia Romero · Código HMTEST0002", \
         "del formato anterior solo se conservan las etiquetas de acuerdo"
-    assert s.cal.ev("HMTEST0002", "salida")["summary"] == "🔴 SALIDA Tirso · 2 pers"
+    assert s.cal.ev("HMTEST0002", "salida")["summary"] == "🔴 SALIDA Tirso · sale 11:00"
     assert leer_estado(cal.buscar_eventos_reserva("HMTEST0002", None, None, None))["alias"] == "Tirso"
     escrituras = cal.stats["limpiezas_recalculadas"]
     cal.recalcular_limpiezas(datetime(2026, 10, 8).date(), dias=None)
@@ -450,7 +450,7 @@ def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
     e3 = s.cal.ev("Antón Martín")
     assert e3["summary"] == "🟢 ENTRADA Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
     assert hora(e3) == "2026-09-23 15:05"
-    assert s.cal.ev("Antón Martín", "salida")["summary"] == "🔴 SALIDA Antón Martín · 3 pers · sale 11:00"
+    assert s.cal.ev("Antón Martín", "salida")["summary"] == "🔴 SALIDA Antón Martín · sale 11:00"
     assert "🍼 Cuna: SÍ (lo indica el huésped)" in e3["description"]
     assert "🕒 Llegada: mié 23/09 a las 15:05   ·   Salida: dom 27/09 a las 11:00" in e3["description"]
     assert "Pregunta si puede entrar hacia las 12:00" in e3["description"]
@@ -702,7 +702,7 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
     sale["description"] = "#salida 13:30\n" + sale["description"]
     cal.recalcular_limpiezas(date(2026, 10, 13))
     assert s.cal.ev("SALE1", "salida")["start"]["dateTime"] == "2026-11-05T13:30:00"
-    assert s.cal.ev("SALE1", "salida")["summary"] == "🔴 SALIDA Lavapiés · 2 pers · sale 13:30 ✅"
+    assert s.cal.ev("SALE1", "salida")["summary"] == "🔴 SALIDA Lavapiés · sale 13:30 ✅"
 
     # Si Julien borra la etiqueta, vuelve el horario estándar
     ev = s.cal.ev("ENTRA2")
@@ -740,7 +740,7 @@ def test_L5_cambios_a_mano_en_el_evento_no_se_sobrescriben(tmp_path):
     assert ev["end"]["dateTime"].startswith("2026-11-05T14:00"), "el final sigue a la hora acordada"
     salida = s.cal.ev("ENTRA2", "salida")
     assert salida["start"]["dateTime"].startswith("2026-11-08T11:00"), "lo no tocado sigue siendo automático"
-    assert salida["summary"] == "🔴 SALIDA Lavapiés · 2 pers"
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 11:00"
 
     # Si edita también la parte automática, la descripción pasa a ser suya
     ev["description"] = ev["description"].replace("Trona", "Trona (ya está en el piso)")
@@ -780,8 +780,9 @@ def test_L6_lockers_y_locker_alternativo_si_entran_el_mismo_dia(tmp_path):
 
     # Entra alguien en Antón Martín el mismo día → Torrecilla (Lavapiés) pasa al locker alternativo
     _guardar(cal, _reserva("ANT1", "2026-11-05", "2026-11-07", alojamiento=anton.nombre))
-    assert "🔑 Locker: https://k/alternativo" in s.cal.ev("LAV1")["description"]
-    assert "🔑 Locker: https://k/compartido" in s.cal.ev("ANT1")["description"]
+    assert "🔑 Locker: https://k/alternativo (Antón Martín también entra ese día)" in s.cal.ev("LAV1")["description"]
+    assert "🔑 Locker: https://k/compartido\n" in s.cal.ev("ANT1")["description"]
+    assert "Locker" not in s.cal.ev("LAV1", "salida")["description"], "el locker es para el que entra"
 
     # Si se cancela la de Antón Martín, vuelve al compartido (también en el recálculo diario)
     _guardar(cal, _reserva("ANT1", "2026-11-05", "2026-11-07", alojamiento=anton.nombre, cancelada=True))
@@ -789,6 +790,30 @@ def test_L6_lockers_y_locker_alternativo_si_entran_el_mismo_dia(tmp_path):
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
     assert "🔑 Locker: https://k/compartido" in s.cal.ev("LAV1")["description"]
     assert "Locker" not in s.cal.ev("ANT1")["description"], "las canceladas no llevan locker"
+
+
+def test_L7_la_salida_solo_dice_a_que_hora_sale_y_nunca_despues_de_las_11_sin_acuerdo(tmp_path):
+    from airbnb_calendar.calendario import SEPARADOR
+    s = Entorno(tmp_path)
+    s.cfg.alojamientos[1].locker = "https://k/compartido"
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    # Caso real: el huésped dice que se va a las 14:30 y luego retira la petición; nadie lo ha acordado con Julien
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", hora_salida="14:30", peticiones=["Trona"]))
+    salida, entrada = s.cal.ev("SALE1", "salida"), s.cal.ev("SALE1")
+    assert salida["start"]["dateTime"] == "2026-11-05T11:00:00"
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 11:00"
+    assert salida["description"] == SEPARADOR + "\n🕒 Salida: jue 05/11 a las 11:00", "ni locker ni datos de la entrada"
+    assert "14:30" not in entrada["description"] and "Salida: jue 05/11 a las 11:00" in entrada["description"]
+    assert "🔑 Locker: https://k/compartido" in entrada["description"]
+
+    # Si Julien lo acuerda, sale a esa hora
+    salida = s.cal.ev("SALE1", "salida")
+    salida["description"] = "#salida 14:30\n" + salida["description"]
+    _guardar(cal, leer_estado(cal.buscar_eventos_reserva("SALE1", None, None, None)))
+    salida = s.cal.ev("SALE1", "salida")
+    assert salida["start"]["dateTime"] == "2026-11-05T14:30:00"
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 14:30 ✅"
+    assert salida["description"].endswith(SEPARADOR + "\n🕒 Salida: jue 05/11 a las 14:30 (acordada)")
 
 
 def test_L8_la_sugerencia_de_etiqueta_en_la_parte_automatica_no_es_un_acuerdo(tmp_path):
@@ -837,10 +862,10 @@ def test_N1_una_confirmacion_crea_una_entrada_y_una_salida_cortas_con_la_ubicaci
     assert (hora(salida), hora(salida, "end")) == ("2026-12-02 11:00", "2026-12-02 11:30")
     assert [_duracion_min(ev) for ev in s.cal.eventos.values()] == [30, 30]
     assert entrada["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers"
-    assert salida["summary"] == "🔴 SALIDA Corazón de Madrid · 2 pers"
+    assert salida["summary"] == "🔴 SALIDA Corazón de Madrid · sale 11:00"
     assert (entrada["colorId"], salida["colorId"]) == ("10", "11")
     assert entrada["location"] == salida["location"] == "Plaza de Tirso de Molina 18, Madrid"
-    assert "🕒 Llegada: jue 26/11 a las 15:00   ·   Salida: mié 02/12 a las 11:00" in salida["description"]
+    assert salida["description"].endswith("\n🕒 Salida: mié 02/12 a las 11:00")
 
 
 def test_N1b_titulos_completos_de_la_entrada_y_la_salida(tmp_path):
@@ -852,7 +877,7 @@ def test_N1b_titulos_completos_de_la_entrada_y_la_salida(tmp_path):
                            cuna={"v": True, "f": "huesped"}))
     entrada, salida = s.cal.ev("ENTRA2"), s.cal.ev("ENTRA2", "salida")
     assert entrada["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🛋️ sofá cama · 🍼 cuna"
-    assert salida["summary"] == "🔴 SALIDA Lavapiés · 3 pers · sale 10:00 · ⌛ pide salir 13:00"
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 10:00"
     assert hora(entrada) == "2026-11-05 18:30" and hora(salida) == "2026-11-08 10:00"
     assert "🧹 Limpieza" in entrada["description"] and "Limpieza" not in salida["description"]
 
@@ -871,7 +896,7 @@ def test_N2_mover_el_evento_de_salida_es_un_acuerdo_y_cambia_la_limpieza_del_sig
     cal.recalcular_limpiezas(date(2026, 10, 13))
     sale = s.cal.ev("SALE1", "salida")
     assert sale["start"]["dateTime"] == "2026-11-05T14:00:00+01:00", "se respeta"
-    assert sale["summary"] == "🔴 SALIDA Lavapiés · 2 pers · sale 14:00 ✅"
+    assert sale["summary"] == "🔴 SALIDA Lavapiés · sale 14:00 ✅"
     entra = s.cal.ev("ENTRA2")
     assert entra["summary"] == "🟢 ENTRADA Lavapiés · [ALERTA LIMPIEZA / AJUSTE HORARIO] · 2 pers"
     assert entra["colorId"] == "6"
@@ -923,7 +948,7 @@ def test_N3_evento_antiguo_de_toda_la_estancia_pasa_a_entrada_y_salida_sin_perde
     assert entrada["description"].startswith("#salida 13:00\nLlaves en el buzón\n\n" + SEPARADOR + "\n"), \
         "el final movido a mano pasa a etiqueta, y las notas se conservan"
     assert (salida["start"]["dateTime"], salida["end"]["dateTime"]) == ("2026-11-08T13:00:00", "2026-11-08T13:30:00")
-    assert salida["summary"] == "🔴 SALIDA Lavapiés · 2 pers · sale 13:00 ✅"
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 13:00 ✅"
 
     antes = copy.deepcopy(s.cal.eventos)
     escrituras = cal.stats["limpiezas_recalculadas"]
@@ -993,7 +1018,7 @@ def test_N5_cancelacion_los_dos_eventos_en_gris(tmp_path):
     assert len(s.cal.eventos) == 2
     entrada, salida = s.cal.ev("HMTEST0002"), s.cal.ev("HMTEST0002", "salida")
     assert entrada["summary"] == "❌ CANCELADA · 🟢 ENTRADA Corazón de Madrid · 2 pers"
-    assert salida["summary"] == "❌ CANCELADA · 🔴 SALIDA Corazón de Madrid · 2 pers"
+    assert salida["summary"] == "❌ CANCELADA · 🔴 SALIDA Corazón de Madrid · sale 11:00"
     assert (entrada["colorId"], salida["colorId"]) == ("8", "8")
 
 
@@ -1354,7 +1379,7 @@ def test_O2_purga_hasta_una_fecha_borra_las_reservas_terminadas_y_los_eventos_si
     assert capsys.readouterr().out.splitlines() == [
         "  2026-07-10 15:00  Antiguo julio  (sin marca)",
         "  2026-08-20 15:00  🟢 ENTRADA Lavapiés · 2 pers",
-        "  2026-08-25 11:00  🔴 SALIDA Lavapiés · 2 pers",
+        "  2026-08-25 11:00  🔴 SALIDA Lavapiés · sale 11:00",
         "  2026-08-30  Antiguo todo el día  (sin marca)"]
 
     sincronizar.purgar(cal, simulacion=False, confirmado=True, hasta=date(2026, 9, 1))

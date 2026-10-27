@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date
 
 from .config import Config
-from .reglas import es_hora_valida, personas_que_duermen
+from .reglas import es_hora_valida, hora_salida, llegada_prevista, personas_que_duermen
 
 DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
@@ -32,13 +32,14 @@ def lineas_limpieza(l: dict | None, cfg: Config) -> list[str]:
             " llegue más tarde."]
 
 
-def titulo_entrada(e: dict, limpieza: dict | None = None) -> str:
+def titulo_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
     """'🟢 ENTRADA Torrecilla · [LIMPIEZA OK] · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🛋️ sofá cama · 🍼 cuna'"""
     partes = ["🟢 ENTRADA " + _nombre(e), etiqueta_limpieza(limpieza), _personas(e)]
     if e.get("acuerdo_entrada"):
         partes.append(f"entra {e['acuerdo_entrada']} ✅")
     else:
-        if e["hora_llegada"] and e["hora_llegada"] != e.get("entrada_anticipada"):
+        # Si dice que llega antes de la hora de entrada, eso va como petición, no como hora de llegada
+        if e["hora_llegada"] and llegada_prevista(e, cfg) == e["hora_llegada"]:
             partes.append("llega " + e["hora_llegada"])
         if e.get("entrada_anticipada"):
             partes.append("⏰ pide entrar " + (e["entrada_anticipada"] if es_hora_valida(e["entrada_anticipada"]) else "antes"))
@@ -49,17 +50,9 @@ def titulo_entrada(e: dict, limpieza: dict | None = None) -> str:
     return _titulo(e, partes)
 
 
-def titulo_salida(e: dict) -> str:
-    """'🔴 SALIDA Torrecilla · 3 pers · sale 10:00 · ⌛ pide salir 13:00'"""
-    partes = ["🔴 SALIDA " + _nombre(e), _personas(e)]
-    if e.get("acuerdo_salida"):
-        partes.append(f"sale {e['acuerdo_salida']} ✅")
-    else:
-        if e["hora_salida"] and e["hora_salida"] != e.get("salida_tardia"):
-            partes.append("sale " + e["hora_salida"])
-        if e.get("salida_tardia"):
-            partes.append("⌛ pide salir " + (e["salida_tardia"] if es_hora_valida(e["salida_tardia"]) else "después"))
-    return _titulo(e, partes)
+def titulo_salida(e: dict, cfg: Config) -> str:
+    """'🔴 SALIDA Torrecilla · sale 11:00' (o 'sale 13:00 ✅' si el anfitrión lo ha acordado)."""
+    return _titulo(e, ["🔴 SALIDA " + _nombre(e), "sale " + hora_salida(e, cfg) + (" ✅" if e.get("acuerdo_salida") else "")])
 
 
 def _nombre(e: dict) -> str:
@@ -75,7 +68,15 @@ def _titulo(e: dict, partes: list[str]) -> str:
     return "❌ CANCELADA · " + t if e["cancelada"] else t
 
 
-def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None = None) -> str:
+def descripcion_salida(e: dict, cfg: Config) -> str:
+    """Solo la hora de salida: lo demás de la reserva está en el evento de entrada."""
+    if e["cancelada"]:
+        return ""
+    acordada = " (acordada)" if e.get("acuerdo_salida") else ""
+    return f"🕒 Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}{acordada}"
+
+
+def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
     """
     Debajo del título, de lo más urgente a lo menos:
       1. Avisos (solo si los hay): limpieza que no cabe, petición de horario pendiente, mensajes sin analizar.
@@ -83,7 +84,7 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
       3. Peticiones del huésped.
       4. Locker.
       y al final, el huésped y el código de la reserva.
-    Va igual en los dos eventos de la reserva (el de salida, sin limpieza), así que lleva las dos fechas.
+    Las horas son las que valen en el calendario: lo que pida el huésped fuera del horario va en los avisos.
     No se repite el alojamiento, que ya está en el título.
     """
     # Las etiquetas #entrada / #salida las escribe el anfitrión en su parte de la descripción
@@ -91,7 +92,7 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
     bloques = []
     if not e["cancelada"]:
         avisos = []
-        if limpieza and cfg and not limpieza["ok"]:
+        if limpieza and not limpieza["ok"]:
             avisos += lineas_limpieza(limpieza, cfg)
         for tipo, campo, icono, texto in (("entrada", "entrada_anticipada", "⏰", "ENTRAR ANTES"),
                                           ("salida", "salida_tardia", "⌛", "SALIR DESPUÉS")):
@@ -104,21 +105,19 @@ def descripcion_evento(e: dict, limpieza: dict | None = None, cfg: Config | None
             avisos.append("⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.")
         bloques.append(avisos)
 
-        # Sin información que diga otra cosa: horario estándar (o el acordado) y sin sofá cama ni cuna
-        llegada = e.get("acuerdo_entrada") or e["hora_llegada"] or (cfg.hora_entrada_por_defecto if cfg else "15:00")
-        salida = e.get("acuerdo_salida") or e["hora_salida"] or (cfg.hora_salida_por_defecto if cfg else "11:00")
-        datos = [f"🕒 Llegada: {fecha_dia_es(e['checkin'])} a las {llegada}   ·   "
-                 f"Salida: {fecha_dia_es(e['checkout'])} a las {salida}",
+        datos = [f"🕒 Llegada: {fecha_dia_es(e['checkin'])} a las {llegada_prevista(e, cfg)}   ·   "
+                 f"Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}",
                  "🛋️ Sofá cama: " + _texto_marca(e, "sofa"),
                  "🍼 Cuna: " + _texto_marca(e, "cuna")]
-        if limpieza and cfg and limpieza["ok"]:
+        if limpieza and limpieza["ok"]:
             datos += lineas_limpieza(limpieza, cfg)
         bloques.append(datos)
 
         if e["peticiones"]:
             bloques.append(["📝 Peticiones:"] + ["   • " + x for x in e["peticiones"]])
         if e.get("locker"):
-            bloques.append(["🔑 Locker: " + e["locker"]])
+            coincide = f" ({e['locker_coincide']} también entra ese día)" if e.get("locker_coincide") else ""
+            bloques.append(["🔑 Locker: " + e["locker"] + coincide])
     bloques.append([f"👤 {e['huesped'] or '?'} · Código {e['codigo'] or 'desconocido'}"])
     if e.get("desde_mensaje"):
         bloques.append(["ℹ️ Evento creado a partir de un mensaje del huésped: no se encontró la confirmación de "
