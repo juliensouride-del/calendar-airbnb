@@ -182,6 +182,18 @@ def hora_entrada(e: dict, cfg: Config) -> str:
     return max(llegada, estandar) if llegada else estandar
 
 
+def llegada_prevista(e: dict, cfg: Config) -> str:
+    """
+    Hora a la que se espera al huésped: la acordada o, si no, la que dice, salvo que sea antes de la hora de
+    entrada (sin acuerdo no puede entrar antes: vale la estándar). Llegar de madrugada es llegar tarde y se muestra.
+    """
+    if e.get("acuerdo_entrada"):
+        return e["acuerdo_entrada"]
+    estandar = cfg.hora_entrada_por_defecto
+    llegada = normalizar_hora(e["hora_llegada"])
+    return llegada if llegada and not MADRUGADA <= llegada < estandar else estandar
+
+
 def hora_salida(e: dict, cfg: Config) -> str:
     """Hora de salida: la acordada (#salida HH:MM); si no, la estándar, o la del huésped si sale antes."""
     if e.get("acuerdo_salida"):
