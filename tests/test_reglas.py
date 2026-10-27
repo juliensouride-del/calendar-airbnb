@@ -172,6 +172,22 @@ def test_pide_entrar_antes_y_dice_a_que_hora_llega(r0, cfg):
     assert formato.titulo_entrada(e) == "🟢 ENTRADA Corazón de Madrid · 2 pers · ⏰ pide entrar 13:00"
 
 
+def test_sin_acuerdo_el_evento_muestra_el_horario_que_vale_no_el_que_dice_el_huesped(r0, cfg):
+    """Caso real: 'nos vamos a las 14:30' y después retira la petición; igual para entrar a las 13:00."""
+    e = reglas.crear_estado(r0)
+    reglas.fusionar_analisis(e, analisis(hora_llegada="13:00", hora_salida="14:30"), "huesped", cfg=cfg)
+    reglas.fusionar_analisis(e, analisis(entrada_anticipada="no", salida_tardia="no"), "huesped", cfg=cfg)
+    assert formato.titulo_entrada(e, None, cfg) == "🟢 ENTRADA Corazón de Madrid · 2 pers"
+    assert formato.titulo_salida(e, cfg) == "🔴 SALIDA Corazón de Madrid · sale 11:00"
+    d = formato.descripcion_entrada(e, None, cfg)
+    assert "🕒 Llegada: jue 26/11 a las 15:00   ·   Salida: mié 02/12 a las 11:00" in d
+    assert formato.descripcion_salida(e, cfg) == "🕒 Salida: mié 02/12 a las 11:00"
+
+    # Llegar de madrugada sigue siendo llegar tarde: se ve
+    reglas.fusionar_analisis(e, analisis(hora_llegada="00:30"), "huesped", cfg=cfg)
+    assert formato.titulo_entrada(e, None, cfg) == "🟢 ENTRADA Corazón de Madrid · 2 pers · llega 00:30"
+
+
 def test_llegar_de_madrugada_es_llegar_tarde_no_entrar_antes(r0, cfg):
     e = reglas.crear_estado(r0)
     reglas.fusionar_analisis(e, analisis(hora_llegada="00:30"), "huesped", cfg=cfg)
