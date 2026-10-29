@@ -68,18 +68,34 @@ def _titulo(e: dict, partes: list[str]) -> str:
     return "❌ CANCELADA · " + t if e["cancelada"] else t
 
 
+PETICIONES_HORARIO = {"entrada": ("entrada_anticipada", "⏰", "ENTRAR ANTES"),
+                      "salida": ("salida_tardia", "⌛", "SALIR DESPUÉS")}
+
+
+def aviso_horario(e: dict, tipo: str) -> str | None:
+    """'⏰ PIDE ENTRAR ANTES (a las 12:00). Si lo aceptas, escribe arriba: #entrada 12:00', o None sin petición pendiente."""
+    campo, icono, texto = PETICIONES_HORARIO[tipo]
+    pedida = e.get(campo)
+    if not pedida or e.get(f"acuerdo_{tipo}"):
+        return None
+    hora = pedida if es_hora_valida(pedida) else "HH:MM"
+    cuando = f"a las {pedida}" if es_hora_valida(pedida) else "sin hora concreta"
+    return f"{icono} PIDE {texto} ({cuando}). Si lo aceptas, escribe arriba: #{tipo} {hora}"
+
+
 def descripcion_salida(e: dict, cfg: Config) -> str:
-    """Solo la hora de salida: lo demás de la reserva está en el evento de entrada."""
+    """La petición de salir más tarde, si está pendiente, y la hora de salida: lo demás está en el evento de entrada."""
     if e["cancelada"]:
         return ""
     acordada = " (acordada)" if e.get("acuerdo_salida") else ""
-    return f"🕒 Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}{acordada}"
+    salida = f"🕒 Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}{acordada}"
+    return "\n\n".join(b for b in (aviso_horario(e, "salida"), salida) if b)
 
 
 def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
     """
     Debajo del título, de lo más urgente a lo menos:
-      1. Avisos (solo si los hay): limpieza que no cabe, petición de horario pendiente, mensajes sin analizar.
+      1. Avisos (solo si los hay): limpieza que no cabe, petición de entrar antes pendiente, mensajes sin analizar.
       2. Datos de la reserva: llegada y salida previstas, sofá cama, cuna y ventana de limpieza.
       3. Peticiones del huésped.
       4. Locker.
@@ -94,13 +110,8 @@ def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
         avisos = []
         if limpieza and not limpieza["ok"]:
             avisos += lineas_limpieza(limpieza, cfg)
-        for tipo, campo, icono, texto in (("entrada", "entrada_anticipada", "⏰", "ENTRAR ANTES"),
-                                          ("salida", "salida_tardia", "⌛", "SALIR DESPUÉS")):
-            pedida = e.get(campo)
-            if pedida and not e.get(f"acuerdo_{tipo}"):
-                hora = pedida if es_hora_valida(pedida) else "HH:MM"
-                cuando = f"a las {pedida}" if es_hora_valida(pedida) else "sin hora concreta"
-                avisos.append(f"{icono} PIDE {texto} ({cuando}). Si lo aceptas, escribe arriba: #{tipo} {hora}")
+        if aviso := aviso_horario(e, "entrada"):
+            avisos.append(aviso)
         if e.get("sin_analizar") or any(n["t"].startswith("⚠️") for n in e.get("notas") or []):
             avisos.append("⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.")
         bloques.append(avisos)

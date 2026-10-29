@@ -208,6 +208,26 @@ def test_descripcion_ordenada_avisos_primero_locker_y_huesped_al_final(r0, cfg):
     assert d[4] == "👤 Lucia Romero · Código HMTEST0002"
 
 
+def test_cada_peticion_de_horario_va_en_su_evento(r0, cfg):
+    e = reglas.crear_estado(r0)
+    e.update(entrada_anticipada="12:30", salida_tardia="14:00")
+    assert formato.descripcion_salida(e, cfg) == ("⌛ PIDE SALIR DESPUÉS (a las 14:00). Si lo aceptas, escribe arriba: #salida 14:00"
+                                                  "\n\n🕒 Salida: mié 02/12 a las 11:00")
+    d = formato.descripcion_entrada(e, None, cfg)
+    assert d.startswith("⏰ PIDE ENTRAR ANTES (a las 12:30). Si lo aceptas, escribe arriba: #entrada 12:30\n\n🕒 Llegada:")
+    assert "SALIR DESPUÉS" not in d
+
+    e["salida_tardia"] = "si"
+    assert formato.descripcion_salida(e, cfg) == ("⌛ PIDE SALIR DESPUÉS (sin hora concreta). Si lo aceptas, escribe arriba:"
+                                                  " #salida HH:MM\n\n🕒 Salida: mié 02/12 a las 11:00")
+
+    e["acuerdo_salida"] = "13:00"
+    assert formato.descripcion_salida(e, cfg) == "🕒 Salida: mié 02/12 a las 13:00 (acordada)"
+
+    e.update(acuerdo_salida=None, cancelada=True)
+    assert formato.descripcion_salida(e, cfg) == ""
+
+
 def test_lo_ultimo_que_dice_el_huesped_manda(r0, cfg):
     e = reglas.crear_estado(r0)
     reglas.fusionar_analisis(e, analisis(hora_llegada="11:00"), "huesped", cfg=cfg)
