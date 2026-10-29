@@ -826,6 +826,24 @@ def test_L8_la_sugerencia_de_etiqueta_en_la_parte_automatica_no_es_un_acuerdo(tm
     assert s.cal.ev("ENTRA2")["start"]["dateTime"].startswith("2026-11-05T15:00")
 
 
+def test_L8b_la_peticion_de_salir_mas_tarde_va_en_la_salida_y_desaparece_al_acordarla(tmp_path):
+    from airbnb_calendar.calendario import SEPARADOR
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("TARDE1", "2026-11-01", "2026-11-05", salida_tardia="14:00"))
+    salida, entrada = s.cal.ev("TARDE1", "salida"), s.cal.ev("TARDE1")
+    assert salida["description"] == (SEPARADOR + "\n⌛ PIDE SALIR DESPUÉS (a las 14:00). Si lo aceptas, escribe arriba:"
+                                      " #salida 14:00\n\n🕒 Salida: jue 05/11 a las 11:00")
+    assert "SALIR DESPUÉS" not in entrada["description"]
+    assert salida["start"]["dateTime"] == "2026-11-05T11:00:00", "pedirlo no es un acuerdo"
+
+    salida["description"] = "#salida 14:00\n" + salida["description"]
+    _guardar(cal, leer_estado(cal.buscar_eventos_reserva("TARDE1", None, None, None)))
+    salida = s.cal.ev("TARDE1", "salida")
+    assert salida["description"] == "#salida 14:00\n\n" + SEPARADOR + "\n🕒 Salida: jue 05/11 a las 14:00 (acordada)"
+    assert salida["start"]["dateTime"] == "2026-11-05T14:00:00"
+
+
 def test_L9_direccion_del_piso_como_ubicacion_y_cambiada_a_mano_se_respeta(tmp_path):
     s = Entorno(tmp_path)
     s.cfg.alojamientos[1].direccion = "Calle de la Torrecilla del Leal 22, Madrid"
