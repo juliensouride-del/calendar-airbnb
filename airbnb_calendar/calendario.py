@@ -14,12 +14,12 @@ que permite borrarlos todos sin tocar otros eventos. Un evento sin parte es del 
 anterior (uno por estancia): hace de entrada y se convierte al escribirlo.
 
 Cambios a mano: el script recuerda (airbnb_escrito) lo último que escribió en cada
-campo. Si el anfitrión cambia el título, el color, la ubicación o la hora de inicio o de
-fin, ese campo ya no se toca (mover el evento de entrada o el de salida cuenta como
-horario acordado). La descripción tiene dos partes separadas por SEPARADOR: lo de encima
-es del anfitrión y se conserva siempre; lo de debajo es automático (si lo edita, la
-descripción pasa a ser suya). Para fijar una hora acordada también vale escribir
-'#entrada HH:MM' o '#salida HH:MM', en cualquiera de los dos eventos.
+campo. Si el anfitrión cambia el título, el color o la ubicación, ese campo ya no se toca.
+La hora no: el equipo de limpieza arrastra eventos sin querer, así que un evento movido a
+mano vuelve a su hora en la siguiente pasada. Una hora acordada solo se fija escribiendo
+'#entrada HH:MM' o '#salida HH:MM' en cualquiera de los dos eventos. La descripción tiene
+dos partes separadas por SEPARADOR: lo de encima es del anfitrión y se conserva siempre;
+lo de debajo es automático (si lo edita, la descripción pasa a ser suya).
 """
 from __future__ import annotations
 
@@ -181,6 +181,7 @@ class Calendario:
         """Crea el evento de esa parte de la reserva o lo reescribe (sin tocar lo cambiado a mano)."""
         ev = eventos[parte]
         cuerpo = self._cuerpo(ev, parte, estado, limpieza, reservas)
+        self._avisar_hora_movida(ev, parte, cuerpo)
         if ev is None:
             eventos[parte] = self._pedir("POST", self.url, json=cuerpo)
             self.stats["creados"] += 1
@@ -194,8 +195,9 @@ class Calendario:
                 reservas: list[dict] | None = None) -> dict:
         """
         Lo que hay que escribir en el evento de esa parte (para PATCH o POST). Lo que el anfitrión haya cambiado a
-        mano desde la última escritura del script (título, color, ubicación, hora de inicio o de fin, o la parte
-        automática de la descripción) NO se toca; su parte de la descripción (encima del separador) se conserva siempre.
+        mano desde la última escritura del script (título, color, ubicación o la parte automática de la descripción)
+        NO se toca; su parte de la descripción (encima del separador) se conserva siempre. La hora siempre es la
+        calculada (con los acuerdos #entrada / #salida), salvo en un evento pasado a día completo.
         """
         p = PARTES[parte]
         limpieza = limpieza if p.con_limpieza else None
@@ -208,18 +210,13 @@ class Calendario:
         dia_completo = bool(ev and (ev.get("start") or {}).get("date"))
 
         def respetado(k: str) -> bool:
-            if dia_completo and k in ("inicio", "fin"):
-                return True     # pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora
+            if k in ("inicio", "fin"):
+                # Pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora. Si no, la hora solo
+                # la cambia una etiqueta: un evento arrastrado sin querer vuelve a la suya
+                return dia_completo
             return k in previo and _h(actual.get(k)) != previo[k]     # cambiado a mano desde la última escritura
 
-        # El final se cuenta desde el inicio que va a quedar en el evento (el movido a mano, si lo hay)
-        inicio = datetime.fromisoformat(actual["inicio"] if respetado("inicio") and actual["inicio"]
-                                        else f"{estado[p.fecha]}T{p.hora(estado, self.cfg)}")
-        antiguo = ev is not None and not _props(ev).get(P_PARTE)
-        if antiguo or (actual.get("fin") or "") <= _local(inicio):
-            # El final de un evento antiguo de toda la estancia era la salida, y un final movido a mano que quede antes
-            # del inicio dejaría un rango vacío que Calendar rechaza: en los dos casos se reescribe
-            previo.pop("fin", None)
+        inicio = datetime.fromisoformat(f"{estado[p.fecha]}T{p.hora(estado, self.cfg)}")
         color = ("cancelada" if estado["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else p.color)
         alojamiento = self.cfg.alojamiento_por_nombre(estado["alojamiento"])
@@ -227,11 +224,6 @@ class Calendario:
                  "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(inicio + timedelta(minutes=self.cfg.duracion_evento_min)),
                  "auto": p.descripcion(estado, limpieza, self.cfg)}
-        etiqueta = ""
-        if antiguo and estado.get("acuerdo_salida") and not reglas.leer_acuerdos(manual)["acuerdo_salida"]:
-            # Al pasar a ser la entrada, un final movido a mano (acuerdo de salida) se apunta como etiqueta para no perderlo
-            etiqueta = f"#salida {estado['acuerdo_salida']}"
-            manual = "\n".join(filter(None, (etiqueta, manual)))
         escrito, cuerpo = {}, {}
         for k, v in nuevo.items():
             if v is None:
@@ -247,12 +239,22 @@ class Calendario:
                 cuerpo["description"] = (manual + "\n\n" if manual else "") + SEPARADOR + "\n" + v
             else:
                 cuerpo[k] = v
-        if etiqueta and "description" not in cuerpo:    # la descripción es del anfitrión: la etiqueta va delante
-            cuerpo["description"] = etiqueta + "\n\n" + (ev.get("description") or "")
         props = self._propiedades(estado, parte, limpieza, ev)
         props[P_ESCRITO] = json.dumps(escrito, separators=(",", ":"))
         cuerpo["extendedProperties"] = {"private": props}
         return cuerpo
+
+    def _avisar_hora_movida(self, ev: dict | None, parte: str, cuerpo: dict) -> None:
+        """Deja en el log cada evento movido a mano que se devuelve a su hora calculada."""
+        antes, escrito = _local_evento((ev or {}).get("start"), self.tz), _escrito(ev).get("inicio")
+        if not antes or not escrito or _h(antes) == escrito:
+            return
+        ahora = cuerpo["start"]["dateTime"][:16]
+        if antes == ahora:
+            return
+        desde = 11 if antes[:10] == ahora[:10] else 0       # movido a otro día: con la fecha
+        log.info("Hora movida a mano, se vuelve a la calculada (%s → %s): %s. Para pactar otra hora: #%s HH:MM",
+                 antes[desde:].replace("T", " "), ahora[desde:].replace("T", " "), ev.get("summary"), parte)
 
     def _leer_evento(self, ev: dict | None) -> tuple[dict, str]:
         """(valores actuales comparables con los que escribe el script, parte manual de la descripción)."""
@@ -314,6 +316,7 @@ class Calendario:
                 continue
             if simulacion:
                 cuerpo = self._cuerpo(ev, parte, dict(estado), limpieza, reservas)
+                self._avisar_hora_movida(ev, parte, cuerpo)
                 log.info("Se %s: %s", "crearía" if ev is None else "actualizaría",
                          cuerpo.get("summary") or ev.get("summary"))
                 self.stats["creados" if ev is None else "limpiezas_recalculadas"] += 1
@@ -370,7 +373,8 @@ class Calendario:
         """
         Pone al día los eventos de las reservas en curso y de las que entran entre hoy y dentro de `dias`
         (None = todas), sin depender de que llegue un correo (cambios de fechas o de reglas, cancelaciones,
-        eventos antiguos de toda la estancia, que pasan a entrada + salida).
+        eventos movidos a mano, que vuelven a su hora, eventos antiguos de toda la estancia, que pasan a
+        entrada + salida).
         Devuelve los estados de las reservas que entran desde hoy con alerta de limpieza.
         """
         rango = {"timeMin": f"{hoy - timedelta(days=2)}T00:00:00Z"}
@@ -457,7 +461,7 @@ class Calendario:
 def leer_estado(eventos: dict) -> dict | None:
     """
     Estado JSON de la reserva: el del evento de entrada (si no, el de la salida o el de un duplicado), con los
-    horarios acordados por el anfitrión en cualquiera de los dos eventos.
+    horarios acordados por el anfitrión (#entrada / #salida) en cualquiera de los dos eventos.
     """
     estado = next(filter(None, map(_estado_guardado, (eventos["entrada"], eventos["salida"], *eventos["sobrantes"]))), None)
     if estado is None:
@@ -471,18 +475,6 @@ def leer_estado(eventos: dict) -> dict | None:
         desc = _texto_plano(ev.get("description") or "")
         for k, v in reglas.leer_acuerdos(desc.split(SEPARADOR, 1)[0]).items():
             estado[k] = estado[k] or v
-    # Mover un evento a mano en Calendar dentro de su día también es un horario acordado (salvo que haya
-    # etiqueta): el de entrada fija la entrada y el de salida, la salida. En un evento antiguo de toda la
-    # estancia, el inicio es la entrada y el final, la salida.
-    for ev in partes:
-        parte = _props(ev).get(P_PARTE)
-        arrastres = [("start", "inicio", parte)] if parte else [("start", "inicio", "entrada"), ("end", "fin", "salida")]
-        escrito = _escrito(ev)
-        for campo, clave, tipo in arrastres:
-            local = _local_evento(ev.get(campo))
-            if (escrito.get(clave) and local and _h(local) != escrito[clave]
-                    and local[:10] == estado.get(PARTES[tipo].fecha) and not estado.get(f"acuerdo_{tipo}")):
-                estado[f"acuerdo_{tipo}"] = local[11:16]
     return estado
 
 
@@ -572,14 +564,13 @@ def _local(d: datetime) -> str:
     return d.strftime("%Y-%m-%dT%H:%M")
 
 
-def _local_evento(campo: dict | None, tz: ZoneInfo | None = None) -> str | None:
-    """'yyyy-mm-ddTHH:MM' en la zona del evento, a partir de start/end de la API de Calendar."""
+def _local_evento(campo: dict | None, tz: ZoneInfo) -> str | None:
+    """'yyyy-mm-ddTHH:MM' en la zona del calendario, a partir de start/end de la API de Calendar."""
     t = (campo or {}).get("dateTime")
     if not t:
         return None
-    zona = tz or ZoneInfo((campo or {}).get("timeZone") or "Europe/Madrid")
     d = datetime.fromisoformat(t.replace("Z", "+00:00"))
-    return _local(d.astimezone(zona) if d.tzinfo else d)
+    return _local(d.astimezone(tz) if d.tzinfo else d)
 
 
 def _terminado(ev: dict, hasta: date, tz: ZoneInfo) -> bool:
