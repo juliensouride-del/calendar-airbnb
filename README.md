@@ -18,7 +18,7 @@ Cada reserva son **dos eventos cortos**: la entrada, el día que llega el huésp
 ```
 
 - La **entrada** (verde) lleva la limpieza, las personas, la hora de llegada, la petición de entrar antes, el sofá cama y la cuna.
-- La **salida** (rojo) solo dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`). La petición de salir más tarde va en su descripción.
+- La **salida** (rojo) dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`). La petición de salir más tarde va en su descripción.
 - Los dos eventos llevan la **dirección del piso** como ubicación, con el mapa en Calendar.
 
 La descripción de la salida dice la hora de salida. Si el huésped pide salir más tarde y aún no hay acuerdo, la petición va encima:
