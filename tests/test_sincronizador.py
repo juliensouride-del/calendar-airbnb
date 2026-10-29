@@ -882,8 +882,11 @@ def test_N1b_titulos_completos_de_la_entrada_y_la_salida(tmp_path):
     assert "🧹 Limpieza" in entrada["description"] and "Limpieza" not in salida["description"]
 
 
-def test_N2_arrastrar_la_salida_no_es_un_acuerdo_y_vuelve_a_su_hora_solo_la_etiqueta_cambia_la_limpieza(tmp_path):
+def test_N2_arrastrar_la_salida_no_es_un_acuerdo_y_vuelve_a_su_hora_solo_la_etiqueta_cambia_la_limpieza(tmp_path, caplog):
+    import logging
     from datetime import date
+    caplog.set_level(logging.INFO)
+    movidos = lambda: [r.getMessage() for r in caplog.records if r.getMessage().startswith("Hora movida")]  # noqa: E731
     s = Entorno(tmp_path)
     cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
     _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
@@ -893,17 +896,27 @@ def test_N2_arrastrar_la_salida_no_es_un_acuerdo_y_vuelve_a_su_hora_solo_la_etiq
     sale = s.cal.ev("SALE1", "salida")
     sale["start"]["dateTime"], sale["end"]["dateTime"] = "2026-11-05T14:00:00+01:00", "2026-11-05T14:30:00+01:00"
     assert leer_estado(cal.buscar_eventos_reserva("SALE1", None, None, None))["acuerdo_salida"] is None
+    aviso = ("Hora movida a mano, se vuelve a la calculada (14:00 → 11:00): 🔴 SALIDA Lavapiés · sale 11:00."
+             " Para pactar otra hora: #salida HH:MM")
+
     cal.recalcular_limpiezas(date(2026, 10, 13), simulacion=True)
+    assert movidos() == [aviso], "la simulación lo dice una vez"
     assert s.cal.ev("SALE1", "salida")["start"]["dateTime"] == "2026-11-05T14:00:00+01:00", "y no escribe nada"
+    caplog.clear()
     cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert movidos() == [aviso]
     sale = s.cal.ev("SALE1", "salida")
     assert (sale["start"]["dateTime"], sale["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T11:30:00")
     assert sale["summary"] == "🔴 SALIDA Lavapiés · sale 11:00"
     assert s.cal.ev("ENTRA2")["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 2 pers"
+    caplog.clear()
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert movidos() == [], "ya está en su hora"
 
     # Julien acuerda con el huésped la salida a las 14:00: con la etiqueta sí cuenta
     sale["description"] = "#salida 14:00\n" + sale["description"]
     cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert movidos() == [], "una etiqueta no es un evento movido"
     sale = s.cal.ev("SALE1", "salida")
     assert sale["start"]["dateTime"] == "2026-11-05T14:00:00"
     assert sale["summary"] == "🔴 SALIDA Lavapiés · sale 14:00 ✅"

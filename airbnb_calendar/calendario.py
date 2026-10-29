@@ -181,6 +181,7 @@ class Calendario:
         """Crea el evento de esa parte de la reserva o lo reescribe (sin tocar lo cambiado a mano)."""
         ev = eventos[parte]
         cuerpo = self._cuerpo(ev, parte, estado, limpieza, reservas)
+        self._avisar_hora_movida(ev, parte, cuerpo)
         if ev is None:
             eventos[parte] = self._pedir("POST", self.url, json=cuerpo)
             self.stats["creados"] += 1
@@ -243,6 +244,18 @@ class Calendario:
         cuerpo["extendedProperties"] = {"private": props}
         return cuerpo
 
+    def _avisar_hora_movida(self, ev: dict | None, parte: str, cuerpo: dict) -> None:
+        """Deja en el log cada evento movido a mano que se devuelve a su hora calculada."""
+        antes, escrito = _local_evento((ev or {}).get("start"), self.tz), _escrito(ev).get("inicio")
+        if not antes or not escrito or _h(antes) == escrito:
+            return
+        ahora = cuerpo["start"]["dateTime"][:16]
+        if antes == ahora:
+            return
+        desde = 11 if antes[:10] == ahora[:10] else 0       # movido a otro día: con la fecha
+        log.info("Hora movida a mano, se vuelve a la calculada (%s → %s): %s. Para pactar otra hora: #%s HH:MM",
+                 antes[desde:].replace("T", " "), ahora[desde:].replace("T", " "), ev.get("summary"), parte)
+
     def _leer_evento(self, ev: dict | None) -> tuple[dict, str]:
         """(valores actuales comparables con los que escribe el script, parte manual de la descripción)."""
         if not ev:
@@ -303,6 +316,7 @@ class Calendario:
                 continue
             if simulacion:
                 cuerpo = self._cuerpo(ev, parte, dict(estado), limpieza, reservas)
+                self._avisar_hora_movida(ev, parte, cuerpo)
                 log.info("Se %s: %s", "crearía" if ev is None else "actualizaría",
                          cuerpo.get("summary") or ev.get("summary"))
                 self.stats["creados" if ev is None else "limpiezas_recalculadas"] += 1
