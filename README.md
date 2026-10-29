@@ -18,10 +18,19 @@ Cada reserva son **dos eventos cortos**: la entrada, el día que llega el huésp
 ```
 
 - La **entrada** (verde) lleva la limpieza, las personas, la hora de llegada, la petición de entrar antes, el sofá cama y la cuna.
-- La **salida** (rojo) solo dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`).
+- La **salida** (rojo) solo dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`). La petición de salir más tarde va en su descripción.
 - Los dos eventos llevan la **dirección del piso** como ubicación, con el mapa en Calendar.
 
-La descripción de la salida es una línea (`🕒 Salida: dom 08/11 a las 11:00`). La de la entrada tiene todo lo demás, de lo más urgente a lo menos:
+La descripción de la salida dice la hora de salida. Si el huésped pide salir más tarde y aún no hay acuerdo, la petición va encima:
+
+```
+—— Airbnb · automático (escribe tus notas encima de esta línea) ——
+⌛ PIDE SALIR DESPUÉS (a las 13:00). Si lo aceptas, escribe arriba: #salida 13:00
+
+🕒 Salida: dom 08/11 a las 11:00
+```
+
+La descripción de la entrada tiene todo lo demás, de lo más urgente a lo menos:
 
 ```
 —— Airbnb · automático (escribe tus notas encima de esta línea) ——
@@ -40,8 +49,8 @@ La descripción de la salida es una línea (`🕒 Salida: dom 08/11 a las 11:00`
 👤 Laura Garcia · Código HMAAAA0002
 ```
 
-- **Avisos arriba** (solo si los hay): limpieza que no cabe, petición de horario pendiente, mensajes que la IA no pudo analizar.
-- **Valores por defecto:** si el huésped no dice nada, llegada 15:00, salida 11:00, sin sofá cama ni cuna. Si pide llegar antes o salir más tarde, las horas siguen siendo las estándar y la petición va arriba, en los avisos.
+- **Avisos arriba** (solo si los hay): limpieza que no cabe, petición de entrar antes pendiente, mensajes que la IA no pudo analizar.
+- **Valores por defecto:** si el huésped no dice nada, llegada 15:00, salida 11:00, sin sofá cama ni cuna. Si pide llegar antes o salir más tarde, las horas siguen siendo las estándar. La petición va arriba en su evento: entrar antes en la entrada, salir más tarde en la salida.
 - **🧹 Limpieza:** si el huésped anterior del mismo piso sale ese día (o el anterior), la ventana para limpiar dentro del horario del equipo (08:00–15:00). Si no caben las 2 h, el título de la entrada lleva `[ALERTA LIMPIEZA / AJUSTE HORARIO]` y el evento sale en naranja.
 - **🔑 Locker:** solo en la entrada, porque es para el huésped que llega. Tirso tiene el suyo. Torrecilla y Buenavista comparten uno. Si los dos tienen entrada el mismo día, Torrecilla usa el alternativo, y su línea lo dice: `🔑 Locker: https://… (Buenavista también entra ese día)`.
 - **Cancelada:** los dos eventos empiezan por `❌ CANCELADA` y salen en gris.
