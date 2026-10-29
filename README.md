@@ -49,18 +49,18 @@ La descripción de la salida es una línea (`🕒 Salida: dom 08/11 a las 11:00`
 
 ### Acordar otra hora con el huésped
 
-El horario estándar es **entrada 15:00 / salida 11:00**: si el huésped pide entrar antes o salir más tarde, se avisa, pero el calendario no cambia hasta que el anfitrión lo acuerde. Para fijar la hora acordada:
+El horario estándar es **entrada 15:00 / salida 11:00**: si el huésped pide entrar antes o salir más tarde, se avisa, pero el calendario no cambia hasta que el anfitrión lo acuerde. La hora acordada **solo** se fija escribiendo en la descripción de cualquiera de los dos eventos, **encima de la línea automática**, `#entrada 12:00` o `#salida 13:30` (también vale `12h` o `13.30`). Para quitar el acuerdo, se borra la línea.
 
-- **mover el evento** en Calendar a otra hora del mismo día: el de entrada fija la hora de entrada y el de salida, la de salida; o
-- escribir en la descripción de cualquiera de los dos eventos, **encima de la línea automática**, `#entrada 12:00` o `#salida 13:30` (también vale `12h` o `13.30`). Para quitar el acuerdo, se borra la línea.
+**Mover un evento en Calendar no cambia la hora.** Si alguien lo arrastra, aunque sea sin querer, vuelve solo a su hora en la siguiente sincronización. Para otra hora, escribe la etiqueta.
 
-Si hay etiqueta, manda sobre el evento movido. La hora acordada manda sobre cualquier regla (si no deja tiempo de limpieza, la entrada sale con alerta).
+La hora acordada manda sobre cualquier regla (si no deja tiempo de limpieza, la entrada sale con alerta).
 
 ### Los cambios a mano se respetan
 
 - Lo que se escriba **encima** de la línea `—— Airbnb · automático ——` se conserva siempre.
-- Si se cambia a mano el **título, el color, la ubicación o las horas** de un evento, el script ya no toca ese campo de ese evento.
+- Si se cambia a mano el **título, el color o la ubicación** de un evento, el script ya no toca ese campo de ese evento.
   Una ubicación puesta a mano antes de que el script escribiera la dirección también se respeta.
+- Las **horas** no: un evento movido vuelve a su hora (ver arriba). Solo se respeta un evento pasado a día completo.
 - Si se edita la parte **automática** de la descripción, la descripción pasa a ser del anfitrión y deja de actualizarse.
 
 ### Avisos por correo
@@ -152,7 +152,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 - **Llega «no se pudo procesar un correo»:** probablemente Airbnb ha cambiado una plantilla. Los patrones están en `airbnb_calendar/parser.py` (`PATRONES`): añade el correo (anonimizado) a `ejemplos/`, escribe su prueba y ajusta el patrón.
 - **Una recarga se detiene por Gemini:** se ha agotado la cuota diaria gratuita (se renueva hacia las 9:00 de Madrid). Vuelve a lanzarla con `desde` = la fecha que indica el error; es idempotente.
 - **Correos de Airbnb en Spam:** añade `"Bulk"` a `[yahoo] carpetas` en `config.toml`.
-- **Acabas de actualizar a los eventos de entrada y salida:** lanza `recalcular-simulacion` para ver cuántos eventos se actualizarían y cuántos se crearían, y después `recalcular`. Cada evento antiguo que ocupa toda la estancia pasa a ser el evento de entrada, y se crea el de salida. Las notas del anfitrión se conservan. Si habías movido a mano el final de un evento antiguo, esa hora queda escrita como `#salida HH:MM` en sus notas. Sin `recalcular`, las ejecuciones automáticas convierten igual las estancias en curso y las que entran en los próximos 30 días.
+- **Acabas de actualizar a los eventos de entrada y salida:** lanza `recalcular-simulacion` para ver cuántos eventos se actualizarían y cuántos se crearían, y después `recalcular`. Cada evento antiguo que ocupa toda la estancia pasa a ser el evento de entrada, y se crea el de salida. Las notas del anfitrión y sus etiquetas `#entrada` / `#salida` se conservan. Las horas movidas a mano no: si una era un acuerdo, escríbelo como etiqueta. Sin `recalcular`, las ejecuciones automáticas convierten igual las estancias en curso y las que entran en los próximos 30 días.
 - **Cambiar el nombre corto de un piso, el horario o un locker:** edita `config.toml`; las reservas futuras se corrigen en la siguiente ejecución (todas, con `recalcular`).
 - **Registro:** la rama `estado` guarda `estado.json` (correos procesados de los últimos días). Si se borra, la siguiente ejecución empieza desde ese momento.
 - **Plantillas en inglés:** el parser espera los correos de Airbnb en inglés; no cambies el idioma de la cuenta de Airbnb.
