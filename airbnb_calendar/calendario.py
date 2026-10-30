@@ -25,7 +25,7 @@ campo. Si el anfitrión cambia el título, el color o la ubicación, ese campo y
 La hora no: el equipo de limpieza arrastra eventos sin querer, así que un evento movido a
 mano vuelve a su hora en la siguiente pasada. Una hora acordada solo se fija escribiendo
 '#entrada HH:MM' o '#salida HH:MM' en los eventos de la reserva (en el relevo, #salida es
-del huésped que sale y #entrada del que entra: Parte.etiquetas). La descripción tiene
+del huésped que sale y #entrada del que entra: PARTES). La descripción tiene
 dos partes separadas por SEPARADOR: lo de encima es del anfitrión y se conserva siempre;
 lo de debajo es automático (si lo edita, la descripción pasa a ser suya).
 """
@@ -100,27 +100,34 @@ class Parte:
     descripcion: Callable[[Vista, Config], str]
     color: str                                      # clave de [calendario.colores]
     con_limpieza: bool                              # la limpieza solo importa al huésped que entra
-    etiquetas: tuple[str, ...]                      # #entrada / #salida que son de su reserva; la 1.ª, la de su hora
-    etiqueta_inicio: str                            # la que fija su hora de inicio
+    # Las etiquetas #entrada / #salida que cuentan en su evento: las de su reserva y, en el relevo, las del huésped que
+    # sale, que solo lee esas. Si dos eventos dicen otra hora, manda el que la muestra: el de la 1.ª
+    etiquetas: tuple[str, ...]
+    etiquetas_sale: tuple[str, ...] = ()
+
+    @property
+    def etiqueta_inicio(self) -> str:
+        """La que fija su hora de inicio."""
+        return (self.etiquetas_sale or self.etiquetas)[0]
 
 
 PARTES = {
-    "entrada": Parte("entrada", "checkin", lambda v, cfg: (reglas.hora_entrada(v.e, cfg), None),
-                     lambda v, cfg: formato.titulo_entrada(v.e, v.limpieza, cfg),
-                     lambda v, cfg: formato.descripcion_entrada(v.e, v.limpieza, cfg), "reserva", True,
-                     ("entrada", "salida"), "entrada"),
-    "salida": Parte("salida", "checkout", lambda v, cfg: (reglas.hora_salida(v.e, cfg), None),
-                    lambda v, cfg: formato.titulo_salida(v.e, cfg),
-                    lambda v, cfg: formato.descripcion_salida(v.e, cfg), "salida", False,
-                    ("salida", "entrada"), "salida"),
-    "relevo": Parte("entrada", "checkin", lambda v, cfg: (reglas.hora_salida(v.sale, cfg), reglas.hora_entrada(v.e, cfg)),
-                    lambda v, cfg: formato.titulo_relevo(v.sale, v.e, v.limpieza, cfg),
-                    lambda v, cfg: formato.descripcion_relevo(v.sale, v.e, v.limpieza, cfg), "relevo", True,
-                    ("entrada",), "salida"),
+    "entrada": Parte(hueco="entrada", fecha="checkin", horas=lambda v, cfg: (reglas.hora_entrada(v.e, cfg), None),
+                     titulo=lambda v, cfg: formato.titulo_entrada(v.e, v.limpieza, cfg),
+                     descripcion=lambda v, cfg: formato.descripcion_entrada(v.e, v.limpieza, cfg),
+                     color="reserva", con_limpieza=True, etiquetas=("entrada", "salida")),
+    "salida": Parte(hueco="salida", fecha="checkout", horas=lambda v, cfg: (reglas.hora_salida(v.e, cfg), None),
+                    titulo=lambda v, cfg: formato.titulo_salida(v.e, cfg),
+                    descripcion=lambda v, cfg: formato.descripcion_salida(v.e, cfg),
+                    color="salida", con_limpieza=False, etiquetas=("salida", "entrada")),
+    "relevo": Parte(hueco="entrada", fecha="checkin",
+                    horas=lambda v, cfg: (reglas.hora_salida(v.sale, cfg), reglas.hora_entrada(v.e, cfg)),
+                    titulo=lambda v, cfg: formato.titulo_relevo(v.sale, v.e, v.limpieza, cfg),
+                    descripcion=lambda v, cfg: formato.descripcion_relevo(v.sale, v.e, v.limpieza, cfg),
+                    color="relevo", con_limpieza=True, etiquetas=("entrada",), etiquetas_sale=("salida",)),
 }
-# Etiquetas #entrada / #salida: cada evento cuenta para la reserva que lo lee solo las suyas (Parte.etiquetas). En el
-# relevo, #salida es del huésped que sale: la reserva que entra no la lee y la que sale solo lee esa
-ETIQUETAS_SALE_EN = ("salida",)
+# Al juntar o separar un relevo, cada línea con etiqueta pasa a un evento donde sigue siendo de su reserva
+(DEL_QUE_ENTRA,), (DEL_QUE_SALE,) = PARTES["relevo"].etiquetas, PARTES["relevo"].etiquetas_sale
 
 
 @dataclass(frozen=True)
@@ -487,10 +494,10 @@ class Calendario:
             sale = self.buscar_eventos_reserva(antes["codigo"], antes["alojamiento"], antes["checkin"], antes["checkout"])
             # Lo que escribió el anfitrión en el relevo cuenta, aunque ahora salga otro día
             self._poner_al_dia({**sale, "sale_en": None}, self._vista(leer_estado({**sale, "sale_en": hueco})),
-                               simulacion=simulacion, notas={"salida": Notas(anadir=_sin_etiquetas(manual, "entrada"))})
+                               simulacion=simulacion, notas={"salida": Notas(anadir=_sin_etiquetas(manual, DEL_QUE_ENTRA))})
         if hueco and not sigue and (antes or ahora):
-            notas["entrada"] = Notas(quitar="salida")
-            if not antes and (lineas := _lineas_con(manual, "salida")):
+            notas["entrada"] = Notas(quitar=DEL_QUE_SALE)
+            if not antes and (lineas := _lineas_con(manual, DEL_QUE_SALE)):
                 if eventos["sale_en"] and _sale_en(eventos["sale_en"], v.e):
                     self._anadir_notas(eventos["sale_en"], lineas, simulacion)
                 else:
@@ -506,10 +513,10 @@ class Calendario:
         if not sale["salida"]:
             return notas, None
         _, manual_sale = self._leer_evento(sale["salida"])
-        if (lineas := _lineas_con(manual_sale, "entrada")) and not simulacion:
+        if (lineas := _lineas_con(manual_sale, DEL_QUE_ENTRA)) and not simulacion:
             self._poner_al_dia(sale, self._vista(leer_estado(sale)), notas={"entrada": Notas(anadir=lineas)})
             _, manual_sale = self._leer_evento(sale["salida"])      # su propio relevo puede haberle pasado sus #salida
-        notas["entrada"] = notas.get("entrada", Notas()) + Notas(anadir=_sin_etiquetas(manual_sale, "entrada"))
+        notas["entrada"] = notas.get("entrada", Notas()) + Notas(anadir=_sin_etiquetas(manual_sale, DEL_QUE_ENTRA))
         return notas, sale["salida"]
 
     def _anadir_notas(self, ev: dict, lineas: str, simulacion: bool) -> None:
@@ -696,7 +703,7 @@ def leer_estado(eventos: dict) -> dict | None:
     # el acuerdo desaparece). Cada evento cuenta solo sus etiquetas y, si dos dicen otra hora, manda el que la muestra
     fuentes = [(ev, PARTES[_parte(ev)].etiquetas) for ev in (eventos["entrada"], eventos["salida"]) if ev]
     if eventos["sale_en"]:
-        fuentes.append((eventos["sale_en"], ETIQUETAS_SALE_EN))
+        fuentes.append((eventos["sale_en"], PARTES["relevo"].etiquetas_sale))
     horas = sorted((etiquetas.index(tipo), n, tipo, hora) for n, (ev, etiquetas) in enumerate(fuentes)
                    for tipo, hora in _acuerdos(ev).items() if hora and tipo in etiquetas)
     estado.update(acuerdo_entrada=None, acuerdo_salida=None)
