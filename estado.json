@@ -1,8 +1,6 @@
 {
   "inicio": "2026-10-10T17:29:33.325298+00:00",
   "procesados": {
-    "INBOX:1274556880:376040": "2026-10-20T08:53:29+00:00",
-    "mid:<x0wcm1HsQ3GiW7vdFAzGng@geopod-ismtpd-50>": "2026-10-20T08:53:29+00:00",
     "INBOX:1274556880:376052": "2026-10-20T14:44:12+00:00",
     "mid:<QaIIY0FZSruZj3FORviS_Q@geopod-ismtpd-95>": "2026-10-20T14:44:12+00:00",
     "INBOX:1274556880:376054": "2026-10-20T16:07:31+00:00",
@@ -276,12 +274,24 @@
     "INBOX:1274556880:376406": "2026-10-30T06:31:51+00:00",
     "mid:<6_deVVKUTn2kCWbEX_bcHg@geopod-ismtpd-83>": "2026-10-30T06:31:51+00:00",
     "INBOX:1274556880:376407": "2026-10-30T06:35:58+00:00",
-    "mid:<vuMGs9rQQLG6HCnm6gZYIQ@geopod-ismtpd-44>": "2026-10-30T06:35:58+00:00"
+    "mid:<vuMGs9rQQLG6HCnm6gZYIQ@geopod-ismtpd-44>": "2026-10-30T06:35:58+00:00",
+    "INBOX:1274556880:376420": "2026-10-30T11:13:03+00:00",
+    "mid:<oFuCaAKpRjCwiy--qSpx8w@geopod-ismtpd-86>": "2026-10-30T11:13:03+00:00",
+    "INBOX:1274556880:376422": "2026-10-30T11:33:56+00:00",
+    "mid:<azjIRAs_QwKu9wKw6-g-LQ@geopod-ismtpd-62>": "2026-10-30T11:33:56+00:00",
+    "INBOX:1274556880:376423": "2026-10-30T11:36:55+00:00",
+    "mid:<EbvJ7dKVTg2vcZ0Fao-uDA@geopod-ismtpd-60>": "2026-10-30T11:36:55+00:00",
+    "INBOX:1274556880:376425": "2026-10-30T11:45:56+00:00",
+    "mid:<fd3fQVn7SLKWuCixnvSFoA@geopod-ismtpd-98>": "2026-10-30T11:45:56+00:00",
+    "INBOX:1274556880:376428": "2026-10-30T11:58:53+00:00",
+    "mid:<EBXhFbsBTXmAKdAqnQ0YMw@geopod-ismtpd-20>": "2026-10-30T11:58:53+00:00",
+    "INBOX:1274556880:376429": "2026-10-30T12:04:22+00:00",
+    "mid:<uNaPsbs4T3KyuHwH990zew@geopod-ismtpd-72>": "2026-10-30T12:04:22+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-10-30T10:44:42.505679+00:00"
+  "ultima_ok": "2026-10-30T12:49:21.681434+00:00"
 }
