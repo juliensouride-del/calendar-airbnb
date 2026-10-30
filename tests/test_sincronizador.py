@@ -782,14 +782,17 @@ def test_L6_lockers_y_locker_alternativo_si_entran_el_mismo_dia(tmp_path):
     _guardar(cal, _reserva("ANT1", "2026-11-05", "2026-11-07", alojamiento=anton.nombre))
     assert "🔑 Locker: https://k/alternativo (Antón Martín también entra ese día)" in s.cal.ev("LAV1")["description"]
     assert "🔑 Locker: https://k/compartido\n" in s.cal.ev("ANT1")["description"]
-    assert "Locker" not in s.cal.ev("LAV1", "salida")["description"], "el locker es para el que entra"
+    assert s.cal.ev("LAV1", "salida")["description"].endswith(
+        "🔑 Locker: https://k/alternativo (Antón Martín también entró el día de entrada)"), "la salida lleva el locker de la entrada"
 
     # Si se cancela la de Antón Martín, vuelve al compartido (también en el recálculo diario)
     _guardar(cal, _reserva("ANT1", "2026-11-05", "2026-11-07", alojamiento=anton.nombre, cancelada=True))
     assert "🔑 Locker: https://k/compartido" in s.cal.ev("LAV1")["description"]
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
     assert "🔑 Locker: https://k/compartido" in s.cal.ev("LAV1")["description"]
+    assert "🔑 Locker: https://k/compartido" in s.cal.ev("LAV1", "salida")["description"]
     assert "Locker" not in s.cal.ev("ANT1")["description"], "las canceladas no llevan locker"
+    assert "Locker" not in s.cal.ev("ANT1", "salida")["description"], "las canceladas no llevan locker"
 
 
 def test_L7_la_salida_solo_dice_a_que_hora_sale_y_nunca_despues_de_las_11_sin_acuerdo(tmp_path):
@@ -802,7 +805,8 @@ def test_L7_la_salida_solo_dice_a_que_hora_sale_y_nunca_despues_de_las_11_sin_ac
     salida, entrada = s.cal.ev("SALE1", "salida"), s.cal.ev("SALE1")
     assert salida["start"]["dateTime"] == "2026-11-05T11:00:00"
     assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 11:00"
-    assert salida["description"] == SEPARADOR + "\n🕒 Salida: jue 05/11 a las 11:00", "ni locker ni datos de la entrada"
+    assert salida["description"] == (SEPARADOR + "\n🕒 Salida: jue 05/11 a las 11:00\n\n🔑 Locker: https://k/compartido"), \
+        "solo la hora y el locker, sin los datos de la entrada"
     assert "14:30" not in entrada["description"] and "Salida: jue 05/11 a las 11:00" in entrada["description"]
     assert "🔑 Locker: https://k/compartido" in entrada["description"]
 
@@ -813,7 +817,8 @@ def test_L7_la_salida_solo_dice_a_que_hora_sale_y_nunca_despues_de_las_11_sin_ac
     salida = s.cal.ev("SALE1", "salida")
     assert salida["start"]["dateTime"] == "2026-11-05T14:30:00"
     assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 14:30 ✅"
-    assert salida["description"].endswith(SEPARADOR + "\n🕒 Salida: jue 05/11 a las 14:30 (acordada)")
+    assert salida["description"].endswith(SEPARADOR + "\n🕒 Salida: jue 05/11 a las 14:30 (acordada)"
+                                          "\n\n🔑 Locker: https://k/compartido")
 
 
 def test_L8_la_sugerencia_de_etiqueta_en_la_parte_automatica_no_es_un_acuerdo(tmp_path):
