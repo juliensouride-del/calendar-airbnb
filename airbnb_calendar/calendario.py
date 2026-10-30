@@ -406,7 +406,8 @@ class Calendario:
         """¿Hay algo que escribir en el evento de esa parte (sin contar lo cambiado a mano)?"""
         cuerpo = self._cuerpo(ev, parte, _copia(v), reservas, notas)
         p_nuevas, p_ev = cuerpo["extendedProperties"]["private"], _props(ev)
-        if any(p_ev.get(k) != val for k, val in p_nuevas.items() if not k.startswith((P_ESTADO, P_SALIENTE))):
+        # La copia del que sale cuenta: si no, lo que el relevo no muestra (personas, peticiones...) se queda antiguo
+        if any(p_ev.get(k) != val for k, val in p_nuevas.items() if not k.startswith(P_ESTADO)):
             return True
         actual, _ = self._leer_evento(ev)
         for k, val in cuerpo.items():
