@@ -169,6 +169,7 @@ class Calendario:
         self.url = API.format(cal=quote(cfg.calendar_id, safe=""))
         self.tz = ZoneInfo(cfg.zona_horaria)
         self.stats = {"creados": 0, "actualizados": 0, "limpiezas_recalculadas": 0, "juntados": 0, "separados": 0}
+        self._vivos: dict[str, dict] = {}       # ver _vivo
 
     # ------------------------------------------------------------------ lectura
 
@@ -248,10 +249,22 @@ class Calendario:
         items, token = [], None
         while True:
             r = self._pedir("GET", self.url, params=params + ([("pageToken", token)] if token else []))
-            items += r.get("items", [])
+            items += map(self._vivo, r.get("items", []))
             token = r.get("nextPageToken")
             if not token:
                 return items
+
+    def _vivo(self, ev: dict) -> dict:
+        """
+        El objeto de ese evento, al día con lo último leído o escrito. Hay uno por evento: los grupos de eventos de
+        cada reserva lo comparten, así que lo que escribe una reserva en el evento de otra (al juntar o separar un
+        relevo) lo ve la otra al escribirlo después, aunque lo haya leído antes (recalcular) o por otra búsqueda.
+        """
+        vivo = self._vivos.setdefault(ev["id"], ev)
+        if vivo is not ev:
+            vivo.clear()
+            vivo.update(ev)
+        return vivo
 
     # ---------------------------------------------------------------- escritura
 
@@ -282,11 +295,11 @@ class Calendario:
         cuerpo = self._cuerpo(ev, parte, v, reservas, notas)
         self._avisar_hora_movida(ev, parte, cuerpo)
         if ev is None:
-            eventos[hueco] = self._pedir("POST", self.url, json=cuerpo)
+            eventos[hueco] = self._vivo(self._pedir("POST", self.url, json=cuerpo))
             self.stats["creados"] += 1
             log.info("Evento creado: %s (%s)", cuerpo["summary"], cuerpo["start"]["dateTime"][:16])
         else:
-            eventos[hueco] = self._pedir("PATCH", f"{self.url}/{ev['id']}", json=cuerpo)
+            eventos[hueco] = self._vivo(self._pedir("PATCH", f"{self.url}/{ev['id']}", json=cuerpo))
             self.stats[contador] += 1
             log.info("Evento actualizado: %s", eventos[hueco].get("summary") or ev.get("summary"))
 
@@ -425,7 +438,7 @@ class Calendario:
         estado guardado cambia aunque no se vea), crea las que falten, junta o separa el relevo y borra los duplicados.
         notas: cambios por hueco que pide otra reserva al juntar o separar su relevo.
         """
-        cambios, borrar = self._juntar_o_separar(eventos, v, simulacion)
+        cambios, absorbida = self._juntar_o_separar(eventos, v, simulacion)
         for hueco, n in (notas or {}).items():
             cambios[hueco] = cambios[hueco] + n if hueco in cambios else n
         for parte in _partes_de(v, eventos):
@@ -441,55 +454,74 @@ class Calendario:
                 self.stats["creados" if ev is None else "limpiezas_recalculadas"] += 1
             else:
                 self._escribir(eventos, parte, v, reservas, "actualizados" if forzar else "limpiezas_recalculadas", n)
+        if absorbida and not simulacion:
+            self.borrar_evento(absorbida)
+            log.info("Salida eliminada (va en el relevo): %s", absorbida.get("summary"))
         if not simulacion:
-            for ev in borrar:
-                self.borrar_evento(ev)
             self._borrar_sobrantes(eventos)
 
-    def _juntar_o_separar(self, eventos: dict, v: Vista, simulacion: bool) -> tuple[dict[str, Notas], list[dict]]:
+    def _juntar_o_separar(self, eventos: dict, v: Vista, simulacion: bool) -> tuple[dict[str, Notas], dict | None]:
         """
-        Junta en un relevo la salida de la reserva anterior y la entrada de esta, o lo separa si ya no lo es
-        (cancelada, otras fechas). Solo lo hace la reserva que entra; los eventos de la que sale se escriben con su
-        estado (_poner_al_dia). Lo que pasa a otros eventos se escribe antes, así que si se corta a medias, cada
-        etiqueta sigue en un evento donde es de la misma reserva, y la siguiente pasada termina el trabajo.
-        Devuelve los cambios en las notas de los eventos de esta reserva (por hueco) y los eventos de la que sale que
-        hay que borrar después de escribirlos.
+        Junta en un relevo la salida de la reserva anterior y la entrada de esta, o lo separa si ya no lo es (cancelada,
+        otras fechas). Solo lo hace la reserva que entra. Cada etiqueta llega a su nuevo evento antes de salir del
+        anterior, así que si se corta a medias sigue en un evento donde es de la misma reserva, y la siguiente pasada
+        termina el trabajo. Por orden:
+        1. Al separar, vuelve la salida del que salía (con su estado), con lo escrito en el relevo salvo las #entrada.
+        2. Al juntar, las #salida de esta reserva que hay en su entrada pasan al relevo en el que sale o a su salida.
+        3. Las #entrada de la salida del que sale ahora pasan a su entrada.
+        Devuelve lo que falta, que hace _poner_al_dia: las notas de los eventos de esta reserva (por hueco; la salida se
+        escribe antes que el relevo, que pierde las #salida y se queda con lo escrito en la salida del que sale) y esa
+        salida, que se borra al final.
         """
         hueco = eventos["entrada"]
         _, manual = self._leer_evento(hueco)
         antes = _estado_guardado(hueco, P_SALIENTE) if _parte(hueco) == "relevo" else None
         ahora = v.sale if v.relevo else None
         sigue = bool(antes and ahora and reglas.misma_reserva(antes, ahora))
-        cambios: dict[str, Notas] = {}
-        borrar: list[dict] = []
+        notas: dict[str, Notas] = {}
         if antes and not sigue:
             self._contar("separados", "separaría" if simulacion else "separan", antes, v.e)
-            if not simulacion:
-                sale = self.buscar_eventos_reserva(antes["codigo"], antes["alojamiento"], antes["checkin"], antes["checkout"])
-                # Vuelve su evento de salida con lo escrito en el relevo, que cuenta ya aunque ahora salga otro día
-                sale["sale_en"] = hueco
-                estado_sale = leer_estado(sale)
-                sale["sale_en"] = None
-                self._poner_al_dia(sale, self._vista(estado_sale),
-                                   notas={"salida": Notas(anadir=_sin_etiquetas(manual, "entrada"))})
+            sale = self.buscar_eventos_reserva(antes["codigo"], antes["alojamiento"], antes["checkin"], antes["checkout"])
+            # Lo que escribió el anfitrión en el relevo cuenta, aunque ahora salga otro día
+            self._poner_al_dia({**sale, "sale_en": None}, self._vista(leer_estado({**sale, "sale_en": hueco})),
+                               simulacion=simulacion, notas={"salida": Notas(anadir=_sin_etiquetas(manual, "entrada"))})
         if hueco and not sigue and (antes or ahora):
-            # Las #salida que hay ahora en la entrada son de otra reserva o, si aún no es el relevo, de esta, que pasan
-            # a su salida (por eso el relevo se escribe después que la salida: _partes_de)
-            cambios["entrada"] = Notas(quitar="salida")
-            if not antes:
-                cambios["salida"] = Notas(anadir=_lineas_con(manual, "salida"))
-        if ahora:
-            sale = self.buscar_eventos_reserva(ahora["codigo"], ahora["alojamiento"], ahora["checkin"], ahora["checkout"])
-            if sale["salida"] or (hueco and not sigue):
-                self._contar("juntados", "juntaría" if simulacion else "juntan", ahora, v.e)
-            if sale["salida"]:
-                # El relevo se queda con lo escrito en la salida, salvo las #entrada, que pasan a la entrada de esa reserva
-                _, manual_sale = self._leer_evento(sale["salida"])
-                if (lineas := _lineas_con(manual_sale, "entrada")) and not simulacion:
-                    self._poner_al_dia(sale, self._vista(leer_estado(sale)), notas={"entrada": Notas(anadir=lineas)})
-                cambios["entrada"] = cambios.get("entrada", Notas()) + Notas(anadir=_sin_etiquetas(manual_sale, "entrada"))
-                borrar.append(sale["salida"])
-        return cambios, borrar
+            notas["entrada"] = Notas(quitar="salida")
+            if not antes and (lineas := _lineas_con(manual, "salida")):
+                if eventos["sale_en"] and _sale_en(eventos["sale_en"], v.e):
+                    self._anadir_notas(eventos["sale_en"], lineas, simulacion)
+                else:
+                    notas["salida"] = Notas(anadir=lineas)
+        if not ahora:
+            return notas, None
+        if not sigue:
+            self._contar("juntados", "juntaría" if simulacion else "juntan", ahora, v.e)
+        sale = self.buscar_eventos_reserva(ahora["codigo"], ahora["alojamiento"], ahora["checkin"], ahora["checkout"])
+        if not sale["salida"]:
+            return notas, None
+        _, manual_sale = self._leer_evento(sale["salida"])
+        if (lineas := _lineas_con(manual_sale, "entrada")) and not simulacion:
+            self._poner_al_dia(sale, self._vista(leer_estado(sale)), notas={"entrada": Notas(anadir=lineas)})
+            _, manual_sale = self._leer_evento(sale["salida"])      # su propio relevo puede haberle pasado sus #salida
+        notas["entrada"] = notas.get("entrada", Notas()) + Notas(anadir=_sin_etiquetas(manual_sale, "entrada"))
+        return notas, sale["salida"]
+
+    def _anadir_notas(self, ev: dict, lineas: str, simulacion: bool) -> None:
+        """
+        Añade líneas a lo que escribió el anfitrión en el relevo de la reserva siguiente, sin tocar nada más: son
+        #salida de esta reserva, que también cuentan ahí, así que ni su estado ni lo que muestra cambian. (Su
+        _poner_al_dia, en cambio, podría juntar a su vez y volver a escribir en esta reserva, que está a medias.)
+        """
+        actual, manual = self._leer_evento(ev)
+        nuevo = Notas(anadir=lineas).aplicar(manual)
+        if nuevo == manual:
+            return
+        self.stats["limpiezas_recalculadas"] += 1
+        if simulacion:
+            log.info("Se actualizaría: %s", ev.get("summary"))
+            return
+        self._vivo(self._pedir("PATCH", f"{self.url}/{ev['id']}", json={"description": _descripcion(nuevo, actual["auto"])}))
+        log.info("Evento actualizado: %s", ev.get("summary"))
 
     def _contar(self, clave: str, verbo: str, sale: dict, entra: dict) -> None:
         self.stats[clave] += 1
@@ -498,6 +530,7 @@ class Calendario:
 
     def borrar_evento(self, ev: dict) -> None:
         self._pedir("DELETE", f"{self.url}/{ev['id']}", ignorar=(404, 410))
+        self._vivos.pop(ev["id"], None)
 
     def _reservas(self, alojamiento: str, campo: str, dia: date) -> list[tuple[dict, dict]]:
         """(eventos, estado) de las reservas del alojamiento que entran (campo 'checkin') o salen ('checkout') ese día."""
