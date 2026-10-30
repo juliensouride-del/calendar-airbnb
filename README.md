@@ -21,13 +21,15 @@ Cada reserva son **dos eventos cortos**: la entrada, el día que llega el huésp
 - La **salida** (rojo) dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`). La petición de salir más tarde va en su descripción.
 - Los dos eventos llevan la **dirección del piso** como ubicación, con el mapa en Calendar.
 
-La descripción de la salida dice la hora de salida. Si el huésped pide salir más tarde y aún no hay acuerdo, la petición va encima:
+La descripción de la salida dice la hora de salida y el locker. Si el huésped pide salir más tarde y aún no hay acuerdo, la petición va encima:
 
 ```
 —— Airbnb · automático (escribe tus notas encima de esta línea) ——
 ⌛ PIDE SALIR DESPUÉS (a las 13:00). Si lo aceptas, escribe arriba: #salida 13:00
 
 🕒 Salida: dom 08/11 a las 11:00
+
+🔑 Locker: https://access.keynest.com/…
 ```
 
 La descripción de la entrada tiene todo lo demás, de lo más urgente a lo menos:
@@ -52,7 +54,7 @@ La descripción de la entrada tiene todo lo demás, de lo más urgente a lo meno
 - **Avisos arriba** (solo si los hay): limpieza que no cabe, petición de entrar antes pendiente, mensajes que la IA no pudo analizar.
 - **Valores por defecto:** si el huésped no dice nada, llegada 15:00, salida 11:00, sin sofá cama ni cuna. Si pide llegar antes o salir más tarde, las horas siguen siendo las estándar. La petición va arriba en su evento: entrar antes en la entrada, salir más tarde en la salida.
 - **🧹 Limpieza:** si el huésped anterior del mismo piso sale ese día (o el anterior), la ventana para limpiar dentro del horario del equipo (08:00–15:00). Si no caben las 2 h, el título de la entrada lleva `[ALERTA LIMPIEZA / AJUSTE HORARIO]` y el evento sale en naranja.
-- **🔑 Locker:** solo en la entrada, porque es para el huésped que llega. Tirso tiene el suyo. Torrecilla y Buenavista comparten uno. Si los dos tienen entrada el mismo día, Torrecilla usa el alternativo, y su línea lo dice: `🔑 Locker: https://… (Buenavista también entra ese día)`.
+- **🔑 Locker:** en los dos eventos. La salida lleva el mismo locker que la entrada, para dejar las llaves. Tirso tiene el suyo. Torrecilla y Buenavista comparten uno. Si los dos tienen entrada el mismo día, Torrecilla usa el alternativo, y su línea lo dice: `🔑 Locker: https://… (Buenavista también entra ese día)` en la entrada y `(Buenavista también entró el día de entrada)` en la salida.
 - **Cancelada:** los dos eventos empiezan por `❌ CANCELADA` y salen en gris.
 - **Creado desde un mensaje:** si llega un mensaje de una reserva cuya confirmación no se ha visto, se crean los eventos con lo que haya y una nota al final; la nota desaparece cuando llega la confirmación.
 

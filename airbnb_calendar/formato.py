@@ -83,13 +83,24 @@ def aviso_horario(e: dict, tipo: str) -> str | None:
     return f"{icono} PIDE {texto} ({cuando}). Si lo aceptas, escribe arriba: #{tipo} {hora}"
 
 
+def linea_locker(e: dict, tipo: str) -> str | None:
+    """'🔑 Locker: https://… (Buenavista también entra ese día)'. La salida lleva el mismo locker que la entrada."""
+    if not e.get("locker"):
+        return None
+    coincide = ""
+    if e.get("locker_coincide"):
+        coincide = (f" ({e['locker_coincide']} también entra ese día)" if tipo == "entrada"
+                    else f" ({e['locker_coincide']} también entró el día de entrada)")
+    return "🔑 Locker: " + e["locker"] + coincide
+
+
 def descripcion_salida(e: dict, cfg: Config) -> str:
-    """La petición de salir más tarde, si está pendiente, y la hora de salida: lo demás está en el evento de entrada."""
+    """La petición de salir más tarde, si está pendiente, la hora de salida y el locker: lo demás está en la entrada."""
     if e["cancelada"]:
         return ""
     acordada = " (acordada)" if e.get("acuerdo_salida") else ""
     salida = f"🕒 Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}{acordada}"
-    return "\n\n".join(b for b in (aviso_horario(e, "salida"), salida) if b)
+    return "\n\n".join(b for b in (aviso_horario(e, "salida"), salida, linea_locker(e, "salida")) if b)
 
 
 def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
@@ -126,9 +137,8 @@ def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
 
         if e["peticiones"]:
             bloques.append(["📝 Peticiones:"] + ["   • " + x for x in e["peticiones"]])
-        if e.get("locker"):
-            coincide = f" ({e['locker_coincide']} también entra ese día)" if e.get("locker_coincide") else ""
-            bloques.append(["🔑 Locker: " + e["locker"] + coincide])
+        if locker := linea_locker(e, "entrada"):
+            bloques.append([locker])
     bloques.append([f"👤 {e['huesped'] or '?'} · Código {e['codigo'] or 'desconocido'}"])
     if e.get("desde_mensaje"):
         bloques.append(["ℹ️ Evento creado a partir de un mensaje del huésped: no se encontró la confirmación de "
