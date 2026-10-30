@@ -314,3 +314,66 @@ def test_mensajes_solo_de_cortesia_no_van_a_la_ia(texto):
                                    "Σας ευχαριστώ πολύ", "Мы приедем в три часа", "我们下午三点到", "شكرا جزيلا"])
 def test_cualquier_dato_o_pregunta_va_a_la_ia(texto):
     assert not gemini.es_mensaje_de_cortesia(texto)
+
+
+def _estancia(codigo, checkin, checkout, **kw):
+    e = reglas.crear_estado()
+    e.update({"codigo": codigo, "alojamiento": "Lavapies - Peaceful 2 bedrooms Fresh A/C", "alias": "Torrecilla",
+              "checkin": checkin, "checkout": checkout, "total": 2, **kw})
+    return e
+
+
+def test_relevo_solo_si_sale_el_mismo_dia_en_el_mismo_piso_y_nadie_cancela():
+    sale, entra = _estancia("A", "2026-11-01", "2026-11-05"), _estancia("B", "2026-11-05", "2026-11-08")
+    assert reglas.es_relevo(sale, entra)
+    assert not reglas.es_relevo(_estancia("A", "2026-11-01", "2026-11-04"), entra), "salir el día anterior no cuenta"
+    assert not reglas.es_relevo({**sale, "alojamiento": "Otro piso"}, entra)
+    assert not reglas.es_relevo({**sale, "cancelada": True}, entra)
+    assert not reglas.es_relevo(sale, {**entra, "cancelada": True})
+    assert not reglas.es_relevo({**entra, "checkout": "2026-11-05"}, entra), "la misma reserva no es su propio relevo"
+    assert not reglas.es_relevo(None, entra)
+
+
+def test_titulo_y_descripcion_del_relevo(cfg):
+    sale = _estancia("HMAAAA0001", "2026-11-01", "2026-11-05", huesped="Marc Pérez", salida_tardia="13:00",
+                     locker="https://k/1")
+    entra = _estancia("HMAAAA0002", "2026-11-05", "2026-11-08", huesped="Laura Garcia", total=3, hora_llegada="18:30",
+                      entrada_anticipada="12:00", cuna={"v": True, "f": "huesped"}, peticiones=["Guardar maletas por la mañana"],
+                      locker="https://k/1")
+    limpieza = reglas.evaluar_limpieza(sale, entra, cfg)
+    assert formato.titulo_relevo(sale, entra, limpieza, cfg) == (
+        "🔄 SALIDA Y ENTRADA Torrecilla · [LIMPIEZA OK] · sale 11:00 · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🍼 cuna")
+    assert formato.descripcion_relevo(sale, entra, limpieza, cfg) == (
+        "⌛ PIDE SALIR DESPUÉS (a las 13:00). Si lo aceptas, escribe arriba: #salida 13:00\n"
+        "⏰ PIDE ENTRAR ANTES (a las 12:00). Si lo aceptas, escribe arriba: #entrada 12:00\n\n"
+        "🔴 SALE: Marc Pérez · Código HMAAAA0001\n"
+        "🕒 Salida: jue 05/11 a las 11:00\n\n"
+        "🧹 Limpieza: 05/11 de 11:00 a 15:00 (el huésped anterior sale ese día a las 11:00)\n\n"
+        "🟢 ENTRA: Laura Garcia · Código HMAAAA0002\n"
+        "🕒 Llegada: jue 05/11 a las 18:30   ·   Salida: dom 08/11 a las 11:00\n"
+        "🛋️ Sofá cama: no\n"
+        "🍼 Cuna: SÍ (lo indica el huésped)\n\n"
+        "📝 Peticiones:\n"
+        "   • Guardar maletas por la mañana\n\n"
+        "🔑 Locker: https://k/1")
+
+    # Salida acordada a las 14:00: no deja limpieza, y el locker de cada uno si no es el mismo
+    sale.update(acuerdo_salida="14:00", locker_coincide="Buenavista", sin_analizar=True)
+    entra.update(locker="https://k/2", entrada_anticipada=None)
+    limpieza = reglas.evaluar_limpieza(sale, entra, cfg)
+    assert formato.titulo_relevo(sale, entra, limpieza, cfg) == (
+        "🔄 SALIDA Y ENTRADA Torrecilla · [ALERTA LIMPIEZA / AJUSTE HORARIO] · sale 14:00 ✅ · 3 pers · llega 18:30 · 🍼 cuna")
+    assert formato.descripcion_relevo(sale, entra, limpieza, cfg) == (
+        "⚠️ LIMPIEZA: no caben 2 h entre las 08:00 y las 15:00 (la salida (14:00) es demasiado tarde para acabar antes de"
+        " las 15:00). Pide al huésped anterior que salga antes o a este que llegue más tarde.\n"
+        "⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.\n\n"
+        "🔴 SALE: Marc Pérez · Código HMAAAA0001\n"
+        "🕒 Salida: jue 05/11 a las 14:00 (acordada)\n\n"
+        "🟢 ENTRA: Laura Garcia · Código HMAAAA0002\n"
+        "🕒 Llegada: jue 05/11 a las 18:30   ·   Salida: dom 08/11 a las 11:00\n"
+        "🛋️ Sofá cama: no\n"
+        "🍼 Cuna: SÍ (lo indica el huésped)\n\n"
+        "📝 Peticiones:\n"
+        "   • Guardar maletas por la mañana\n\n"
+        "🔑 Locker (sale): https://k/1 (Buenavista también entró el día de entrada)\n"
+        "🔑 Locker (entra): https://k/2")

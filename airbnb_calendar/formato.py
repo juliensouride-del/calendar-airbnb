@@ -42,6 +42,15 @@ def titulo_salida(e: dict, cfg: Config) -> str:
     return _titulo(e, ["🔴 SALIDA " + _nombre(e), _sale(e, cfg)])
 
 
+def titulo_relevo(sale: dict, e: dict, limpieza: dict | None, cfg: Config) -> str:
+    """
+    El huésped de `sale` se va el día que llega el de `e`, en el mismo piso:
+    '🔄 SALIDA Y ENTRADA Torrecilla · [LIMPIEZA OK] · sale 11:00 · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🍼 cuna'
+    """
+    return _titulo(e, ["🔄 SALIDA Y ENTRADA " + _nombre(e), etiqueta_limpieza(limpieza), _sale(sale, cfg),
+                       *_detalles_entrada(e, cfg)])
+
+
 def _detalles_entrada(e: dict, cfg: Config) -> list[str]:
     """Lo que dice el título de la entrada después de la limpieza: personas, hora, petición de entrar antes, sofá, cuna."""
     partes = [_personas(e)]
@@ -130,6 +139,29 @@ def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
                     _peticiones(e),
                     [linea_locker(e, "entrada")]]
     return _unir([*bloques, ["👤 " + _quien(e)], _nota_desde_mensaje(e)])
+
+
+def descripcion_relevo(sale: dict, e: dict, limpieza: dict | None, cfg: Config) -> str:
+    """
+    Avisos de los dos huéspedes, quién sale y a qué hora, la limpieza, quién entra con sus datos y peticiones, y el
+    locker. El relevo solo existe si ninguna de las dos reservas está cancelada.
+    """
+    return _unir([[aviso_horario(sale, "salida"), aviso_horario(e, "entrada"), *_aviso_limpieza(limpieza, cfg),
+                   _aviso_sin_analizar(sale, e)],
+                  ["🔴 SALE: " + _quien(sale), _linea_salida(sale, cfg)],
+                  _limpieza_ok(limpieza, cfg),
+                  ["🟢 ENTRA: " + _quien(e), *_datos_entrada(e, cfg)],
+                  _peticiones(e),
+                  _lineas_locker_relevo(sale, e),
+                  _nota_desde_mensaje(e)])
+
+
+def _lineas_locker_relevo(sale: dict, e: dict) -> list[str | None]:
+    """Una línea si los dos huéspedes usan el mismo locker; si no, la de cada uno."""
+    sale_l, entra_l = linea_locker(sale, "salida"), linea_locker(e, "entrada")
+    if sale_l == entra_l:
+        return [entra_l]
+    return [l and l.replace("🔑 Locker:", f"🔑 Locker ({quien}):", 1) for quien, l in (("sale", sale_l), ("entra", entra_l))]
 
 
 def _aviso_limpieza(l: dict | None, cfg: Config) -> list[str]:

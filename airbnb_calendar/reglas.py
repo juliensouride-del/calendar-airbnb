@@ -202,6 +202,22 @@ def hora_salida(e: dict, cfg: Config) -> str:
     salida = normalizar_hora(e["hora_salida"])
     return min(salida, estandar) if salida else estandar
 
+def misma_reserva(a: dict, b: dict) -> bool:
+    if a.get("codigo") and b.get("codigo"):
+        return a["codigo"] == b["codigo"]
+    return a.get("checkin") == b.get("checkin") and a.get("checkout") == b.get("checkout")
+
+
+def es_relevo(anterior: dict | None, e: dict) -> bool:
+    """
+    ¿El huésped de `anterior` sale el mismo día que entra el de `e`, en el mismo alojamiento? Entonces la salida de uno
+    y la entrada del otro son un solo evento (relevo). Salir el día anterior no cuenta.
+    """
+    return bool(anterior and e["checkin"] and e["alojamiento"] and anterior.get("checkout") == e["checkin"]
+                and not anterior.get("cancelada") and not e["cancelada"]
+                and clave_normalizada(anterior.get("alojamiento")) == clave_normalizada(e["alojamiento"])
+                and not misma_reserva(anterior, e))
+
 # ----------------------------------------------------------------------------
 #  Limpieza entre reservas (rotación)
 # ----------------------------------------------------------------------------
