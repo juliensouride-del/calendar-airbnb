@@ -301,9 +301,9 @@ class Calendario:
         """
         p = PARTES[parte]
         limpieza = v.limpieza if p.con_limpieza else None
+        # El locker del que sale en el relevo es el de su estado guardado: depende de quién entró el día que entró él,
+        # que puede quedar fuera de `reservas`, y lo pone al día _actualizar_lockers_compartidos
         self._preparar(v.e, reservas)
-        if parte == "relevo":
-            self._preparar(v.sale, reservas)
         previo = _escrito(ev)
         actual, manual = self._leer_evento(ev)
         if actual.get("location") and "location" not in previo:
