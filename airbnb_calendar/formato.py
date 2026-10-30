@@ -34,7 +34,17 @@ def lineas_limpieza(l: dict | None, cfg: Config) -> list[str]:
 
 def titulo_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
     """'🟢 ENTRADA Torrecilla · [LIMPIEZA OK] · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🛋️ sofá cama · 🍼 cuna'"""
-    partes = ["🟢 ENTRADA " + _nombre(e), etiqueta_limpieza(limpieza), _personas(e)]
+    return _titulo(e, ["🟢 ENTRADA " + _nombre(e), etiqueta_limpieza(limpieza), *_detalles_entrada(e, cfg)])
+
+
+def titulo_salida(e: dict, cfg: Config) -> str:
+    """'🔴 SALIDA Torrecilla · sale 11:00' (o 'sale 13:00 ✅' si el anfitrión lo ha acordado)."""
+    return _titulo(e, ["🔴 SALIDA " + _nombre(e), _sale(e, cfg)])
+
+
+def _detalles_entrada(e: dict, cfg: Config) -> list[str]:
+    """Lo que dice el título de la entrada después de la limpieza: personas, hora, petición de entrar antes, sofá, cuna."""
+    partes = [_personas(e)]
     if e.get("acuerdo_entrada"):
         partes.append(f"entra {e['acuerdo_entrada']} ✅")
     else:
@@ -47,12 +57,11 @@ def titulo_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
         partes.append("🛋️ sofá cama")
     if e["cuna"] and e["cuna"]["v"]:
         partes.append("🍼 cuna")
-    return _titulo(e, partes)
+    return partes
 
 
-def titulo_salida(e: dict, cfg: Config) -> str:
-    """'🔴 SALIDA Torrecilla · sale 11:00' (o 'sale 13:00 ✅' si el anfitrión lo ha acordado)."""
-    return _titulo(e, ["🔴 SALIDA " + _nombre(e), "sale " + hora_salida(e, cfg) + (" ✅" if e.get("acuerdo_salida") else "")])
+def _sale(e: dict, cfg: Config) -> str:
+    return "sale " + hora_salida(e, cfg) + (" ✅" if e.get("acuerdo_salida") else "")
 
 
 def _nombre(e: dict) -> str:
@@ -98,9 +107,7 @@ def descripcion_salida(e: dict, cfg: Config) -> str:
     """La petición de salir más tarde, si está pendiente, la hora de salida y el locker: lo demás está en la entrada."""
     if e["cancelada"]:
         return ""
-    acordada = " (acordada)" if e.get("acuerdo_salida") else ""
-    salida = f"🕒 Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}{acordada}"
-    return "\n\n".join(b for b in (aviso_horario(e, "salida"), salida, linea_locker(e, "salida")) if b)
+    return _unir([[aviso_horario(e, "salida")], [_linea_salida(e, cfg)], [linea_locker(e, "salida")]])
 
 
 def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
@@ -118,32 +125,57 @@ def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
     # (encima de la línea automática); el script las lee pero no las reescribe.
     bloques = []
     if not e["cancelada"]:
-        avisos = []
-        if limpieza and not limpieza["ok"]:
-            avisos += lineas_limpieza(limpieza, cfg)
-        if aviso := aviso_horario(e, "entrada"):
-            avisos.append(aviso)
-        if e.get("sin_analizar") or any(n["t"].startswith("⚠️") for n in e.get("notas") or []):
-            avisos.append("⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail.")
-        bloques.append(avisos)
+        bloques += [[*_aviso_limpieza(limpieza, cfg), aviso_horario(e, "entrada"), _aviso_sin_analizar(e)],
+                    _datos_entrada(e, cfg) + _limpieza_ok(limpieza, cfg),
+                    _peticiones(e),
+                    [linea_locker(e, "entrada")]]
+    return _unir([*bloques, ["👤 " + _quien(e)], _nota_desde_mensaje(e)])
 
-        datos = [f"🕒 Llegada: {fecha_dia_es(e['checkin'])} a las {llegada_prevista(e, cfg)}   ·   "
-                 f"Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}",
-                 "🛋️ Sofá cama: " + _texto_marca(e, "sofa"),
-                 "🍼 Cuna: " + _texto_marca(e, "cuna")]
-        if limpieza and limpieza["ok"]:
-            datos += lineas_limpieza(limpieza, cfg)
-        bloques.append(datos)
 
-        if e["peticiones"]:
-            bloques.append(["📝 Peticiones:"] + ["   • " + x for x in e["peticiones"]])
-        if locker := linea_locker(e, "entrada"):
-            bloques.append([locker])
-    bloques.append([f"👤 {e['huesped'] or '?'} · Código {e['codigo'] or 'desconocido'}"])
-    if e.get("desde_mensaje"):
-        bloques.append(["ℹ️ Evento creado a partir de un mensaje del huésped: no se encontró la confirmación de "
-                        "la reserva, así que pueden faltar datos (código, nº de personas…). Se completará si llega."])
-    return "\n\n".join("\n".join(b) for b in bloques if b)
+def _aviso_limpieza(l: dict | None, cfg: Config) -> list[str]:
+    return lineas_limpieza(l, cfg) if l and not l["ok"] else []
+
+
+def _limpieza_ok(l: dict | None, cfg: Config) -> list[str]:
+    return lineas_limpieza(l, cfg) if l and l["ok"] else []
+
+
+def _aviso_sin_analizar(*estados: dict) -> str | None:
+    if any(e.get("sin_analizar") or any(n["t"].startswith("⚠️") for n in e.get("notas") or []) for e in estados):
+        return "⚠️ Hay mensajes sin analizar por la IA: revísalos en Yahoo Mail."
+    return None
+
+
+def _linea_salida(e: dict, cfg: Config) -> str:
+    acordada = " (acordada)" if e.get("acuerdo_salida") else ""
+    return f"🕒 Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}{acordada}"
+
+
+def _datos_entrada(e: dict, cfg: Config) -> list[str]:
+    return [f"🕒 Llegada: {fecha_dia_es(e['checkin'])} a las {llegada_prevista(e, cfg)}   ·   "
+            f"Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}",
+            "🛋️ Sofá cama: " + _texto_marca(e, "sofa"),
+            "🍼 Cuna: " + _texto_marca(e, "cuna")]
+
+
+def _peticiones(e: dict) -> list[str]:
+    return ["📝 Peticiones:"] + ["   • " + x for x in e["peticiones"]] if e["peticiones"] else []
+
+
+def _quien(e: dict) -> str:
+    return f"{e['huesped'] or '?'} · Código {e['codigo'] or 'desconocido'}"
+
+
+def _nota_desde_mensaje(e: dict) -> list[str]:
+    if not e.get("desde_mensaje"):
+        return []
+    return ["ℹ️ Evento creado a partir de un mensaje del huésped: no se encontró la confirmación de "
+            "la reserva, así que pueden faltar datos (código, nº de personas…). Se completará si llega."]
+
+
+def _unir(bloques: list[list[str | None]]) -> str:
+    """Bloques separados por una línea en blanco; las líneas vacías (None) y los bloques sin nada se omiten."""
+    return "\n\n".join("\n".join(l for l in b if l) for b in bloques if any(b))
 
 
 def _texto_marca(e: dict, campo: str) -> str:
