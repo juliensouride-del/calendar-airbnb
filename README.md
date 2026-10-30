@@ -220,7 +220,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 145 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 146 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 
