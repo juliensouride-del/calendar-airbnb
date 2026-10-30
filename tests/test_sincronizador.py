@@ -137,6 +137,7 @@ class GeminiFalso:
         if re.search(r"before 5pm", huesped, re.I): r["hora_llegada"] = "17:00"
         if re.search(r"check-in early", huesped, re.I): r["entrada_anticipada"] = "si"
         if re.search(r"arrive at 12", huesped, re.I): r["hora_llegada"] = "12:00"
+        if re.search(r"leave at 1pm", huesped, re.I): r["hora_salida"] = "13:00"
         return Respuesta(200, {"candidates": [{"content": {"parts": [{"text": __import__("json").dumps(r)}]}}]})
 
 
@@ -1491,3 +1492,299 @@ def test_Q2_cambio_de_fechas_del_que_sale_separa_el_relevo_en_la_siguiente_ejecu
     assert sale["summary"] == "🔴 SALIDA Lavapiés · sale 10:00 ✅", "su #salida vuelve con ella"
     assert sale["start"]["dateTime"] == "2026-11-03T10:00:00"
     assert sale["description"].startswith("#salida 10:00\nLlaves en el buzón\n\n—— Airbnb")
+
+
+def _relevo_completo(s):
+    """Relevo de SALE1 (sale el 05/11) a ENTRA2 con notas en los dos sentidos, como lo deja la conversión desde
+    eventos separados (test_R5)."""
+    from airbnb_calendar import reglas
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    original = reglas.es_relevo
+    reglas.es_relevo = lambda anterior, e: False                      # eventos escritos por la versión anterior
+    try:
+        _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", huesped="Marc Pérez"))
+        _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", huesped="Laura Garcia"))
+    finally:
+        reglas.es_relevo = original
+    sale, entra = s.cal.ev("SALE1", "salida"), s.cal.ev("ENTRA2")
+    sale["description"] = "#salida 12:00\n#entrada 16:00\nNota de Marc\n\n" + sale["description"]
+    entra["description"] = "#salida 10:00\n#entrada 17:00\nNota de Laura\n\n" + entra["description"]
+    return cal
+
+
+def _acuerdos(cal, codigo):
+    e = leer_estado(cal.buscar_eventos_reserva(codigo, None, None, None))
+    return e["acuerdo_entrada"], e["acuerdo_salida"]
+
+
+def _foto(s):
+    """Lo que ve el anfitrión de cada evento, sin ids ni propiedades internas."""
+    return sorted((ev["extendedProperties"]["private"]["airbnb_parte"], ev["extendedProperties"]["private"].get("airbnb_codigo"),
+                   ev["summary"], ev["description"], ev["start"]["dateTime"], ev["end"]["dateTime"], ev["colorId"])
+                  for ev in s.cal.eventos.values())
+
+
+def test_R1_la_confirmacion_del_que_entra_junta_la_salida_del_anterior_en_un_relevo(tmp_path):
+    from airbnb_calendar.calendario import SEPARADOR
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-11-20", "2026-11-26", alojamiento=s.cfg.alojamientos[0].nombre, huesped="Marc Pérez"))
+    sale = s.cal.ev("SALE1", "salida")
+    sale["description"] = "#salida 12:00\n#entrada 16:00\nLlaves en el buzón\n\n" + sale["description"]
+    s.buzon.recibir(CONF_LUCIA)                                       # Lucía entra el 26/11, el día que sale Marc
+    s.ejecutar()
+    assert sorted((ev["extendedProperties"]["private"]["airbnb_parte"], ev["extendedProperties"]["private"]["airbnb_codigo"])
+                  for ev in s.cal.eventos.values()) == [("entrada", "SALE1"), ("relevo", "HMTEST0002"), ("salida", "HMTEST0002")]
+    relevo = s.cal.ev("HMTEST0002", "relevo")
+    assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Corazón de Madrid · [LIMPIEZA OK] · sale 12:00 ✅ · 2 pers"
+    assert (hora(relevo), hora(relevo, "end")) == ("2026-11-26 12:00", "2026-11-26 15:00")
+    assert relevo["colorId"] == "7"
+    assert relevo["description"] == (
+        "#salida 12:00\nLlaves en el buzón\n\n" + SEPARADOR + "\n"
+        "🔴 SALE: Marc Pérez · Código SALE1\n"
+        "🕒 Salida: jue 26/11 a las 12:00 (acordada)\n\n"
+        "🧹 Limpieza: 26/11 de 12:00 a 15:00 (el huésped anterior sale ese día a las 12:00)\n\n"
+        "🟢 ENTRA: Lucia Romero · Código HMTEST0002\n"
+        "🕒 Llegada: jue 26/11 a las 15:00   ·   Salida: mié 02/12 a las 11:00\n"
+        "🛋️ Sofá cama: no\n"
+        "🍼 Cuna: no"), "las notas de la salida pasan al relevo; la #entrada de Marc, a su entrada"
+    entrada = s.cal.ev("SALE1")
+    assert entrada["description"].startswith("#entrada 16:00\n\n" + SEPARADOR)
+    assert entrada["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers · entra 16:00 ✅"
+    assert "Salida: jue 26/11 a las 12:00" in entrada["description"]
+    assert _acuerdos(cal, "SALE1") == ("16:00", "12:00") and _acuerdos(cal, "HMTEST0002") == (None, None)
+
+
+def test_R2_el_que_sale_pide_salir_mas_tarde_y_se_ve_en_el_relevo(tmp_path):
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("ENTRA2", "2026-12-02", "2026-12-05", alojamiento=s.cfg.alojamientos[0].nombre))
+    s.buzon.recibir(CONF_LUCIA)                                       # Lucía sale el 02/12, el día que entra ENTRA2
+    s.ejecutar()
+    assert sorted(ev["extendedProperties"]["private"]["airbnb_parte"] for ev in s.cal.eventos.values()) == \
+        ["entrada", "relevo", "salida"], "su salida se junta aunque su confirmación llegue después"
+    s.buzon.recibir(_mensaje_lucia("Could we leave at 1pm on the last day?", "2026-10-05 10:00"))
+    s.ejecutar()
+    assert len(s.cal.eventos) == 3 and s.cal.ev("HMTEST0002", "salida") is None, "no se crea su salida"
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert relevo["description"].split("\n")[1] == \
+        "⌛ PIDE SALIR DESPUÉS (a las 13:00). Si lo aceptas, escribe arriba: #salida 13:00"
+    assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Corazón de Madrid · [LIMPIEZA OK] · sale 11:00 · 2 pers"
+    assert (hora(relevo), hora(relevo, "end")) == ("2026-12-02 11:00", "2026-12-02 15:00"), "pedirlo no es un acuerdo"
+    assert s.asuntos == ["🔔 Airbnb · Corazón de Madrid · 26/11–02/12 · salir después"]
+
+
+def test_R3_salida_acordada_en_el_relevo(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    relevo["description"] = "#salida 12:00\n" + relevo["description"]
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert (relevo["start"]["dateTime"], relevo["end"]["dateTime"]) == ("2026-11-05T12:00:00", "2026-11-05T15:00:00")
+    assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 12:00 ✅ · 2 pers"
+    assert "🕒 Salida: jue 05/11 a las 12:00 (acordada)" in relevo["description"]
+    assert "Salida: jue 05/11 a las 12:00" in s.cal.ev("SALE1")["description"], "la entrada del que sale también"
+    assert _acuerdos(cal, "SALE1") == (None, "12:00")
+    assert _acuerdos(cal, "ENTRA2") == (None, None), "la #salida del relevo no es del que entra"
+    assert "Salida: dom 08/11 a las 11:00" in relevo["description"]
+
+    antes, escrituras = copy.deepcopy(s.cal.eventos), cal.stats["limpiezas_recalculadas"]
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert s.cal.eventos == antes and cal.stats["limpiezas_recalculadas"] == escrituras, "otra pasada no escribe nada"
+
+    # Una #salida antigua en la entrada del que sale no gana a la del relevo, que es la que muestra su hora
+    entrada = s.cal.ev("SALE1")
+    entrada["description"] = "#salida 11:30\n" + entrada["description"]
+    assert _acuerdos(cal, "SALE1") == (None, "12:00")
+
+
+def test_R4_si_cancela_uno_el_relevo_se_separa_y_cada_nota_vuelve_a_su_reserva(tmp_path):
+    from airbnb_calendar.calendario import SEPARADOR
+    for cancela in ("ENTRA2", "SALE1"):
+        s = Entorno(tmp_path / cancela)
+        cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+        _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+        _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+        relevo = s.cal.ev("ENTRA2", "relevo")
+        relevo["description"] = "#salida 12:00\n#entrada 16:00\nLlaves en el buzón\n" + relevo["description"]
+        _guardar(cal, {**leer_estado(cal.buscar_eventos_reserva(cancela, None, None, None)), "cancelada": True})
+
+        sale, entra = s.cal.ev("SALE1", "salida"), s.cal.ev("ENTRA2")
+        assert entra["id"] == relevo["id"] and s.cal.ev("ENTRA2", "relevo") is None
+        assert sale["description"].startswith("#salida 12:00\nLlaves en el buzón\n\n" + SEPARADOR), cancela
+        assert entra["description"].startswith("#entrada 16:00\nLlaves en el buzón\n\n" + SEPARADOR), cancela
+        assert (hora(sale), hora(entra)) == ("2026-11-05 12:00", "2026-11-05 16:00")
+        assert _acuerdos(cal, "SALE1") == (None, "12:00") and _acuerdos(cal, "ENTRA2") == ("16:00", None)
+        if cancela == "ENTRA2":
+            assert sale["summary"] == "🔴 SALIDA Lavapiés · sale 12:00 ✅"
+            assert entra["summary"] == "❌ CANCELADA · 🟢 ENTRADA Lavapiés · 2 pers · entra 16:00 ✅"
+            assert (sale["colorId"], entra["colorId"]) == ("11", "8")
+        else:
+            assert sale["summary"] == "❌ CANCELADA · 🔴 SALIDA Lavapiés · sale 12:00 ✅"
+            assert entra["summary"] == "🟢 ENTRADA Lavapiés · 2 pers · entra 16:00 ✅"
+            assert (sale["colorId"], entra["colorId"]) == ("8", "10")
+        assert len(s.cal.eventos) == 4
+
+
+def test_R5_recalcular_junta_las_salidas_y_entradas_del_mismo_dia_ya_escritas(tmp_path, monkeypatch, caplog):
+    import logging
+    from datetime import date
+
+    import sincronizar
+    from airbnb_calendar.calendario import SEPARADOR
+    monkeypatch.setattr(sincronizar, "date", type("Hoy", (date,), {"today": staticmethod(lambda: date(2026, 10, 13))}))
+    caplog.set_level(logging.INFO)
+    s = Entorno(tmp_path)
+    _relevo_completo(s)
+    assert sorted(ev["extendedProperties"]["private"]["airbnb_parte"] for ev in s.cal.eventos.values()) == \
+        ["entrada", "entrada", "salida", "salida"]
+    antes = copy.deepcopy(s.cal.eventos)
+    sincronizar.recalcular(Calendario(s.cfg, s.cal, dormir=lambda _: None), simulacion=True)
+    assert s.cal.eventos == antes, "la simulación no escribe nada"
+    assert [r.getMessage() for r in caplog.records if r.getMessage().startswith(("Se junta", "✔"))] == [
+        "Se juntaría: Lavapiés 05/11 · sale SALE1 · entra ENTRA2",
+        "✔ 2 reserva(s) en curso o futura(s) revisada(s) · 4 evento(s) por actualizar y 0 por crear (simulación)"
+        " · 0 con alerta de limpieza · 1 relevo(s) por juntar y 0 por separar"]
+
+    caplog.clear()
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    sincronizar.recalcular(cal, simulacion=False)
+    assert [r.getMessage() for r in caplog.records if r.getMessage().startswith("✔")] == [
+        "✔ 2 reserva(s) en curso o futura(s) revisada(s) · 5 evento(s) actualizado(s) y 0 creado(s)"
+        " · 0 con alerta de limpieza · 1 relevo(s) juntado(s) y 0 separado(s)"]
+    assert sorted(ev["extendedProperties"]["private"]["airbnb_parte"] for ev in s.cal.eventos.values()) == \
+        ["entrada", "relevo", "salida"]
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert relevo["id"] == antes_id(antes, "ENTRA2", "entrada"), "la entrada se convierte en el relevo"
+    assert relevo["description"].startswith(
+        "#entrada 17:00\nNota de Laura\n#salida 12:00\nNota de Marc\n\n" + SEPARADOR + "\n🔴 SALE: Marc Pérez · Código SALE1\n")
+    assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 12:00 ✅ · 2 pers · entra 17:00 ✅"
+    assert s.cal.ev("ENTRA2", "salida")["description"].startswith("#salida 10:00\n\n" + SEPARADOR)
+    assert s.cal.ev("SALE1")["description"].startswith("#entrada 16:00\n\n" + SEPARADOR)
+    assert _acuerdos(cal, "SALE1") == ("16:00", "12:00") and _acuerdos(cal, "ENTRA2") == ("17:00", "10:00"), \
+        "cada etiqueta sigue siendo de su reserva"
+
+    antes = copy.deepcopy(s.cal.eventos)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    sincronizar.recalcular(cal, simulacion=False)
+    assert s.cal.eventos == antes and (cal.stats["creados"], cal.stats["limpiezas_recalculadas"], cal.stats["juntados"]) == \
+        (0, 0, 0), "otra pasada no escribe nada"
+
+
+def antes_id(eventos, codigo, parte):
+    return next(ev["id"] for ev in eventos.values() if ev["extendedProperties"]["private"].get("airbnb_codigo") == codigo
+                and ev["extendedProperties"]["private"]["airbnb_parte"] == parte)
+
+
+def test_R6_purga_borra_los_relevos_y_conserva_el_de_una_reserva_que_cruza_la_fecha(tmp_path):
+    from datetime import date
+
+    import sincronizar
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None, creador=s.cal.cuenta)
+    _guardar(cal, _reserva("AGOSTO", "2026-08-20", "2026-08-25"))
+    _guardar(cal, _reserva("SALE", "2026-08-25", "2026-08-29"))
+    _guardar(cal, _reserva("CRUZA", "2026-08-29", "2026-09-03"))
+    assert sorted("{airbnb_codigo} {airbnb_parte}".format(**ev["extendedProperties"]["private"]) for ev in s.cal.eventos.values()) \
+        == ["AGOSTO entrada", "CRUZA relevo", "CRUZA salida", "SALE relevo"]
+    sincronizar.purgar(cal, simulacion=False, confirmado=True, hasta=date(2026, 9, 1))
+    assert sorted("{airbnb_codigo} {airbnb_parte}".format(**ev["extendedProperties"]["private"]) for ev in s.cal.eventos.values()) \
+        == ["CRUZA relevo", "CRUZA salida"], "el relevo es de la reserva que entra: se conserva si ella cruza la fecha"
+    sincronizar.purgar(cal, simulacion=False, confirmado=True)
+    assert s.cal.eventos == {}
+
+
+def _fallar_escritura(s, n):
+    """La escritura n.º n (POST, PATCH o DELETE) falla: la ejecución se corta ahí."""
+    original, cuenta = s.cal.request, itertools.count(1)
+
+    def request(metodo, url, **kw):
+        if metodo != "GET" and next(cuenta) == n:
+            return Respuesta(400, texto="corte")
+        return original(metodo, url, **kw)
+    s.cal.request = request
+    return original
+
+
+def test_R7_juntar_o_separar_cortado_en_cualquier_escritura_converge_sin_cambiar_de_reserva_ninguna_etiqueta(tmp_path):
+    from datetime import date
+    hoy = date(2026, 10, 13)
+    acuerdos = {"SALE1": ("16:00", "12:00"), "ENTRA2": ("17:00", "10:00")}
+
+    def juntar(s, cal):
+        cal.recalcular_limpiezas(hoy)
+
+    def separar(s, cal):
+        _guardar(cal, {**leer_estado(cal.buscar_eventos_reserva("ENTRA2", None, None, None)), "cancelada": True})
+
+    for nombre, preparar, paso in (("juntar", lambda s: None, juntar), ("separar", lambda s: juntar(s, Calendario(s.cfg, s.cal)), separar)):
+        s = Entorno(tmp_path / nombre / "referencia")
+        _relevo_completo(s)
+        preparar(s)
+        cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+        paso(s, cal)
+        cal.recalcular_limpiezas(hoy)
+        referencia = _foto(s)
+        assert {c: _acuerdos(cal, c) for c in acuerdos} == acuerdos
+
+        for n in itertools.count(1):
+            s = Entorno(tmp_path / nombre / str(n))
+            _relevo_completo(s)
+            preparar(s)
+            cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+            original = _fallar_escritura(s, n)
+            try:
+                paso(s, cal)
+            except RuntimeError:
+                cortado = True
+            else:
+                cortado = False
+            s.cal.request = original
+            assert {c: _acuerdos(cal, c) for c in acuerdos} == acuerdos, f"{nombre}: cortado en la escritura {n}"
+            paso(s, cal)                                 # se reintenta el correo / la siguiente ejecución
+            cal.recalcular_limpiezas(hoy)
+            assert _foto(s) == referencia, f"{nombre}: cortado en la escritura {n}"
+            if not cortado:
+                break
+        assert n > 3, f"{nombre}: el corte ha probado {n - 1} escrituras"
+
+
+def test_R8_el_que_sale_entro_hace_mucho_y_su_entrada_queda_fuera_del_rango(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("LARGA", "2026-08-01", "2026-10-20"))
+    _guardar(cal, _reserva("ENTRA2", "2026-10-20", "2026-10-25"))
+    antes = copy.deepcopy(s.cal.eventos)
+    cal.recalcular_limpiezas(date(2026, 10, 13))                  # rango: 11/10 a 12/11
+    assert s.cal.eventos == antes and cal.stats["limpiezas_recalculadas"] == 0 and cal.stats["separados"] == 0
+    assert s.cal.ev("ENTRA2", "relevo")["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"
+
+    # Si se borra a mano su entrada, se rehace con la copia que guarda el relevo
+    s.cal.eventos.pop(s.cal.ev("LARGA")["id"])
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    entrada = s.cal.ev("LARGA")
+    assert entrada["summary"] == "🟢 ENTRADA Lavapiés · 2 pers" and hora(entrada) == "2026-08-01 15:00"
+    assert s.cal.ev("LARGA", "salida") is None and s.cal.ev("ENTRA2", "relevo") is not None
+    assert len(s.cal.eventos) == 3
+
+
+def test_R9_locker_del_relevo_uno_si_es_el_mismo_y_el_de_cada_uno_si_no(tmp_path):
+    s = Entorno(tmp_path)
+    lav, anton = s.cfg.alojamientos[1], s.cfg.alojamientos[2]
+    lav.locker, lav.locker_coincide_con, lav.locker_si_coincide = "https://k/compartido", "Antón Martín", "https://k/alternativo"
+    anton.locker = "https://k/compartido"
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("LAV1", "2026-10-28", "2026-11-05"))
+    _guardar(cal, _reserva("LAV2", "2026-11-05", "2026-11-08"))
+    assert s.cal.ev("LAV2", "relevo")["description"].endswith("\n\n🔑 Locker: https://k/compartido")
+
+    # Entra alguien en Antón Martín el día que entró LAV1: LAV1 usó el alternativo, y el relevo lo dice al ponerse al día
+    _guardar(cal, _reserva("ANT1", "2026-10-28", "2026-10-30", alojamiento=anton.nombre))
+    assert s.cal.ev("LAV2", "relevo")["description"].endswith(
+        "\n\n🔑 Locker (sale): https://k/alternativo (Antón Martín también entró el día de entrada)"
+        "\n🔑 Locker (entra): https://k/compartido")
