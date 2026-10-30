@@ -74,14 +74,17 @@ ESPERAS_S = (2, 5, 15)                # backoff ante cortes momentáneos de Goog
 @dataclass(frozen=True)
 class Vista:
     """Lo que hace falta para escribir los eventos de una reserva: su estado, la que sale del alojamiento el día que
-    entra (o el anterior) y la limpieza entre las dos."""
+    entra (o el anterior), con sus eventos, y la limpieza entre las dos."""
     e: dict
     sale: dict | None = None
     limpieza: dict | None = None
+    eventos_sale: dict | None = None
 
     @classmethod
-    def de(cls, e: dict, sale: dict | None, cfg: Config) -> Vista:
-        return cls(e, sale, reglas.evaluar_limpieza(sale, e, cfg))
+    def de(cls, e: dict, anterior: tuple[dict, dict] | None, cfg: Config) -> Vista:
+        """anterior: (eventos, estado) de la que sale."""
+        eventos_sale, sale = anterior or (None, None)
+        return cls(e, sale, reglas.evaluar_limpieza(sale, e, cfg), eventos_sale)
 
     @property
     def relevo(self) -> bool:
@@ -496,7 +499,10 @@ class Calendario:
             return notas, None
         if not sigue:
             self._contar("juntados", "juntaría" if simulacion else "juntan", ahora, v.e)
-        sale = self.buscar_eventos_reserva(ahora["codigo"], ahora["alojamiento"], ahora["checkin"], ahora["checkout"])
+        # Ya juntados, sus eventos son los de su estado (los busca recalcular si le falta alguno): una salida que quede
+        # (se cortó al borrarla) está ahí. Al juntarlos por primera vez se buscan todos
+        sale = (v.eventos_sale if sigue and v.eventos_sale else
+                self.buscar_eventos_reserva(ahora["codigo"], ahora["alojamiento"], ahora["checkin"], ahora["checkout"]))
         if not sale["salida"]:
             return notas, None
         _, manual_sale = self._leer_evento(sale["salida"])
@@ -549,13 +555,13 @@ class Calendario:
                 reservas.append((eventos, e))
         return reservas
 
-    def _reserva_anterior(self, estado: dict) -> dict | None:
-        """Reserva del mismo alojamiento que sale el día de entrada (o, si no hay, el día anterior)."""
+    def _reserva_anterior(self, estado: dict) -> tuple[dict, dict] | None:
+        """(eventos, estado) de la reserva del mismo alojamiento que sale el día de entrada (o, si no hay, el día anterior)."""
         if not estado["alojamiento"]:
             return None
         d = date.fromisoformat(estado["checkin"])
         for dia in (d, d - timedelta(days=1)):
-            if anterior := _anterior_en([e for _, e in self._reservas(estado["alojamiento"], "checkout", dia)], estado, self.cfg):
+            if anterior := _anterior_en(self._reservas(estado["alojamiento"], "checkout", dia), estado, self.cfg):
                 return anterior
         return None
 
@@ -621,7 +627,7 @@ class Calendario:
             self.stats["reservas_revisadas"] += 1
             if e["checkin"] >= dia:
                 vecinas = todas
-                anterior = _anterior_en([o for o in todas if _hash(o["alojamiento"]) == _hash(e["alojamiento"])], e, self.cfg)
+                anterior = _anterior_en([r for r in reservas if _hash(r[1]["alojamiento"]) == _hash(e["alojamiento"])], e, self.cfg)
             else:
                 # Estancia en curso: el huésped anterior y las vecinas pueden quedar fuera del rango consultado
                 vecinas, anterior = None, self._reserva_anterior(e)
@@ -770,14 +776,15 @@ def _partes_de(v: Vista, eventos: dict) -> list[str]:
     return [p for p in partes if v.e[PARTES[p].fecha] and not (p == "salida" and sale_en)]
 
 
-def _anterior_en(candidatas: list[dict], estado: dict, cfg: Config) -> dict | None:
-    """De las reservas candidatas, la que sale el día de entrada de `estado` (o, si no hay, el día anterior)."""
+def _anterior_en(candidatas: list[tuple[dict, dict]], estado: dict, cfg: Config) -> tuple[dict, dict] | None:
+    """De las reservas candidatas (eventos, estado), la que sale el día de entrada de `estado` (o, si no hay, el día
+    anterior)."""
     d = date.fromisoformat(estado["checkin"])
     for dia in (d, d - timedelta(days=1)):
-        otras = [e for e in candidatas if e.get("checkout") == dia.isoformat()
+        otras = [(eventos, e) for eventos, e in candidatas if e.get("checkout") == dia.isoformat()
                  and not e["cancelada"] and not reglas.misma_reserva(e, estado)]
         if otras:
-            return max(otras, key=lambda e: reglas.hora_salida(e, cfg))
+            return max(otras, key=lambda r: reglas.hora_salida(r[1], cfg))
     return None
 
 
