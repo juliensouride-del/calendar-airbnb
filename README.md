@@ -104,7 +104,7 @@ El horario estándar es **entrada 15:00 / salida 11:00**: si el huésped pide en
 
 **En el relevo**, `#salida` es la hora del huésped que sale y `#entrada` la del que entra. El relevo empieza a la hora de `#salida` y termina a la de `#entrada`.
 
-- **Al juntarse**, las notas de la salida del que se va pasan al relevo. Si había una `#entrada` en esa salida, pasa a su entrada. Si había una `#salida` en la entrada del que llega, pasa a su salida.
+- **Al juntarse**, las notas de la salida del que se va pasan al relevo. Si había una `#entrada` en esa salida, pasa a su entrada. Si había una `#salida` en la entrada del que llega, pasa a su salida, o al relevo en el que sale si también sale en uno. Si alguien borró la línea automática de la salida del que se va, todo su texto pasa al relevo como notas.
 - **Al separarse**, la salida del que se iba vuelve con las notas del relevo y su `#salida`. La entrada del que llega se queda con su `#entrada` y pierde la `#salida`, que no era suya. Las notas sin etiqueta quedan en los dos eventos.
 
 **Mover un evento en Calendar no cambia la hora.** Si alguien lo arrastra, aunque sea sin querer, vuelve solo a su hora en la siguiente sincronización. Para otra hora, escribe la etiqueta.
@@ -220,7 +220,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 137 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 145 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 
