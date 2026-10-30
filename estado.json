@@ -1,10 +1,6 @@
 {
   "inicio": "2026-10-10T17:29:33.325298+00:00",
   "procesados": {
-    "INBOX:1274556880:376024": "2026-10-19T19:06:00+00:00",
-    "mid:<abnrXvedT1SRl0-nsXavHw@geopod-ismtpd-6>": "2026-10-19T19:06:00+00:00",
-    "INBOX:1274556880:376025": "2026-10-19T19:53:33+00:00",
-    "mid:<nrLywe2NSvqmScutdUa3nQ@geopod-ismtpd-63>": "2026-10-19T19:53:33+00:00",
     "INBOX:1274556880:376033": "2026-10-20T06:28:19+00:00",
     "mid:<YcKqpQA_QCSx6Sy3uAVlnA@geopod-ismtpd-149>": "2026-10-20T06:28:19+00:00",
     "INBOX:1274556880:376037": "2026-10-20T07:48:14+00:00",
@@ -276,12 +272,24 @@
     "INBOX:1274556880:376393": "2026-10-29T20:29:39+00:00",
     "mid:<eH_0QaNMTViVWwJJtXELvw@geopod-ismtpd-77>": "2026-10-29T20:29:39+00:00",
     "INBOX:1274556880:376394": "2026-10-29T20:34:27+00:00",
-    "mid:<zU6wwctjRfy8chdluCU-xQ@geopod-ismtpd-1>": "2026-10-29T20:34:27+00:00"
+    "mid:<zU6wwctjRfy8chdluCU-xQ@geopod-ismtpd-1>": "2026-10-29T20:34:27+00:00",
+    "INBOX:1274556880:376400": "2026-10-29T22:34:35+00:00",
+    "mid:<rbFEiMEqSSiAlqK1yq7YsA@geopod-ismtpd-9>": "2026-10-29T22:34:35+00:00",
+    "INBOX:1274556880:376402": "2026-10-30T04:10:28+00:00",
+    "mid:<IHhqe4vsQWCbgu0Zzw4lxg@geopod-ismtpd-29>": "2026-10-30T04:10:28+00:00",
+    "INBOX:1274556880:376403": "2026-10-30T04:19:07+00:00",
+    "mid:<DfPNpIhzRr-KLDilA2endQ@geopod-ismtpd-87>": "2026-10-30T04:19:07+00:00",
+    "INBOX:1274556880:376405": "2026-10-30T06:23:25+00:00",
+    "mid:<jltxzk2WTOWJF5BbFfpdig@geopod-ismtpd-89>": "2026-10-30T06:23:25+00:00",
+    "INBOX:1274556880:376406": "2026-10-30T06:31:51+00:00",
+    "mid:<6_deVVKUTn2kCWbEX_bcHg@geopod-ismtpd-83>": "2026-10-30T06:31:51+00:00",
+    "INBOX:1274556880:376407": "2026-10-30T06:35:58+00:00",
+    "mid:<vuMGs9rQQLG6HCnm6gZYIQ@geopod-ismtpd-44>": "2026-10-30T06:35:58+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-10-29T20:41:11.604236+00:00"
+  "ultima_ok": "2026-10-30T06:50:21.334400+00:00"
 }
