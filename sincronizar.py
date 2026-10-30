@@ -143,8 +143,13 @@ def recalcular(calendario: Calendario, simulacion: bool, desde: date | None = No
     st = calendario.stats
     cambios = ("%d evento(s) por actualizar y %d por crear (simulación)" if simulacion
                else "%d evento(s) actualizado(s) y %d creado(s)") % (st["limpiezas_recalculadas"], st["creados"])
-    log.info("✔ %d reserva(s) en curso o futura(s) revisada(s) · %s · %d con alerta de limpieza",
-             st["reservas_revisadas"], cambios, len(alertas))
+    if st["juntados"] or st["separados"]:
+        cambios_relevo = (" · %d relevo(s) por juntar y %d por separar" if simulacion
+                          else " · %d relevo(s) juntado(s) y %d separado(s)") % (st["juntados"], st["separados"])
+    else:
+        cambios_relevo = ""
+    log.info("✔ %d reserva(s) en curso o futura(s) revisada(s) · %s · %d con alerta de limpieza%s",
+             st["reservas_revisadas"], cambios, len(alertas), cambios_relevo)
     return 0
 
 
