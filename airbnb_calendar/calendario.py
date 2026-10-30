@@ -259,8 +259,9 @@ class Calendario:
         """Crea o actualiza los eventos de la reserva y pone al día las reservas que dependen de ella."""
         if not estado["checkin"]:
             return eventos
+        antes = leer_estado(eventos)
         self._poner_al_dia(eventos, self._vista(estado), forzar=True)
-        self._actualizar_siguientes(estado)
+        self._actualizar_siguientes(estado, antes)
         self._actualizar_lockers_compartidos(estado)
         return eventos
 
@@ -524,14 +525,14 @@ class Calendario:
                 return anterior
         return None
 
-    def _actualizar_siguientes(self, estado: dict) -> None:
+    def _actualizar_siguientes(self, estado: dict, antes: dict | None = None) -> None:
         """Las reservas que entran el día de salida (o el siguiente) dependen de esta salida: se recalculan (y, si
-        entran el mismo día, juntan o separan el relevo)."""
-        if not estado["alojamiento"] or not estado["checkout"]:
-            return
-        d = date.fromisoformat(estado["checkout"])
-        for dia in (d, d + timedelta(days=1)):
-            for eventos, sig in self._reservas(estado["alojamiento"], "checkin", dia):
+        entran el mismo día, juntan o separan el relevo). Si la salida ha cambiado de día (`antes`, el estado guardado),
+        también las de su día anterior: el relevo en el que salía se separa en esta misma pasada."""
+        dias = {(e["alojamiento"], date.fromisoformat(e["checkout"]) + timedelta(days=n))
+                for e in (estado, antes) if e and e["alojamiento"] and e["checkout"] for n in (0, 1)}
+        for alojamiento, dia in sorted(dias):
+            for eventos, sig in self._reservas(alojamiento, "checkin", dia):
                 if reglas.misma_reserva(sig, estado):
                     continue
                 self._poner_al_dia(eventos, self._vista(sig))
