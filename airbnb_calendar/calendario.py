@@ -499,7 +499,7 @@ class Calendario:
             notas["entrada"] = Notas(quitar=DEL_QUE_SALE)
             if not antes and (lineas := _lineas_con(manual, DEL_QUE_SALE)):
                 if eventos["sale_en"] and _sale_en(eventos["sale_en"], v.e):
-                    self._anadir_notas(eventos["sale_en"], lineas, simulacion)
+                    self._anadir_notas(eventos["sale_en"], _sin_etiquetas(lineas, DEL_QUE_ENTRA), simulacion)
                 else:
                     notas["salida"] = Notas(anadir=lineas)
         if not ahora:

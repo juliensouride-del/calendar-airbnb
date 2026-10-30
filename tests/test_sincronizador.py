@@ -2043,3 +2043,27 @@ def test_R17_el_registro_cuenta_solo_lo_que_se_junta_o_separa_y_dice_que_salida_
                           "Se crearía: ❌ CANCELADA · 🔴 SALIDA Lavapiés · sale 12:00 ✅",
                           "Se actualizaría: 🟢 ENTRADA Lavapiés · 2 pers"]
     assert (cal.stats["separados"], cal.stats["creados"], cal.stats["juntados"]) == (1, 1, 0)
+
+
+def test_R18_una_linea_con_salida_y_entrada_no_lleva_la_entrada_al_relevo_de_la_reserva_siguiente(tmp_path):
+    from datetime import date
+
+    from airbnb_calendar import reglas
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    original = reglas.es_relevo
+    reglas.es_relevo = lambda anterior, e: False                      # eventos escritos por la versión anterior
+    try:
+        _guardar(cal, _reserva("Z1", "2026-10-28", "2026-11-01"))
+        _guardar(cal, _reserva("A1", "2026-11-01", "2026-11-05"))
+    finally:
+        reglas.es_relevo = original
+    _guardar(cal, _reserva("B1", "2026-11-05", "2026-11-08"))         # A1 ya sale en el relevo de B1
+    entrada = s.cal.ev("A1")
+    entrada["description"] = "#salida 10:00 #entrada 17:00\n\n" + entrada["description"]
+
+    cal.recalcular_limpiezas(date(2026, 10, 13))                     # Z1 y A1 se juntan
+    assert _acuerdos(cal, "A1") == ("17:00", "10:00")
+    assert _acuerdos(cal, "B1") == (None, None), "el #entrada de A1 no pasa a ser de B1"
+    assert s.cal.ev("B1", "relevo")["end"]["dateTime"] == "2026-11-05T15:00:00"
+    assert _sin_escrituras(s, cal, date(2026, 10, 13))
