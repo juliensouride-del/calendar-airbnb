@@ -55,12 +55,57 @@ La descripción de la entrada tiene todo lo demás, de lo más urgente a lo meno
 - **Valores por defecto:** si el huésped no dice nada, llegada 15:00, salida 11:00, sin sofá cama ni cuna. Si pide llegar antes o salir más tarde, las horas siguen siendo las estándar. La petición va arriba en su evento: entrar antes en la entrada, salir más tarde en la salida.
 - **🧹 Limpieza:** si el huésped anterior del mismo piso sale ese día (o el anterior), la ventana para limpiar dentro del horario del equipo (08:00–15:00). Si no caben las 2 h, el título de la entrada lleva `[ALERTA LIMPIEZA / AJUSTE HORARIO]` y el evento sale en naranja.
 - **🔑 Locker:** en los dos eventos. La salida lleva el mismo locker que la entrada, para dejar las llaves. Tirso tiene el suyo. Torrecilla y Buenavista comparten uno. Si los dos tienen entrada el mismo día, Torrecilla usa el alternativo, y su línea lo dice: `🔑 Locker: https://… (Buenavista también entra ese día)` en la entrada y `(Buenavista también entró el día de entrada)` en la salida.
-- **Cancelada:** los dos eventos empiezan por `❌ CANCELADA` y salen en gris.
+- **Cancelada:** los dos eventos empiezan por `❌ CANCELADA` y salen en gris. Un relevo nunca está cancelado, porque antes se separa.
 - **Creado desde un mensaje:** si llega un mensaje de una reserva cuya confirmación no se ha visto, se crean los eventos con lo que haya y una nota al final; la nota desaparece cuando llega la confirmación.
+
+### El relevo
+
+Si un huésped sale el mismo día que entra el siguiente en el mismo piso, su salida y esa entrada son **un solo evento**, el relevo:
+
+```
+🔄 SALIDA Y ENTRADA Torrecilla · [LIMPIEZA OK] · sale 11:00 · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🍼 cuna
+```
+
+- Va de la hora de salida del que se va a la hora de entrada del que llega. Si la entrada es antes que la salida (por un acuerdo), dura 30 minutos desde la salida.
+- Sale en azul (Pavo real), o en naranja si no cabe la limpieza.
+- Después de `sale 11:00` vienen los mismos datos que en la entrada.
+- Mientras hay relevo, el huésped que sale no tiene evento de salida. Su entrada sigue igual.
+- Si una de las dos reservas se cancela o cambia de fechas, el relevo se separa. Vuelve la salida del que se iba y el evento pasa a ser una entrada normal.
+- Salir el día anterior no es un relevo. Son dos eventos, como siempre.
+
+La descripción tiene los avisos de los dos huéspedes, quién sale, la limpieza y quién entra:
+
+```
+—— Airbnb · automático (escribe tus notas encima de esta línea) ——
+⌛ PIDE SALIR DESPUÉS (a las 13:00). Si lo aceptas, escribe arriba: #salida 13:00
+⏰ PIDE ENTRAR ANTES (a las 12:00). Si lo aceptas, escribe arriba: #entrada 12:00
+
+🔴 SALE: Marc Pérez · Código HMAAAA0001
+🕒 Salida: jue 05/11 a las 11:00
+
+🧹 Limpieza: 05/11 de 11:00 a 15:00 (el huésped anterior sale ese día a las 11:00)
+
+🟢 ENTRA: Laura Garcia · Código HMAAAA0002
+🕒 Llegada: jue 05/11 a las 18:30   ·   Salida: dom 08/11 a las 11:00
+🛋️ Sofá cama: no
+🍼 Cuna: SÍ (lo indica el huésped)
+
+📝 Peticiones:
+   • Guardar maletas por la mañana
+
+🔑 Locker: https://access.keynest.com/…
+```
+
+Si los dos huéspedes no usan el mismo locker, hay una línea para cada uno: `🔑 Locker (sale): …` y `🔑 Locker (entra): …`.
 
 ### Acordar otra hora con el huésped
 
 El horario estándar es **entrada 15:00 / salida 11:00**: si el huésped pide entrar antes o salir más tarde, se avisa, pero el calendario no cambia hasta que el anfitrión lo acuerde. La hora acordada **solo** se fija escribiendo en la descripción de cualquiera de los dos eventos, **encima de la línea automática**, `#entrada 12:00` o `#salida 13:30` (también vale `12h` o `13.30`). Para quitar el acuerdo, se borra la línea.
+
+**En el relevo**, `#salida` es la hora del huésped que sale y `#entrada` la del que entra. El relevo empieza a la hora de `#salida` y termina a la de `#entrada`.
+
+- **Al juntarse**, las notas de la salida del que se va pasan al relevo. Si había una `#entrada` en esa salida, pasa a su entrada. Si había una `#salida` en la entrada del que llega, pasa a su salida.
+- **Al separarse**, la salida del que se iba vuelve con las notas del relevo y su `#salida`. La entrada del que llega se queda con su `#entrada` y pierde la `#salida`, que no era suya. Las notas sin etiqueta quedan en los dos eventos.
 
 **Mover un evento en Calendar no cambia la hora.** Si alguien lo arrastra, aunque sea sin querer, vuelve solo a su hora en la siguiente sincronización. Para otra hora, escribe la etiqueta.
 
@@ -100,7 +145,7 @@ Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cad
 ```
 
 - **No toca el buzón.** Abre las carpetas en solo lectura (`INBOX` y `Archive`) y descarga con `BODY.PEEK[]`: nada se marca como leído.
-- **No duplica nada.** Cada correo se identifica por su UID de IMAP y su `Message-ID` (el mismo aunque se archive) y queda registrado. Cada reserva se encuentra en el calendario por su código, guardado como propiedad privada de sus dos eventos, junto con su estado completo (JSON). Si se borra uno de los dos, se vuelve a crear desde el otro.
+- **No duplica nada.** Cada correo se identifica por su UID de IMAP y su `Message-ID` (el mismo aunque se archive) y queda registrado. Cada reserva se encuentra en el calendario por su código, guardado como propiedad privada de sus dos eventos, junto con su estado completo (JSON). Si se borra uno de los dos, se vuelve a crear desde el otro. El relevo guarda además una copia del estado del huésped que sale, así que su reserva se encuentra aunque se borren sus otros eventos.
 - **Yahoo por semanas.** Yahoo devuelve como mucho 1 000 resultados por búsqueda y descarta el resto sin avisar: se busca por tramos de una semana.
 - **Manda lo último que dice el huésped.** Los correos se procesan en orden: un mensaje nuevo sustituye la hora de llegada o salida y puede pedir, cambiar o retirar la petición de horario. Llegar entre las 00:00 y las 06:00 cuenta como llegar tarde.
 - **Gemini, con cabeza.** No se envían a la IA los mensajes de reservas que ya han terminado (no hay nada que preparar ni que avisar) ni los que son solo cortesía («Thanks!», «Vale, perfecto», «👍»): todas sus palabras deben ser de cortesía, sin números ni preguntas. Si Gemini falla en el día a día, se usan palabras clave (detectan sofá, cuna y peticiones de horario, sin horas) y el desarrollador recibe un aviso al día (que distingue la cuota diaria agotada de un error de clave o de modelo). En una recarga, si Gemini no responde ni esperando, la recarga se detiene en lugar de guardar un análisis peor.
@@ -164,6 +209,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 - **Una recarga se detiene por Gemini:** se ha agotado la cuota diaria gratuita (se renueva hacia las 9:00 de Madrid). Vuelve a lanzarla con `desde` = la fecha que indica el error; es idempotente.
 - **Correos de Airbnb en Spam:** añade `"Bulk"` a `[yahoo] carpetas` en `config.toml`.
 - **Acabas de actualizar a los eventos de entrada y salida:** lanza `recalcular-simulacion` para ver cuántos eventos se actualizarían y cuántos se crearían, y después `recalcular`. Cada evento antiguo que ocupa toda la estancia pasa a ser el evento de entrada, y se crea el de salida. Las notas del anfitrión y sus etiquetas `#entrada` / `#salida` se conservan. Las horas movidas a mano no: si una era un acuerdo, escríbelo como etiqueta. Sin `recalcular`, las ejecuciones automáticas convierten igual las estancias en curso y las que entran en los próximos 30 días.
+- **Acabas de actualizar al relevo:** lanza `recalcular-simulacion`. Dice `Se juntaría: …` por cada salida y entrada del mismo día. Después, `recalcular` las junta, con las notas y etiquetas de cada una en su sitio. Sin `recalcular`, las ejecuciones automáticas juntan igual las de los próximos 30 días.
 - **Cambiar el nombre corto de un piso, el horario o un locker:** edita `config.toml`; las reservas futuras se corrigen en la siguiente ejecución (todas, con `recalcular`).
 - **Registro:** la rama `estado` guarda `estado.json` (correos procesados de los últimos días). Si se borra, la siguiente ejecución empieza desde ese momento.
 - **Plantillas en inglés:** el parser espera los correos de Airbnb en inglés; no cambies el idioma de la cuenta de Airbnb.
@@ -174,7 +220,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 123 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 137 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 
