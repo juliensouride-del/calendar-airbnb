@@ -176,11 +176,7 @@ class Calendario:
         self._pedir("GET", self.url, params={"maxResults": 1})
 
     def buscar_eventos_reserva(self, codigo, alojamiento, checkin, checkout) -> dict:
-        """
-        {'entrada': ev|None, 'salida': ev|None, 'sale_en': ev|None, 'sobrantes': [...]}. Por código y por alojamiento +
-        entrada, con los del código primero. 'sobrantes' son eventos duplicados de la misma reserva: se borran al
-        guardarla. 'sale_en' es el relevo en el que sale, que es de la reserva siguiente: solo se lee.
-        """
+        """Los eventos de la reserva (ver _eventos), por código y por alojamiento + entrada, con los del código primero."""
         candidatos = self._listar({P_CODIGO: codigo}) if codigo else []
         # También sin código: eventos creados desde un mensaje, o una parte que se quedó sin él si se cortó la
         # ejecución al ponérselo
@@ -190,15 +186,45 @@ class Calendario:
                            if ev["id"] not in ids]
         propios = [ev for ev in candidatos if _props(ev).get(P_TIPO) == "reserva"
                    and not (codigo and _props(ev).get(P_CODIGO) not in (None, codigo))]   # misma fecha, otra reserva
-        eventos = _por_parte(propios)
-        # La salida que vale es la de sus eventos: con otras fechas, un relevo antiguo ya no es suyo
-        yo = (next(filter(None, map(_estado_guardado, (eventos["entrada"], eventos["salida"], *eventos["sobrantes"]))), None)
-              or {"codigo": codigo, "alojamiento": alojamiento, "checkin": checkin, "checkout": checkout})
-        if yo["alojamiento"] and yo["checkout"]:
-            relevos = self._listar({P_ALOJAMIENTO: _hash(yo["alojamiento"]), P_CHECKIN: yo["checkout"], P_PARTE: "relevo"})
-            eventos["sale_en"] = next((ev for ev in relevos if (sale := _estado_guardado(ev, P_SALIENTE))
-                                       and reglas.misma_reserva(sale, yo)), None)
+        return self._eventos(propios, {"codigo": codigo, "alojamiento": alojamiento, "checkin": checkin, "checkout": checkout})
+
+    def _eventos(self, propios: list[dict], yo: dict | None = None, relevos: list[dict] | None = None) -> dict:
+        """
+        {'entrada': ev|None, 'salida': ev|None, 'sale_en': ev|None, 'sobrantes': [...]}: los eventos propios de una
+        reserva, cada uno en el hueco de su parte (el relevo, en el de la entrada). Si hay varios para un hueco, vale el
+        primero y los demás sobran: se borran al guardarla. 'sale_en' es el relevo en el que sale, que es de la reserva
+        siguiente y solo se lee: el del alojamiento el día de su salida con su copia (si ahora sale otro día, un relevo
+        antiguo ya no es suyo). Se busca entre `relevos` si ya están listados los de ese día; si no, en el calendario.
+        yo: la reserva, si no tiene eventos propios.
+        """
+        eventos = {"entrada": None, "salida": None, "sale_en": None, "sobrantes": []}
+        for ev in propios:
+            parte = PARTES.get(_parte(ev))
+            if parte and eventos[parte.hueco] is None:
+                eventos[parte.hueco] = ev
+            else:
+                eventos["sobrantes"].append(ev)
+        yo = _estado_propio(eventos) or yo
+        if yo and yo["alojamiento"] and yo["checkout"]:
+            if relevos is None:
+                relevos = self._listar({P_ALOJAMIENTO: _hash(yo["alojamiento"]), P_CHECKIN: yo["checkout"], P_PARTE: "relevo"})
+            eventos["sale_en"] = next((ev for ev in relevos if _sale_en(ev, yo)), None)
         return eventos
+
+    def _agrupar(self, evs: list[dict], relevos: list[dict] | None = None) -> list[dict]:
+        """
+        Los eventos de cada reserva juntos (ver _eventos): por código o, si no lo hay, por alojamiento y fechas.
+        relevos: los ya listados de los días en que salen. Una reserva que solo está en la copia de uno de ellos (se
+        borraron sus eventos, o no están en el listado) también cuenta.
+        """
+        grupos: dict = {}
+        for ev in evs:
+            p = _props(ev)
+            grupos.setdefault(p.get(P_CODIGO) or (p.get(P_ALOJAMIENTO), p.get(P_CHECKIN), p.get(P_CHECKOUT)), []).append(ev)
+        reservas = [self._eventos(g, relevos=relevos) for g in grupos.values()]
+        con_relevo = {id(eventos["sale_en"]) for eventos in reservas}
+        return reservas + [self._eventos([], sale, [ev]) for ev in relevos or []
+                           if id(ev) not in con_relevo and (sale := _estado_guardado(ev, P_SALIENTE))]
 
     def eventos_propios(self, hasta: date | None = None) -> list[dict]:
         """
@@ -475,18 +501,16 @@ class Calendario:
         """(eventos, estado) de las reservas del alojamiento que entran (campo 'checkin') o salen ('checkout') ese día."""
         filtros = {P_TIPO: "reserva", P_ALOJAMIENTO: _hash(alojamiento)}
         evs = self._listar({**filtros, P_CHECKIN if campo == "checkin" else P_CHECKOUT: dia.isoformat()})
-        if campo == "checkout":
-            # La que sale en un relevo puede no tener ese día ningún evento propio (ni otro día, si se borraron)
-            ids = {ev["id"] for ev in evs}
-            evs += [ev for ev in self._listar({**filtros, P_CHECKIN: dia.isoformat(), P_PARTE: "relevo"}) if ev["id"] not in ids]
+        # Las que salen ese día pueden salir en un relevo: se lista una vez para todas
+        relevos = self._listar({**filtros, P_CHECKIN: dia.isoformat(), P_PARTE: "relevo"}) if campo == "checkout" else None
         reservas = []
-        for eventos in _agrupar(evs):
-            if not (eventos["entrada"] or eventos["salida"] or eventos["sobrantes"]):
-                if campo != "checkout":
-                    continue
-                sale = _estado_guardado(eventos["sale_en"], P_SALIENTE)
-                eventos = self.buscar_eventos_reserva(sale["codigo"], sale["alojamiento"], sale["checkin"], sale["checkout"])
-            if (e := leer_estado(eventos)) and e[campo] == dia.isoformat():
+        for eventos in self._agrupar(evs, relevos):
+            e = leer_estado(eventos)
+            if e and e[campo] == dia.isoformat() and not _propios(eventos):
+                # Solo está la copia del relevo: si aún tiene eventos, pueden decir otra fecha
+                eventos = self.buscar_eventos_reserva(e["codigo"], e["alojamiento"], e["checkin"], e["checkout"])
+                e = leer_estado(eventos)
+            if e and e[campo] == dia.isoformat():
                 reservas.append((eventos, e))
         return reservas
 
@@ -495,9 +519,10 @@ class Calendario:
         if not estado["alojamiento"]:
             return None
         d = date.fromisoformat(estado["checkin"])
-        candidatas = [e for dia in (d, d - timedelta(days=1))
-                      for _, e in self._reservas(estado["alojamiento"], "checkout", dia)]
-        return _anterior_en(candidatas, estado, self.cfg)
+        for dia in (d, d - timedelta(days=1)):
+            if anterior := _anterior_en([e for _, e in self._reservas(estado["alojamiento"], "checkout", dia)], estado, self.cfg):
+                return anterior
+        return None
 
     def _actualizar_siguientes(self, estado: dict) -> None:
         """Las reservas que entran el día de salida (o el siguiente) dependen de esta salida: se recalculan (y, si
@@ -539,10 +564,12 @@ class Calendario:
         if dias is not None:
             rango["timeMax"] = f"{hoy + timedelta(days=dias)}T00:00:00Z"
         reservas = []
-        for eventos in _agrupar(self._listar({P_TIPO: "reserva"}, **rango)):
+        evs = self._listar({P_TIPO: "reserva"}, **rango)
+        for eventos in self._agrupar(evs, [ev for ev in evs if _parte(ev) == "relevo"]):
             e = leer_estado(eventos)
             if e and e["checkin"] and any(eventos[PARTES[p].hueco] is None for p in _partes_de(Vista(e), eventos)):
-                # La otra parte puede quedar fuera del rango de fechas, y sus acuerdos cuentan: se busca aparte
+                # La otra parte puede quedar fuera del rango de fechas, y sus acuerdos cuentan: se busca aparte. Así
+                # también el relevo en el que sale, que es del mismo día que su salida
                 eventos = self.buscar_eventos_reserva(e["codigo"], e["alojamiento"], e["checkin"], e["checkout"])
                 e = leer_estado(eventos)
             if e and e["checkin"]:
@@ -621,8 +648,7 @@ def leer_estado(eventos: dict) -> dict | None:
     Estado JSON de la reserva: el del evento de entrada (si no, el de la salida, el de un duplicado o la copia del
     relevo en el que sale), con los horarios acordados por el anfitrión (#entrada / #salida) en sus eventos.
     """
-    estado = (next(filter(None, map(_estado_guardado, (eventos["entrada"], eventos["salida"], *eventos["sobrantes"]))), None)
-              or _estado_guardado(eventos["sale_en"], P_SALIENTE))
+    estado = _estado_propio(eventos) or _estado_guardado(eventos["sale_en"], P_SALIENTE)
     if estado is None:
         return None
     # Los acuerdos de horario los escribe el anfitrión en la descripción: lo que pone ahí manda (si borra la etiqueta,
@@ -641,6 +667,22 @@ def leer_estado(eventos: dict) -> dict | None:
 def en_calendario(eventos: dict) -> bool:
     """¿Tiene la reserva algún evento en el calendario (también el relevo en el que sale)?"""
     return any(eventos[k] for k in ("entrada", "salida", "sale_en"))
+
+
+def _propios(eventos: dict) -> list[dict]:
+    return [ev for ev in (eventos["entrada"], eventos["salida"], *eventos["sobrantes"]) if ev]
+
+
+def _estado_propio(eventos: dict) -> dict | None:
+    """El estado guardado en sus eventos: el de la entrada, si no el de la salida o el de un duplicado."""
+    return next(filter(None, map(_estado_guardado, _propios(eventos))), None)
+
+
+def _sale_en(relevo: dict, yo: dict) -> bool:
+    """¿Es el relevo en el que sale la reserva `yo` (con su fecha de salida de ahora)?"""
+    p = _props(relevo)
+    return (p.get(P_PARTE) == "relevo" and p.get(P_ALOJAMIENTO) == _hash(yo["alojamiento"]) and p.get(P_CHECKIN) == yo["checkout"]
+            and (sale := _estado_guardado(relevo, P_SALIENTE)) is not None and reglas.misma_reserva(sale, yo))
 
 
 def _acuerdos(ev: dict) -> dict:
@@ -682,50 +724,15 @@ def _parte(ev: dict | None) -> str:
     return _props(ev).get(P_PARTE) or "entrada"
 
 
-def _por_parte(evs: list[dict]) -> dict:
-    """
-    {'entrada': ev|None, 'salida': ev|None, 'sale_en': None, 'sobrantes': [...]} con los eventos de una reserva, cada
-    uno en el hueco de su parte (el relevo, en el de la entrada). Si hay varios para un hueco, vale el primero.
-    """
-    eventos = {"entrada": None, "salida": None, "sale_en": None, "sobrantes": []}
-    for ev in evs:
-        parte = PARTES.get(_parte(ev))
-        if parte and eventos[parte.hueco] is None:
-            eventos[parte.hueco] = ev
-        else:
-            eventos["sobrantes"].append(ev)
-    return eventos
-
-
-def _agrupar(evs: list[dict]) -> list[dict]:
-    """
-    Los eventos de cada reserva juntos (ver _por_parte): por código o, si no lo hay, por alojamiento y fechas. Un
-    relevo también va con la reserva que sale en él ('sale_en'), aunque esta no tenga aquí ningún evento propio.
-    """
-    grupos: dict = {}
-    for ev in evs:
-        p = _props(ev)
-        grupos.setdefault(p.get(P_CODIGO) or (p.get(P_ALOJAMIENTO), p.get(P_CHECKIN), p.get(P_CHECKOUT)), []).append(ev)
-    reservas = {clave: _por_parte(g) for clave, g in grupos.items()}
-    for ev in evs:
-        if not (sale := _estado_guardado(ev, P_SALIENTE)):
-            continue
-        eventos = reservas.setdefault(sale["codigo"] or (_hash(sale["alojamiento"]), sale["checkin"], sale["checkout"]),
-                                      _por_parte([]))
-        propio = eventos["entrada"] or eventos["salida"]
-        # Si la reserva sale ahora otro día, ese relevo ya no es el suyo
-        if eventos["sale_en"] is None and (propio is None or _props(propio).get(P_CHECKOUT) == _props(ev).get(P_CHECKIN)):
-            eventos["sale_en"] = ev
-    return list(reservas.values())
-
-
 def _partes_de(v: Vista, eventos: dict) -> list[str]:
     """
-    Las partes que debe tener la reserva: sin fecha de salida, o si sale en el relevo de la siguiente, no tiene evento de
-    salida. El relevo se escribe después de la salida: al juntarlos, las #salida de esta reserva pasan antes a su salida.
+    Las partes que debe tener la reserva: sin fecha de salida, o si sale ese día en el relevo de la siguiente, no tiene
+    evento de salida. El relevo se escribe después de la salida: al juntarlos, las #salida de esta reserva pasan antes
+    a su salida.
     """
     partes = ["salida", "relevo"] if v.relevo else ["entrada", "salida"]
-    return [p for p in partes if v.e[PARTES[p].fecha] and not (p == "salida" and eventos["sale_en"])]
+    sale_en = eventos["sale_en"] and _sale_en(eventos["sale_en"], v.e)
+    return [p for p in partes if v.e[PARTES[p].fecha] and not (p == "salida" and sale_en)]
 
 
 def _anterior_en(candidatas: list[dict], estado: dict, cfg: Config) -> dict | None:
