@@ -1,18 +1,6 @@
 {
   "inicio": "2026-10-10T17:29:33.325298+00:00",
   "procesados": {
-    "INBOX:1274556880:376148": "2026-10-22T20:51:40+00:00",
-    "mid:<wbIKmEsgSIKQBqZHiDlNOQ@geopod-ismtpd-25>": "2026-10-22T20:51:40+00:00",
-    "INBOX:1274556880:376149": "2026-10-22T21:38:21+00:00",
-    "mid:<dPx8IpodQderYJzUeuBZgQ@geopod-ismtpd-53>": "2026-10-22T21:38:21+00:00",
-    "INBOX:1274556880:376151": "2026-10-22T22:52:55+00:00",
-    "mid:<qN5YUc-KT9yjOQMSfBf-UA@geopod-ismtpd-46>": "2026-10-22T22:52:55+00:00",
-    "INBOX:1274556880:376153": "2026-10-23T03:57:44+00:00",
-    "mid:<9c1MqdoQSPWVazhuqptJnA@geopod-ismtpd-48>": "2026-10-23T03:57:44+00:00",
-    "INBOX:1274556880:376157": "2026-10-23T06:38:10+00:00",
-    "mid:<OK7kZpKvSlWK6saNKCcJDw@geopod-ismtpd-19>": "2026-10-23T06:38:10+00:00",
-    "INBOX:1274556880:376158": "2026-10-23T06:56:14+00:00",
-    "mid:<VfnduVAuRned8QjPelmdtw@geopod-ismtpd-98>": "2026-10-23T06:56:14+00:00",
     "INBOX:1274556880:376162": "2026-10-23T08:53:22+00:00",
     "mid:<VJeMJXuESfuQ2Aad1WNoQA@geopod-ismtpd-28>": "2026-10-23T08:53:22+00:00",
     "INBOX:1274556880:376166": "2026-10-23T11:47:47+00:00",
@@ -266,12 +254,16 @@
     "INBOX:1274556880:376511": "2026-11-02T01:40:09+00:00",
     "mid:<eaZmUpG6RB6eeeUPtDL3fg@geopod-ismtpd-49>": "2026-11-02T01:40:09+00:00",
     "INBOX:1274556880:376512": "2026-11-02T02:14:00+00:00",
-    "mid:<RkeoiZlDQOyJAfGPqmg4yw@geopod-ismtpd-8>": "2026-11-02T02:14:00+00:00"
+    "mid:<RkeoiZlDQOyJAfGPqmg4yw@geopod-ismtpd-8>": "2026-11-02T02:14:00+00:00",
+    "INBOX:1274556880:376516": "2026-11-02T08:33:09+00:00",
+    "mid:<Sp8DRrlOQgeTXe81ahI_MA@geopod-ismtpd-29>": "2026-11-02T08:33:09+00:00",
+    "INBOX:1274556880:376518": "2026-11-02T08:51:43+00:00",
+    "mid:<bj83pBmvRbybkVVH86VOzw@geopod-ismtpd-5>": "2026-11-02T08:51:43+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-11-02T07:18:17.181631+00:00"
+  "ultima_ok": "2026-11-02T08:58:44.283626+00:00"
 }
