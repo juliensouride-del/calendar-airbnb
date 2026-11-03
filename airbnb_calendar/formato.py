@@ -144,7 +144,8 @@ def descripcion_entrada(e: dict, limpieza: dict | None, cfg: Config) -> str:
 def descripcion_relevo(sale: dict, e: dict, limpieza: dict | None, cfg: Config) -> str:
     """
     Avisos de los dos huéspedes, quién sale y a qué hora, la limpieza, quién entra con sus datos y peticiones, y el
-    locker. El relevo solo existe si ninguna de las dos reservas está cancelada.
+    locker del que entra (el del que sale ya está en su entrada). El relevo solo existe si ninguna de las dos reservas
+    está cancelada.
     """
     return _unir([[aviso_horario(sale, "salida"), aviso_horario(e, "entrada"), *_aviso_limpieza(limpieza, cfg),
                    _aviso_sin_analizar(sale, e)],
@@ -152,16 +153,8 @@ def descripcion_relevo(sale: dict, e: dict, limpieza: dict | None, cfg: Config) 
                   _limpieza_ok(limpieza, cfg),
                   ["🟢 ENTRA: " + _quien(e), *_datos_entrada(e, cfg)],
                   _peticiones(e),
-                  _lineas_locker_relevo(sale, e),
+                  [linea_locker(e, "entrada")],
                   _nota_desde_mensaje(e)])
-
-
-def _lineas_locker_relevo(sale: dict, e: dict) -> list[str | None]:
-    """Una línea si los dos huéspedes usan el mismo locker; si no, la de cada uno."""
-    sale_l, entra_l = linea_locker(sale, "salida"), linea_locker(e, "entrada")
-    if sale_l == entra_l:
-        return [entra_l]
-    return [l and l.replace("🔑 Locker:", f"🔑 Locker ({quien}):", 1) for quien, l in (("sale", sale_l), ("entra", entra_l))]
 
 
 def _aviso_limpieza(l: dict | None, cfg: Config) -> list[str]:

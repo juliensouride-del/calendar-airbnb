@@ -96,7 +96,7 @@ La descripción tiene los avisos de los dos huéspedes, quién sale, la limpieza
 🔑 Locker: https://access.keynest.com/…
 ```
 
-Si los dos huéspedes no usan el mismo locker, hay una línea para cada uno: `🔑 Locker (sale): …` y `🔑 Locker (entra): …`.
+El relevo lleva un solo locker, el del huésped que entra. El del que sale está en su evento de entrada.
 
 ### Acordar otra hora con el huésped
 

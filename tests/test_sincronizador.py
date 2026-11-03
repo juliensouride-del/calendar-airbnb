@@ -1773,7 +1773,7 @@ def test_R8_el_que_sale_entro_hace_mucho_y_su_entrada_queda_fuera_del_rango(tmp_
     assert len(s.cal.eventos) == 3
 
 
-def test_R9_locker_del_relevo_uno_si_es_el_mismo_y_el_de_cada_uno_si_no(tmp_path):
+def test_R9_el_relevo_lleva_un_solo_locker_el_del_que_entra(tmp_path):
     s = Entorno(tmp_path)
     lav, anton = s.cfg.alojamientos[1], s.cfg.alojamientos[2]
     lav.locker, lav.locker_coincide_con, lav.locker_si_coincide = "https://k/compartido", "Antón Martín", "https://k/alternativo"
@@ -1783,11 +1783,16 @@ def test_R9_locker_del_relevo_uno_si_es_el_mismo_y_el_de_cada_uno_si_no(tmp_path
     _guardar(cal, _reserva("LAV2", "2026-11-05", "2026-11-08"))
     assert s.cal.ev("LAV2", "relevo")["description"].endswith("\n\n🔑 Locker: https://k/compartido")
 
-    # Entra alguien en Antón Martín el día que entró LAV1: LAV1 usó el alternativo, y el relevo lo dice al ponerse al día
+    # Entra alguien en Antón Martín el día que entró LAV1: LAV1 usó el alternativo, que sigue en su entrada
     _guardar(cal, _reserva("ANT1", "2026-10-28", "2026-10-30", alojamiento=anton.nombre))
-    assert s.cal.ev("LAV2", "relevo")["description"].endswith(
-        "\n\n🔑 Locker (sale): https://k/alternativo (Antón Martín también entró el día de entrada)"
-        "\n🔑 Locker (entra): https://k/compartido")
+    relevo = s.cal.ev("LAV2", "relevo")["description"]
+    assert relevo.endswith("\n\n🔑 Locker: https://k/compartido") and relevo.count("🔑") == 1
+    assert "🔑 Locker: https://k/alternativo (Antón Martín también entra ese día)" in s.cal.ev("LAV1")["description"]
+    # Y si es el que entra quien coincide con Antón Martín, el relevo lleva el alternativo
+    _guardar(cal, _reserva("ANT2", "2026-11-05", "2026-11-07", alojamiento=anton.nombre))
+    relevo = s.cal.ev("LAV2", "relevo")["description"]
+    assert relevo.endswith("\n\n🔑 Locker: https://k/alternativo (Antón Martín también entra ese día)")
+    assert relevo.count("🔑") == 1
 
 
 def _partes(s):
@@ -1880,7 +1885,7 @@ def test_R11_un_correo_del_primero_de_una_cadena_no_crea_una_salida_junto_al_rel
         assert _sin_escrituras(s, cal, date(2026, 10, 13))
 
 
-def test_R12_el_locker_del_que_sale_es_el_mismo_por_correo_y_al_recalcular(tmp_path):
+def test_R12_el_locker_del_relevo_es_el_mismo_por_correo_y_al_recalcular(tmp_path):
     from datetime import date
     s = Entorno(tmp_path)
     lav, anton = s.cfg.alojamientos[1], s.cfg.alojamientos[2]
@@ -1890,8 +1895,7 @@ def test_R12_el_locker_del_que_sale_es_el_mismo_por_correo_y_al_recalcular(tmp_p
     _guardar(cal, _reserva("ANT1", "2026-10-01", "2026-10-03", alojamiento=anton.nombre))
     _guardar(cal, _reserva("LAV1", "2026-10-01", "2026-10-20"))     # entró antes del rango de recalcular
     _guardar(cal, _reserva("LAV2", "2026-10-20", "2026-10-25"))
-    final = ("\n\n🔑 Locker (sale): https://k/alternativo (Antón Martín también entró el día de entrada)"
-             "\n🔑 Locker (entra): https://k/compartido")
+    final = "\n\n🔑 Locker: https://k/compartido"
     assert s.cal.ev("LAV2", "relevo")["description"].endswith(final)
     assert _sin_escrituras(s, cal, date(2026, 10, 13))
     assert s.cal.ev("LAV2", "relevo")["description"].endswith(final)

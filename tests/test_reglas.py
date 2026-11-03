@@ -357,7 +357,7 @@ def test_titulo_y_descripcion_del_relevo(cfg):
         "   • Guardar maletas por la mañana\n\n"
         "🔑 Locker: https://k/1")
 
-    # Salida acordada a las 14:00: no deja limpieza, y el locker de cada uno si no es el mismo
+    # Salida acordada a las 14:00: no deja limpieza, y solo el locker del que entra aunque no sea el mismo
     sale.update(acuerdo_salida="14:00", locker_coincide="Buenavista", sin_analizar=True)
     entra.update(locker="https://k/2", entrada_anticipada=None)
     limpieza = reglas.evaluar_limpieza(sale, entra, cfg)
@@ -375,5 +375,4 @@ def test_titulo_y_descripcion_del_relevo(cfg):
         "🍼 Cuna: SÍ (lo indica el huésped)\n\n"
         "📝 Peticiones:\n"
         "   • Guardar maletas por la mañana\n\n"
-        "🔑 Locker (sale): https://k/1 (Buenavista también entró el día de entrada)\n"
-        "🔑 Locker (entra): https://k/2")
+        "🔑 Locker: https://k/2")
