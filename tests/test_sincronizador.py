@@ -669,7 +669,7 @@ def test_L2_recalcular_corrige_el_horario_de_eventos_antiguos(tmp_path):
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
     assert cal.stats["limpiezas_recalculadas"] == 2
     relevo = s.cal.ev("ENTRA2", "relevo")
-    assert (relevo["start"]["dateTime"], relevo["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T15:00:00")
+    assert (relevo["start"]["dateTime"], relevo["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T11:30:00")
     assert s.cal.ev("SOLA3", "salida")["start"]["dateTime"] == "2026-12-04T11:00:00"
     # Ya está todo al día: una segunda pasada no toca nada
     cal.recalcular_limpiezas(date(2026, 10, 13), dias=None)
@@ -688,8 +688,8 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
     ev["description"] = "#entrada 12h<br>" + ev["description"]
     cal.recalcular_limpiezas(date(2026, 10, 13))
     ev = s.cal.ev("ENTRA2", "relevo")
-    assert (ev["start"]["dateTime"], ev["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T12:00:00"), \
-        "el relevo acaba a la hora de entrada acordada"
+    assert (ev["start"]["dateTime"], ev["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T11:30:00"), \
+        "el relevo dura 30 minutos desde la salida, aunque se entre a las 12:00"
     assert ev["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [ALERTA LIMPIEZA / AJUSTE HORARIO] · sale 11:00 · 2 pers · entra 12:00 ✅"
     assert ev["description"].startswith("#entrada 12h\n\n—— Airbnb · automático (escribe tus notas encima de esta línea) ——\n"), "lo escrito a mano se conserva (como texto)"
 
@@ -699,7 +699,7 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
     e = leer_estado(eventos)
     e["hora_llegada"] = "10:00"
     cal.guardar_reserva(e, eventos, None)
-    assert s.cal.ev("ENTRA2", "relevo")["end"]["dateTime"] == "2026-11-05T12:00:00"
+    assert s.cal.ev("ENTRA2", "relevo")["summary"].endswith(" · entra 12:00 ✅")
 
     # Un acuerdo de salida tardía del huésped anterior también cuenta para la limpieza (la etiqueta vale en su entrada)
     sale = s.cal.ev("SALE1")
@@ -713,7 +713,7 @@ def test_L3_horario_acordado_por_el_anfitrion_manda_y_se_conserva(tmp_path):
     # Si Julien borra la etiqueta, vuelve el horario estándar
     ev["description"] = ev["description"].replace("#entrada 12h", "")
     cal.recalcular_limpiezas(date(2026, 10, 13))
-    assert s.cal.ev("ENTRA2", "relevo")["end"]["dateTime"] == "2026-11-05T15:00:00"
+    assert "entra 12:00" not in s.cal.ev("ENTRA2", "relevo")["summary"]
 
 
 def test_L5_cambios_a_mano_en_el_evento_no_se_sobrescriben(tmp_path):
@@ -737,7 +737,7 @@ def test_L5_cambios_a_mano_en_el_evento_no_se_sobrescriben(tmp_path):
     cal.guardar_reserva(e, eventos, None)
     cal.recalcular_limpiezas(date(2026, 10, 13))
     ev = s.cal.ev("ENTRA2", "relevo")
-    assert (ev["start"]["dateTime"], ev["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T15:00:00"), \
+    assert (ev["start"]["dateTime"], ev["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T11:30:00"), \
         "vuelve a su hora"
     assert ev["summary"] == "Lavapiés — familia García (llaves en recepción)"
     assert ev["colorId"] == "3"
@@ -915,7 +915,7 @@ def test_N1b_titulos_completos_de_la_entrada_y_la_salida(tmp_path):
     relevo = s.cal.ev("ENTRA2", "relevo")
     assert relevo["summary"] == ("🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 3 pers · llega 18:30"
                                  " · ⏰ pide entrar 12:00 · 🛋️ sofá cama · 🍼 cuna")
-    assert (hora(relevo), hora(relevo, "end")) == ("2026-11-05 11:00", "2026-11-05 18:30")
+    assert (hora(relevo), hora(relevo, "end")) == ("2026-11-05 11:00", "2026-11-05 11:30")
     assert s.cal.ev("ENTRA2", "salida")["summary"] == "🔴 SALIDA Lavapiés · sale 10:00"
 
 
@@ -943,7 +943,7 @@ def test_N2_arrastrar_la_salida_no_es_un_acuerdo_y_vuelve_a_su_hora_solo_la_etiq
     cal.recalcular_limpiezas(date(2026, 10, 13))
     assert movidos() == [aviso]
     sale = s.cal.ev("ENTRA2", "relevo")
-    assert (sale["start"]["dateTime"], sale["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T15:00:00")
+    assert (sale["start"]["dateTime"], sale["end"]["dateTime"]) == ("2026-11-05T11:00:00", "2026-11-05T11:30:00")
     assert sale["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"
     caplog.clear()
     cal.recalcular_limpiezas(date(2026, 10, 13))
@@ -954,7 +954,7 @@ def test_N2_arrastrar_la_salida_no_es_un_acuerdo_y_vuelve_a_su_hora_solo_la_etiq
     cal.recalcular_limpiezas(date(2026, 10, 13))
     assert movidos() == [], "una etiqueta no es un evento movido"
     sale = s.cal.ev("ENTRA2", "relevo")
-    assert (sale["start"]["dateTime"], sale["end"]["dateTime"]) == ("2026-11-05T14:00:00", "2026-11-05T15:00:00")
+    assert (sale["start"]["dateTime"], sale["end"]["dateTime"]) == ("2026-11-05T14:00:00", "2026-11-05T14:30:00")
     assert sale["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [ALERTA LIMPIEZA / AJUSTE HORARIO] · sale 14:00 ✅ · 2 pers"
     assert sale["colorId"] == "6"
     # Un correo nuevo de la reserva que sale no deshace el acuerdo
@@ -1537,7 +1537,7 @@ def test_R1_la_confirmacion_del_que_entra_junta_la_salida_del_anterior_en_un_rel
                   for ev in s.cal.eventos.values()) == [("entrada", "SALE1"), ("relevo", "HMTEST0002"), ("salida", "HMTEST0002")]
     relevo = s.cal.ev("HMTEST0002", "relevo")
     assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Corazón de Madrid · [LIMPIEZA OK] · sale 12:00 ✅ · 2 pers"
-    assert (hora(relevo), hora(relevo, "end")) == ("2026-11-26 12:00", "2026-11-26 15:00")
+    assert (hora(relevo), hora(relevo, "end")) == ("2026-11-26 12:00", "2026-11-26 12:30")
     assert relevo["colorId"] == "7"
     assert relevo["description"] == (
         "#salida 12:00\nLlaves en el buzón\n\n" + SEPARADOR + "\n"
@@ -1570,7 +1570,7 @@ def test_R2_el_que_sale_pide_salir_mas_tarde_y_se_ve_en_el_relevo(tmp_path):
     assert relevo["description"].split("\n")[1] == \
         "⌛ PIDE SALIR DESPUÉS (a las 13:00). Si lo aceptas, escribe arriba: #salida 13:00"
     assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Corazón de Madrid · [LIMPIEZA OK] · sale 11:00 · 2 pers"
-    assert (hora(relevo), hora(relevo, "end")) == ("2026-12-02 11:00", "2026-12-02 15:00"), "pedirlo no es un acuerdo"
+    assert (hora(relevo), hora(relevo, "end")) == ("2026-12-02 11:00", "2026-12-02 11:30"), "pedirlo no es un acuerdo"
     assert s.asuntos == ["🔔 Airbnb · Corazón de Madrid · 26/11–02/12 · salir después"]
 
 
@@ -1584,7 +1584,7 @@ def test_R3_salida_acordada_en_el_relevo(tmp_path):
     relevo["description"] = "#salida 12:00\n" + relevo["description"]
     cal.recalcular_limpiezas(date(2026, 10, 13))
     relevo = s.cal.ev("ENTRA2", "relevo")
-    assert (relevo["start"]["dateTime"], relevo["end"]["dateTime"]) == ("2026-11-05T12:00:00", "2026-11-05T15:00:00")
+    assert (relevo["start"]["dateTime"], relevo["end"]["dateTime"]) == ("2026-11-05T12:00:00", "2026-11-05T12:30:00")
     assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 12:00 ✅ · 2 pers"
     assert "🕒 Salida: jue 05/11 a las 12:00 (acordada)" in relevo["description"]
     assert "Salida: jue 05/11 a las 12:00" in s.cal.ev("SALE1")["description"], "la entrada del que sale también"
@@ -2069,5 +2069,5 @@ def test_R18_una_linea_con_salida_y_entrada_no_lleva_la_entrada_al_relevo_de_la_
     cal.recalcular_limpiezas(date(2026, 10, 13))                     # Z1 y A1 se juntan
     assert _acuerdos(cal, "A1") == ("17:00", "10:00")
     assert _acuerdos(cal, "B1") == (None, None), "el #entrada de A1 no pasa a ser de B1"
-    assert s.cal.ev("B1", "relevo")["end"]["dateTime"] == "2026-11-05T15:00:00"
+    assert "entra 17:00" not in s.cal.ev("B1", "relevo")["summary"]
     assert _sin_escrituras(s, cal, date(2026, 10, 13))

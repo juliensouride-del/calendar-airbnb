@@ -8,7 +8,7 @@ huésped anterior del mismo alojamiento sale ese día (o el anterior), el títul
 entrada lleva [LIMPIEZA OK] o [ALERTA LIMPIEZA / AJUSTE HORARIO].
 
 Relevo: si el huésped anterior sale el mismo día que entra este, en el mismo alojamiento, su
-salida y esta entrada son un solo evento, de la hora de salida a la de entrada. Es de la
+salida y esta entrada son un solo evento, a la hora de salida. Es de la
 reserva que entra (su parte es 'relevo' y ocupa el hueco de la entrada) y lleva una copia
 del estado de la que sale (airbnb_saliente_*), que no tiene evento de salida mientras dure:
 la encuentra por alojamiento y fecha ('sale_en') y solo lo lee. Únicamente la reserva que
@@ -95,7 +95,7 @@ class Vista:
 class Parte:
     hueco: str                                      # dónde va en los eventos de la reserva: 'entrada' | 'salida'
     fecha: str                                      # campo del estado con el día del evento
-    horas: Callable[[Vista, Config], tuple[str, str | None]]   # inicio y fin (None: inicio + duracion_evento_min)
+    hora: Callable[[Vista, Config], str]           # la de inicio: todos duran duracion_evento_min
     titulo: Callable[[Vista, Config], str]
     descripcion: Callable[[Vista, Config], str]
     color: str                                      # clave de [calendario.colores]
@@ -112,16 +112,16 @@ class Parte:
 
 
 PARTES = {
-    "entrada": Parte(hueco="entrada", fecha="checkin", horas=lambda v, cfg: (reglas.hora_entrada(v.e, cfg), None),
+    "entrada": Parte(hueco="entrada", fecha="checkin", hora=lambda v, cfg: reglas.hora_entrada(v.e, cfg),
                      titulo=lambda v, cfg: formato.titulo_entrada(v.e, v.limpieza, cfg),
                      descripcion=lambda v, cfg: formato.descripcion_entrada(v.e, v.limpieza, cfg),
                      color="reserva", con_limpieza=True, etiquetas=("entrada", "salida")),
-    "salida": Parte(hueco="salida", fecha="checkout", horas=lambda v, cfg: (reglas.hora_salida(v.e, cfg), None),
+    "salida": Parte(hueco="salida", fecha="checkout", hora=lambda v, cfg: reglas.hora_salida(v.e, cfg),
                     titulo=lambda v, cfg: formato.titulo_salida(v.e, cfg),
                     descripcion=lambda v, cfg: formato.descripcion_salida(v.e, cfg),
                     color="salida", con_limpieza=False, etiquetas=("salida", "entrada")),
     "relevo": Parte(hueco="entrada", fecha="checkin",
-                    horas=lambda v, cfg: (reglas.hora_salida(v.sale, cfg), reglas.hora_entrada(v.e, cfg)),
+                    hora=lambda v, cfg: reglas.hora_salida(v.sale, cfg),
                     titulo=lambda v, cfg: formato.titulo_relevo(v.sale, v.e, v.limpieza, cfg),
                     descripcion=lambda v, cfg: formato.descripcion_relevo(v.sale, v.e, v.limpieza, cfg),
                     color="relevo", con_limpieza=True, etiquetas=("entrada",), etiquetas_sale=("salida",)),
@@ -342,11 +342,8 @@ class Calendario:
                 return dia_completo
             return k in previo and _h(actual.get(k)) != previo[k]     # cambiado a mano desde la última escritura
 
-        desde, hasta = p.horas(v, self.cfg)
-        inicio = datetime.fromisoformat(f"{v.e[p.fecha]}T{desde}")
-        fin = datetime.fromisoformat(f"{v.e[p.fecha]}T{hasta}") if hasta else inicio
-        if fin <= inicio:
-            fin = inicio + timedelta(minutes=self.cfg.duracion_evento_min)
+        inicio = datetime.fromisoformat(f"{v.e[p.fecha]}T{p.hora(v, self.cfg)}")
+        fin = inicio + timedelta(minutes=self.cfg.duracion_evento_min)
         color = ("cancelada" if v.e["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else p.color)
         alojamiento = self.cfg.alojamiento_por_nombre(v.e["alojamiento"])
