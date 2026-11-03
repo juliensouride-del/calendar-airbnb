@@ -2331,7 +2331,7 @@ def test_R26_una_etiqueta_en_un_titulo_que_pasa_a_las_notas_no_es_un_acuerdo(tmp
     relevo = s.cal.ev("ENTRA2", "relevo")
     assert relevo["description"].startswith("Caro limpia\nEntra familia García\n\n" + SEPARADOR)
     assert (_acuerdos(cal, "SALE1"), _acuerdos(cal, "ENTRA2")) == ((None, None), (None, None))
-    assert (hora(relevo), hora(relevo, "end")) == ("2026-11-05 11:00", "2026-11-05 15:00")
+    assert hora(relevo) == "2026-11-05 11:00" and "entra 16:00" not in relevo["summary"]
     assert _sin_escrituras(s, cal, hoy)
 
 
