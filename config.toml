@@ -28,7 +28,7 @@ zona_horaria = "Europe/Madrid"
 # Cada reserva son DOS eventos cortos: la ENTRADA (el día de llegada, a la hora de entrada)
 # y la SALIDA (el día de salida, a la hora de salida). Cada uno dura duracion_evento_min.
 # Si un huésped sale el día que entra el siguiente en el mismo piso, su salida y esa entrada
-# son un solo evento (relevo), de la hora de salida a la de entrada.
+# son un solo evento (relevo), a la hora de salida. Todos duran duracion_evento_min.
 duracion_evento_min = 30
 # Horario estándar (salvo acuerdo expreso): nunca se entra antes ni se sale después.
 # Si el huésped llega más tarde o sale antes, el evento usa su hora.

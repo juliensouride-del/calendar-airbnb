@@ -66,7 +66,7 @@ Si un huésped sale el mismo día que entra el siguiente en el mismo piso, su sa
 🔄 SALIDA Y ENTRADA Torrecilla · [LIMPIEZA OK] · sale 11:00 · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🍼 cuna
 ```
 
-- Va de la hora de salida del que se va a la hora de entrada del que llega. Si la entrada es antes que la salida (por un acuerdo), dura 30 minutos desde la salida.
+- Empieza a la hora de salida del que se va y dura 30 minutos, como todos los eventos, para que el calendario no se llene de bloques largos. La hora de llegada del que entra está en el título y en la descripción.
 - Sale en azul (Pavo real), o en naranja si no cabe la limpieza.
 - Después de `sale 11:00` vienen los mismos datos que en la entrada.
 - Mientras hay relevo, el huésped que sale no tiene evento de salida. Su entrada sigue igual.
@@ -102,7 +102,7 @@ El relevo lleva un solo locker, el del huésped que entra. El del que sale está
 
 El horario estándar es **entrada 15:00 / salida 11:00**: si el huésped pide entrar antes o salir más tarde, se avisa, pero el calendario no cambia hasta que el anfitrión lo acuerde. La hora acordada **solo** se fija escribiendo en la descripción de cualquiera de los dos eventos, **encima de la línea automática**, `#entrada 12:00` o `#salida 13:30` (también vale `12h` o `13.30`). Para quitar el acuerdo, se borra la línea.
 
-**En el relevo**, `#salida` es la hora del huésped que sale y `#entrada` la del que entra. El relevo empieza a la hora de `#salida` y termina a la de `#entrada`.
+**En el relevo**, `#salida` es la hora del huésped que sale y `#entrada` la del que entra. El relevo empieza a la hora de `#salida`.
 
 - **Al juntarse**, las notas de la salida del que se va pasan al relevo. Si había una `#entrada` en esa salida, pasa a su entrada. Si había una `#salida` en la entrada del que llega, pasa a su salida, o al relevo en el que sale si también sale en uno. Si alguien borró la línea automática de la salida del que se va, todo su texto pasa al relevo como notas.
 - **Al separarse**, la salida del que se iba vuelve con las notas del relevo y su `#salida`. La entrada del que llega se queda con su `#entrada` y pierde la `#salida`, que no era suya. Las notas sin etiqueta quedan en los dos eventos.
