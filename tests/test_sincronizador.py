@@ -2078,6 +2078,40 @@ def test_R18_una_linea_con_salida_y_entrada_no_lleva_la_entrada_al_relevo_de_la_
 # ---------------------------------------------------------------------------
 
 
+def _separados(s, sale="", entra="", reservas=(("SALE1", "2026-11-01", "2026-11-05"), ("ENTRA2", "2026-11-05", "2026-11-08"))):
+    """Salida de SALE1 y entrada de ENTRA2 del mismo día aún sin juntar, como antes del relevo. sale / entra: lo que
+    escribe el anfitrión en sus títulos (una función del título, o el texto que pone delante)."""
+    from airbnb_calendar import reglas
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    original = reglas.es_relevo
+    reglas.es_relevo = lambda anterior, e: False                      # eventos escritos por la versión anterior
+    try:
+        for r in reservas:
+            _guardar(cal, _reserva(*r))
+    finally:
+        reglas.es_relevo = original
+    for ev, cambio in ((s.cal.ev(reservas[0][0], "salida"), sale), (s.cal.ev(reservas[1][0]), entra)):
+        ev["summary"] = cambio(ev["summary"]) if callable(cambio) else cambio + ev["summary"]
+    return cal
+
+
+@pytest.mark.parametrize("sale, entra, titulo", [
+    ("(Caro H)", "", "(Caro H)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"),
+    ("", "(Heidy)", "(Heidy)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"),
+    ("(Caro H)", "(Caro H)", "(Caro H)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"),
+    ("(Caro H)", "(Heidy)", "(Caro H) (Heidy)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"),
+    (lambda t: t + " · limpia Ana", "(Heidy) ", "(Heidy) 🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers · limpia Ana"),
+])
+def test_R19_el_nombre_en_el_titulo_de_la_salida_o_la_entrada_pasa_al_relevo(tmp_path, sale, entra, titulo):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = _separados(s, sale, entra)
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))    # llega otra vez la confirmación del que entra
+    assert _partes(s) == ["ENTRA2 relevo", "ENTRA2 salida", "SALE1 entrada"]
+    assert s.cal.ev("ENTRA2", "relevo")["summary"] == titulo
+    assert _sin_escrituras(s, cal, date(2026, 10, 13))
+
+
 def test_R20_el_nombre_anadido_a_la_salida_se_queda_y_el_resto_del_titulo_sigue_al_dia(tmp_path):
     from datetime import date
     hoy = date(2026, 10, 13)
@@ -2105,3 +2139,167 @@ def test_R20_el_nombre_anadido_a_la_salida_se_queda_y_el_resto_del_titulo_sigue_
     cal.recalcular_limpiezas(hoy)
     assert s.cal.ev("SOLA1", "salida")["summary"] == "🔴 SALIDA Lavapiés · sale 11:00"
     assert _sin_escrituras(s, cal, hoy)
+
+
+def test_R21_un_titulo_reescrito_por_el_anfitrion_no_se_toca_y_al_juntarse_pasa_a_las_notas_del_relevo(tmp_path):
+    from datetime import date
+
+    from airbnb_calendar.calendario import SEPARADOR
+    hoy = date(2026, 10, 13)
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SOLA1", "2026-11-01", "2026-11-04"))
+    salida = s.cal.ev("SOLA1", "salida")
+    salida["summary"] = "Heidy limpia Lavapiés"
+    salida["description"] = "#salida 12:00\n" + salida["description"]
+    cal.recalcular_limpiezas(hoy)
+    salida = s.cal.ev("SOLA1", "salida")
+    assert salida["summary"] == "Heidy limpia Lavapiés", "como hasta ahora: el título es suyo"
+    assert hora(salida) == "2026-11-04 12:00"
+
+    s = Entorno(tmp_path / "salida")
+    cal = _separados(s, lambda t: "Heidy limpia Lavapiés", "(Caro H)")
+    salida = s.cal.ev("SALE1", "salida")
+    salida["description"] = "#salida 12:00\n" + salida["description"]
+    cal.recalcular_limpiezas(hoy)
+    assert _partes(s) == ["ENTRA2 relevo", "ENTRA2 salida", "SALE1 entrada"]
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert relevo["summary"] == "(Caro H)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 12:00 ✅ · 2 pers"
+    assert relevo["description"].startswith("#salida 12:00\nHeidy limpia Lavapiés\n\n" + SEPARADOR + "\n")
+    assert _sin_escrituras(s, cal, hoy)
+
+    # Y si es el título de la entrada el que es suyo, el relevo lleva lo añadido a la salida
+    s = Entorno(tmp_path / "entrada")
+    cal = _separados(s, "(Caro H)", lambda t: "Entra familia García")
+    cal.recalcular_limpiezas(hoy)
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert relevo["summary"] == "(Caro H)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"
+    assert relevo["description"].startswith("Entra familia García\n\n" + SEPARADOR + "\n")
+    assert _sin_escrituras(s, cal, hoy)
+
+
+@pytest.mark.parametrize("cancela", ["ENTRA2", "SALE1"])
+def test_R22_al_separarse_el_relevo_lo_anadido_al_titulo_va_a_los_dos_eventos(tmp_path, cancela):
+    from datetime import date
+
+    from airbnb_calendar.calendario import SEPARADOR
+    cancelada = "❌ CANCELADA · "
+    sale_t = ("" if cancela == "ENTRA2" else cancelada) + "🔴 SALIDA Lavapiés · sale 11:00"
+    entra_t = (cancelada if cancela == "ENTRA2" else "") + "🟢 ENTRADA Lavapiés · 2 pers"
+    for nombre, (titulo, sale, entra, notas) in {
+            "nombre": ("(Caro H)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers",
+                       "(Caro H)" + sale_t, "(Caro H)" + entra_t, ""),
+            "suyo": ("Relevo de Caro", sale_t, entra_t, "Relevo de Caro\n\n")}.items():
+        s = Entorno(tmp_path / nombre)
+        cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+        _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+        _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+        relevo = s.cal.ev("ENTRA2", "relevo")
+        relevo["summary"] = titulo
+        cal.recalcular_limpiezas(date(2026, 10, 13))
+        assert s.cal.ev("ENTRA2", "relevo")["summary"] == titulo, nombre
+        _guardar(cal, {**leer_estado(cal.buscar_eventos_reserva(cancela, None, None, None)), "cancelada": True})
+        assert _partes(s) == ["ENTRA2 entrada", "ENTRA2 salida", "SALE1 entrada", "SALE1 salida"], nombre
+        assert (s.cal.ev("SALE1", "salida")["summary"], s.cal.ev("ENTRA2")["summary"]) == (sale, entra), nombre
+        for ev in (s.cal.ev("SALE1", "salida"), s.cal.ev("ENTRA2")):
+            assert ev["description"].startswith(notas + SEPARADOR), nombre
+        assert _sin_escrituras(s, cal, date(2026, 10, 13)), nombre
+
+
+def test_R23_eventos_de_la_version_anterior_con_un_nombre_en_el_titulo_se_separan_en_una_pasada(tmp_path):
+    from datetime import date
+    hoy = date(2026, 10, 13)
+    s = Entorno(tmp_path)
+    cal = _separados(s, "(Caro H)", "(Heidy)")
+    _guardar(cal, _reserva("SOLA3", "2026-12-01", "2026-12-04"))
+    _guardar(cal, _reserva("R1", "2026-11-10", "2026-11-12"))
+    _guardar(cal, _reserva("R2", "2026-11-12", "2026-11-14"))
+    # Lo que dejó la versión anterior: títulos cambiados a mano, que ya no tocaba, y acuerdos posteriores
+    sola = s.cal.ev("SOLA3", "salida")
+    sola["summary"] = "(Caro H)" + sola["summary"]
+    sola["description"] = "#salida 12:00\n" + sola["description"]
+    relevo = s.cal.ev("R2", "relevo")
+    relevo["summary"] = relevo["summary"] + " · limpia Heidy"
+    relevo["description"] = "#entrada 13:00\n" + relevo["description"]
+    assert not any("airbnb_titulo_mano" in ev["extendedProperties"]["private"] for ev in s.cal.eventos.values())
+    antes = copy.deepcopy(s.cal.eventos)
+    Calendario(s.cfg, s.cal, dormir=lambda _: None).recalcular_limpiezas(hoy, dias=None, simulacion=True)
+    assert s.cal.eventos == antes, "la simulación no escribe nada"
+
+    cal.recalcular_limpiezas(hoy, dias=None)
+    assert s.cal.ev("ENTRA2", "relevo")["summary"] == "(Caro H) (Heidy)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"
+    assert s.cal.ev("SOLA3", "salida")["summary"] == "(Caro H)🔴 SALIDA Lavapiés · sale 12:00 ✅"
+    assert s.cal.ev("R2", "relevo")["summary"] == \
+        "🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers · entra 13:00 ✅ · limpia Heidy"
+    antes = copy.deepcopy(s.cal.eventos)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    cal.recalcular_limpiezas(hoy, dias=None)
+    assert s.cal.eventos == antes and (cal.stats["creados"], cal.stats["limpiezas_recalculadas"]) == (0, 0)
+
+
+def test_R24_un_nombre_en_una_cadena_de_relevos_va_a_cada_relevo_con_su_evento(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = _separados(s, "(Heidy)", "(Caro H)", (("A1", "2026-11-01", "2026-11-05"), ("B1", "2026-11-05", "2026-11-08"),
+                                                 ("Z1", "2026-10-28", "2026-11-01")))
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    assert _partes(s) == ["A1 relevo", "B1 relevo", "B1 salida", "Z1 entrada"]
+    assert s.cal.ev("A1", "relevo")["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"
+    assert s.cal.ev("B1", "relevo")["summary"] == "(Heidy) (Caro H)🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 11:00 · 2 pers"
+    assert _sin_escrituras(s, cal, date(2026, 10, 13))
+
+
+def test_R25_juntar_o_separar_con_nombres_cortado_en_cualquier_escritura_no_pierde_ningun_nombre(tmp_path):
+    from datetime import date
+    hoy = date(2026, 10, 13)
+    nombres = ("(Caro H)", "(Heidy)", "Entra familia García", "Relevo de Caro")
+
+    def juntar(s, cal):
+        cal.recalcular_limpiezas(hoy)
+
+    def separar(s, cal):
+        _guardar(cal, {**leer_estado(cal.buscar_eventos_reserva("ENTRA2", None, None, None)), "cancelada": True})
+
+    def juntado(s, relevo):
+        juntar(s, Calendario(s.cfg, s.cal))
+        s.cal.ev("ENTRA2", "relevo")["summary"] = relevo(s.cal.ev("ENTRA2", "relevo")["summary"])
+
+    def visibles(s):
+        texto = "\n".join(ev["summary"] + ev["description"] for ev in s.cal.eventos.values())
+        return {n for n in nombres if n in texto}
+
+    casos = {"juntar": (("(Caro H)", "(Heidy)"), lambda s: None, juntar),
+             "juntar suyo": (("(Caro H)", lambda t: "Entra familia García"), lambda s: None, juntar),
+             "separar": (("(Caro H)", "(Heidy)"), lambda s: juntado(s, lambda t: t), separar),
+             "separar suyo": (("(Caro H)", ""), lambda s: juntado(s, lambda t: "Relevo de Caro"), separar)}
+    for nombre, (titulos, preparar, paso) in casos.items():
+        s = Entorno(tmp_path / nombre / "referencia")
+        _separados(s, *titulos)
+        preparar(s)
+        cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+        esperados = visibles(s)
+        paso(s, cal)
+        cal.recalcular_limpiezas(hoy)
+        referencia = _foto(s)
+        assert visibles(s) == esperados, nombre
+
+        for n in itertools.count(1):
+            s = Entorno(tmp_path / nombre / str(n))
+            _separados(s, *titulos)
+            preparar(s)
+            cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+            original = _fallar_escritura(s, n)
+            try:
+                paso(s, cal)
+            except RuntimeError:
+                cortado = True
+            else:
+                cortado = False
+            s.cal.request = original
+            assert visibles(s) == esperados, f"{nombre}: cortado en la escritura {n}"
+            paso(s, cal)                                 # se reintenta el correo / la siguiente ejecución
+            cal.recalcular_limpiezas(hoy)
+            assert _foto(s) == referencia, f"{nombre}: cortado en la escritura {n}"
+            if not cortado:
+                break
+        assert n > 3, f"{nombre}: el corte ha probado {n - 1} escrituras"

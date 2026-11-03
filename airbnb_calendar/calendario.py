@@ -145,15 +145,21 @@ class Mano:
     def poner(self, titulo: str) -> str:
         return self.antes + titulo + self.despues
 
+    def __add__(self, otra: Mano) -> Mano:
+        """Lo de las dos, la primera delante, sin repetir un trozo que ya esté."""
+        return Mano(_juntar(self.antes, otra.antes), _juntar(self.despues, otra.despues))
+
 
 @dataclass(frozen=True)
 class Notas:
     """
     Cambios en lo que escribió el anfitrión en un evento al juntar o separar un relevo: fuera las etiquetas de un tipo
-    (#entrada / #salida, que pasan a ser de otra reserva) y dentro las líneas que lleguen de otro evento y aún no estén.
+    (#entrada / #salida, que pasan a ser de otra reserva) y dentro las líneas que lleguen de otro evento y aún no estén,
+    y lo añadido al título del otro evento.
     """
     quitar: str | None = None
     anadir: str = ""
+    titulo: Mano = Mano()
 
     def aplicar(self, texto: str) -> str:
         lineas = _sin_etiquetas(texto, self.quitar).splitlines() if self.quitar else texto.splitlines()
@@ -165,7 +171,7 @@ class Notas:
         return "\n".join(lineas).strip()
 
     def __add__(self, otras: Notas) -> Notas:
-        return Notas(self.quitar or otras.quitar, "\n".join(filter(None, (self.anadir, otras.anadir))))
+        return Notas(self.quitar or otras.quitar, "\n".join(filter(None, (self.anadir, otras.anadir))), self.titulo + otras.titulo)
 
 
 class CalendarioInaccesible(RuntimeError):
@@ -348,7 +354,11 @@ class Calendario:
         if actual.get("location") and "location" not in previo:
             previo["location"] = _h(None)          # antes el script no escribía la ubicación: la que haya es del anfitrión
         nuevo_manual = notas.aplicar(manual) if notas else manual
-        mano = _mano_titulo(ev)
+        propia = _mano_titulo(ev)
+        if propia is None and _parte(ev) != parte:
+            # Un título del anfitrión no vale para otra parte (un relevo que se junta o se separa): pasa a sus notas
+            nuevo_manual, propia = Notas(anadir=ev.get("summary") or "").aplicar(nuevo_manual), Mano()
+        mano = ((notas.titulo if notas else Mano()) + propia) if propia is not None else None
 
         dia_completo = bool(ev and (ev.get("start") or {}).get("date"))
 
@@ -494,7 +504,8 @@ class Calendario:
         Junta en un relevo la salida de la reserva anterior y la entrada de esta, o lo separa si ya no lo es (cancelada,
         otras fechas). Solo lo hace la reserva que entra. Cada etiqueta llega a su nuevo evento antes de salir del
         anterior, así que si se corta a medias sigue en un evento donde es de la misma reserva, y la siguiente pasada
-        termina el trabajo. Por orden:
+        termina el trabajo. Lo añadido al título va con las notas sin etiqueta, y un título del anfitrión, como una línea
+        de notas. Por orden:
         1. Al separar, vuelve la salida del que salía (con su estado), con lo escrito en el relevo salvo las #entrada.
         2. Al juntar, las #salida de esta reserva que hay en su entrada pasan al relevo en el que sale o a su salida.
         3. Las #entrada de la salida del que sale ahora pasan a su entrada.
@@ -512,8 +523,8 @@ class Calendario:
             self._contar("separados", "separaría" if simulacion else "separan", antes, v.e)
             sale = self.buscar_eventos_reserva(antes["codigo"], antes["alojamiento"], antes["checkin"], antes["checkout"])
             # Lo que escribió el anfitrión en el relevo cuenta, aunque ahora salga otro día
-            self._poner_al_dia({**sale, "sale_en": None}, self._vista(leer_estado({**sale, "sale_en": hueco})),
-                               simulacion=simulacion, notas={"salida": Notas(anadir=_sin_etiquetas(manual, DEL_QUE_ENTRA))})
+            self._poner_al_dia({**sale, "sale_en": None}, self._vista(leer_estado({**sale, "sale_en": hueco})), simulacion=simulacion,
+                               notas={"salida": Notas(anadir=_sin_etiquetas(manual, DEL_QUE_ENTRA)) + _notas_del_titulo(hueco)})
         if hueco and not sigue and (antes or ahora):
             notas["entrada"] = Notas(quitar=DEL_QUE_SALE)
             if not antes and (lineas := _lineas_con(manual, DEL_QUE_SALE)):
@@ -535,7 +546,8 @@ class Calendario:
         if (lineas := _lineas_con(manual_sale, DEL_QUE_ENTRA)) and not simulacion:
             self._poner_al_dia(sale, self._vista(leer_estado(sale)), notas={"entrada": Notas(anadir=lineas)})
             _, manual_sale = self._leer_evento(sale["salida"])      # su propio relevo puede haberle pasado sus #salida
-        notas["entrada"] = notas.get("entrada", Notas()) + Notas(anadir=_sin_etiquetas(manual_sale, DEL_QUE_ENTRA))
+        notas["entrada"] = (notas.get("entrada", Notas()) + Notas(anadir=_sin_etiquetas(manual_sale, DEL_QUE_ENTRA))
+                            + _notas_del_titulo(sale["salida"]))
         return notas, sale["salida"]
 
     def _anadir_notas(self, ev: dict, lineas: str, simulacion: bool) -> None:
@@ -871,6 +883,21 @@ def _mano_titulo(ev: dict | None) -> Mano | None:
     trozos = ((i, j) for i in range(len(titulo)) for j in range(len(titulo), i, -1)
               if not titulo[i].isspace() and not titulo[j - 1].isspace())
     return next((Mano(titulo[:i], titulo[j:]) for i, j in trozos if _h(guardada.poner(titulo[i:j])) == previo), None)
+
+
+def _notas_del_titulo(ev: dict) -> Notas:
+    """Lo que escribió el anfitrión en el título, para otro evento: lo añadido o, si el título es suyo, una línea de notas."""
+    mano = _mano_titulo(ev)
+    return Notas(titulo=mano) if mano is not None else Notas(anadir=ev.get("summary") or "")
+
+
+def _juntar(a: str, b: str) -> str:
+    """Dos trozos añadidos al título, `a` delante; si uno ya está en el otro, solo ese."""
+    if a.strip() in b:
+        return b
+    if b.strip() in a:
+        return a
+    return a + ("" if a[-1].isspace() or b[0].isspace() else " ") + b
 
 
 def _h(valor) -> str:
