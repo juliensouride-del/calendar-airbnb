@@ -27,6 +27,8 @@ id = "PEGA_AQUI_EL_ID_DEL_CALENDARIO"
 zona_horaria = "Europe/Madrid"
 # Cada reserva son DOS eventos cortos: la ENTRADA (el día de llegada, a la hora de entrada)
 # y la SALIDA (el día de salida, a la hora de salida). Cada uno dura duracion_evento_min.
+# Si un huésped sale el día que entra el siguiente en el mismo piso, su salida y esa entrada
+# son un solo evento (relevo), de la hora de salida a la de entrada.
 duracion_evento_min = 30
 # Horario estándar (salvo acuerdo expreso): nunca se entra antes ni se sale después.
 # Si el huésped llega más tarde o sale antes, el evento usa su hora.
@@ -44,6 +46,7 @@ crear_evento_desde_mensaje = true
 reserva = "10"          # eventos de entrada
 alerta_limpieza = "6"   # entradas con [ALERTA LIMPIEZA / AJUSTE HORARIO]
 salida = "11"           # eventos de salida
+# relevo = "7"          # salida y entrada el mismo día en el mismo piso (sin esta línea, 7)
 cancelada = "8"
 
 [limpieza]

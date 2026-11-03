@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from . import avisos, formato, reglas
-from .calendario import CalendarioInaccesible, leer_estado
+from .calendario import CalendarioInaccesible, en_calendario, leer_estado
 from .config import Config
 from .gemini import GeminiAgotado, cuota_diaria_agotada, es_mensaje_de_cortesia
 from .parser import DatosCorreo, parsear_correo
@@ -176,7 +176,7 @@ class Sincronizador:
 
     def _cancelacion(self, d: DatosCorreo) -> None:
         eventos = self._buscar(d)
-        if not (eventos["entrada"] or eventos["salida"]):
+        if not en_calendario(eventos):
             log.info("  Cancelación de una reserva que no está en el calendario (%s).", d.codigo)
             return
         estado = leer_estado(eventos) or reglas.crear_estado(d)
@@ -188,7 +188,7 @@ class Sincronizador:
         eventos = self._buscar(d)
         # Sin evento (p. ej. la confirmación es anterior a lo cargado): se crea con lo que haya en el mensaje,
         # solo si el alojamiento está en config.toml (los mensajes de otros anuncios no llenan el calendario)
-        if eventos["entrada"] or eventos["salida"] or (self.cfg.crear_evento_desde_mensaje and d.alojamiento_configurado):
+        if en_calendario(eventos) or (self.cfg.crear_evento_desde_mensaje and d.alojamiento_configurado):
             return self._confirmacion_o_mensaje(d, ctx, eventos)
         # No se crea, pero si el huésped pide algo se avisa.
         # (Sin reglas deterministas, para no repetir el aviso con cada mensaje.)
