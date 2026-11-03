@@ -139,6 +139,11 @@ class Mano:
     antes: str = ""
     despues: str = ""
 
+    @classmethod
+    def alrededor(cls, titulo: str, i: int, j: int) -> Mano:
+        """Lo que hay en `titulo` delante y detrás de titulo[i:j]; los espacios sueltos o al final no cuentan."""
+        return cls(titulo[:i] if titulo[:i].strip() else "", titulo[j:].rstrip())
+
     def __bool__(self) -> bool:
         return bool(self.antes or self.despues)
 
@@ -887,8 +892,8 @@ def _mano_titulo(ev: dict | None, auto: str | None = None) -> Mano | None:
     fin = k + len(auto) if k >= 0 else 0
     trozos = ((i, j) for i in range(k + 1 if k >= 0 else len(titulo)) for j in range(len(titulo), max(i, fin - 1), -1)
               if not titulo[i].isspace() and not titulo[j - 1].isspace())
-    hallada = next((Mano(titulo[:i], titulo[j:]) for i, j in trozos if _h(guardada.poner(titulo[i:j])) == previo), None)
-    return Mano(titulo[:k], titulo[fin:]) if hallada is None and k >= 0 else hallada
+    hallada = next((Mano.alrededor(titulo, i, j) for i, j in trozos if _h(guardada.poner(titulo[i:j])) == previo), None)
+    return Mano.alrededor(titulo, k, fin) if hallada is None and k >= 0 else hallada
 
 
 def _notas_del_titulo(ev: dict) -> Notas:

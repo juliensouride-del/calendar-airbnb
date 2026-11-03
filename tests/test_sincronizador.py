@@ -2367,3 +2367,19 @@ def test_R27_un_nombre_se_separa_aunque_el_anfitrion_haya_puesto_al_dia_el_resto
     cal.recalcular_limpiezas(hoy, dias=None)
     assert s.cal.ev("E1")["summary"] == "(Caro H)🟢 ENTRADA Lavapiés · 2 pers"
     assert _sin_escrituras(s, cal, hoy)
+
+
+def test_R28_los_espacios_sueltos_en_el_titulo_no_son_algo_anadido(tmp_path):
+    from datetime import date
+    hoy = date(2026, 10, 13)
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("S1", "2026-12-01", "2026-12-04"))
+    for escrito, titulo in (("(Caro H) 🔴 SALIDA Lavapiés · sale 11:00 ", "(Caro H) 🔴 SALIDA Lavapiés · sale 11:00"),
+                            (" 🔴 SALIDA Lavapiés · sale 11:00 · limpia Ana ", "🔴 SALIDA Lavapiés · sale 11:00 · limpia Ana"),
+                            ("🔴 SALIDA Lavapiés · sale 11:00  ", "🔴 SALIDA Lavapiés · sale 11:00")):
+        s.cal.ev("S1", "salida")["summary"] = escrito
+        cal.recalcular_limpiezas(hoy, dias=None)
+        assert s.cal.ev("S1", "salida")["summary"] == titulo, escrito
+        assert _sin_escrituras(s, cal, hoy), escrito
+    assert "airbnb_titulo_mano" not in s.cal.ev("S1", "salida")["extendedProperties"]["private"]
