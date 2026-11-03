@@ -72,7 +72,7 @@ Si un huésped sale el mismo día que entra el siguiente en el mismo piso, su sa
 - Mientras hay relevo, el huésped que sale no tiene evento de salida. Su entrada sigue igual.
 - Si una de las dos reservas se cancela o cambia de fechas, el relevo se separa. Vuelve la salida del que se iba y el evento pasa a ser una entrada normal.
 - Lo que se añade al título pasa al relevo. Lleva lo de la salida del que se va y lo de la entrada del que llega, sin repetir: `(Caro H)🔄 SALIDA Y ENTRADA Torrecilla · …`. Al separarse, va a los dos eventos.
-- Un título cambiado entero no se pierde. Al juntarse, pasa como una línea a las notas del relevo, encima de la línea automática. Al separarse, a las de los dos eventos. El título vuelve a ser el automático.
+- Un título cambiado entero no se pierde. Al juntarse, pasa como una línea a las notas del relevo, encima de la línea automática. Al separarse, a las de los dos eventos. La línea pierde sus `#entrada` y `#salida`, porque en un título no son un acuerdo. El título vuelve a ser el automático.
 - Salir el día anterior no es un relevo. Son dos eventos, como siempre.
 
 La descripción tiene los avisos de los dos huéspedes, quién sale, la limpieza y quién entra:
@@ -224,7 +224,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 158 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 166 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 
