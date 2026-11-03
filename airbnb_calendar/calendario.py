@@ -354,7 +354,8 @@ class Calendario:
         if actual.get("location") and "location" not in previo:
             previo["location"] = _h(None)          # antes el script no escribía la ubicación: la que haya es del anfitrión
         nuevo_manual = notas.aplicar(manual) if notas else manual
-        propia = _mano_titulo(ev)
+        auto = p.titulo(v, self.cfg)
+        propia = _mano_titulo(ev, auto)
         if propia is None and _parte(ev) != parte:
             # Un título del anfitrión no vale para otra parte (un relevo que se junta o se separa): pasa a sus notas
             nuevo_manual, propia = Notas(anadir=_linea_del_titulo(ev)).aplicar(nuevo_manual), Mano()
@@ -376,7 +377,7 @@ class Calendario:
         color = ("cancelada" if v.e["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else p.color)
         alojamiento = self.cfg.alojamiento_por_nombre(v.e["alojamiento"])
-        nuevo = {"summary": (mano or Mano()).poner(p.titulo(v, self.cfg)), "colorId": self.cfg.colores[color],
+        nuevo = {"summary": (mano or Mano()).poner(auto), "colorId": self.cfg.colores[color],
                  "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(fin), "auto": p.descripcion(v, self.cfg)}
         escrito, cuerpo = {}, {}
@@ -870,19 +871,24 @@ def _mano_guardada(ev: dict | None) -> Mano:
         return Mano()
 
 
-def _mano_titulo(ev: dict | None) -> Mano | None:
+def _mano_titulo(ev: dict | None, auto: str | None = None) -> Mano | None:
     """
     Lo que el anfitrión ha añadido ahora al título automático, o None si lo ha cambiado (el título es suyo). El título
     automático de la última escritura es el trozo del título que, con lo añadido entonces, da la huella de lo escrito:
     no depende de config.toml ni del formato, y sirve también en los eventos de versiones que no guardaban lo añadido.
+    Si no está pero sí `auto` (el título automático de ahora: el anfitrión lo puso al día a mano), lo añadido es lo de
+    alrededor. Si están los dos, manda el de la última escritura: `auto` puede ser un trozo suyo (un acuerdo quitado).
     """
     guardada, previo = _mano_guardada(ev), _escrito(ev).get("summary")
     titulo = (ev or {}).get("summary") or ""
     if previo is None or _h(titulo) == previo:
         return guardada
-    trozos = ((i, j) for i in range(len(titulo)) for j in range(len(titulo), i, -1)
+    k = titulo.find(auto) if auto else -1
+    fin = k + len(auto) if k >= 0 else 0
+    trozos = ((i, j) for i in range(k + 1 if k >= 0 else len(titulo)) for j in range(len(titulo), max(i, fin - 1), -1)
               if not titulo[i].isspace() and not titulo[j - 1].isspace())
-    return next((Mano(titulo[:i], titulo[j:]) for i, j in trozos if _h(guardada.poner(titulo[i:j])) == previo), None)
+    hallada = next((Mano(titulo[:i], titulo[j:]) for i, j in trozos if _h(guardada.poner(titulo[i:j])) == previo), None)
+    return Mano(titulo[:k], titulo[fin:]) if hallada is None and k >= 0 else hallada
 
 
 def _notas_del_titulo(ev: dict) -> Notas:

@@ -2333,3 +2333,37 @@ def test_R26_una_etiqueta_en_un_titulo_que_pasa_a_las_notas_no_es_un_acuerdo(tmp
     assert (_acuerdos(cal, "SALE1"), _acuerdos(cal, "ENTRA2")) == ((None, None), (None, None))
     assert (hora(relevo), hora(relevo, "end")) == ("2026-11-05 11:00", "2026-11-05 15:00")
     assert _sin_escrituras(s, cal, hoy)
+
+
+def test_R27_un_nombre_se_separa_aunque_el_anfitrion_haya_puesto_al_dia_el_resto_del_titulo(tmp_path):
+    from datetime import date
+    hoy = date(2026, 10, 13)
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("S1", "2026-12-01", "2026-12-04"))
+    # La versión anterior no ponía al día un título cambiado: el anfitrión cambió la hora a mano
+    salida = s.cal.ev("S1", "salida")
+    salida["summary"] = "(Caro H)🔴 SALIDA Lavapiés · sale 12:00 ✅"
+    salida["description"] = "#salida 12:00\n" + salida["description"]
+    cal.recalcular_limpiezas(hoy, dias=None)
+    assert s.cal.ev("S1", "salida")["summary"] == "(Caro H)🔴 SALIDA Lavapiés · sale 12:00 ✅"
+    assert _sin_escrituras(s, cal, hoy)
+    salida = s.cal.ev("S1", "salida")
+    salida["description"] = salida["description"].replace("#salida 12:00\n", "")
+    cal.recalcular_limpiezas(hoy, dias=None)
+    assert s.cal.ev("S1", "salida")["summary"] == "(Caro H)🔴 SALIDA Lavapiés · sale 11:00"
+
+    # El título de ahora puede estar dentro del de la última escritura: lo que le sobra no es del anfitrión
+    s = Entorno(tmp_path / "entrada")
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("E1", "2026-12-01", "2026-12-04"))
+    entrada = s.cal.ev("E1")
+    entrada["description"] = "#entrada 16:00\n" + entrada["description"]
+    cal.recalcular_limpiezas(hoy, dias=None)
+    entrada = s.cal.ev("E1")
+    assert entrada["summary"] == "🟢 ENTRADA Lavapiés · 2 pers · entra 16:00 ✅"
+    entrada["summary"] = "(Caro H)" + entrada["summary"]
+    entrada["description"] = entrada["description"].replace("#entrada 16:00\n", "")
+    cal.recalcular_limpiezas(hoy, dias=None)
+    assert s.cal.ev("E1")["summary"] == "(Caro H)🟢 ENTRADA Lavapiés · 2 pers"
+    assert _sin_escrituras(s, cal, hoy)
