@@ -2383,3 +2383,18 @@ def test_R28_los_espacios_sueltos_en_el_titulo_no_son_algo_anadido(tmp_path):
         assert s.cal.ev("S1", "salida")["summary"] == titulo, escrito
         assert _sin_escrituras(s, cal, hoy), escrito
     assert "airbnb_titulo_mano" not in s.cal.ev("S1", "salida")["extendedProperties"]["private"]
+
+
+@pytest.mark.parametrize("guardado", ['["a", "b", "c"]', '{"a": 1}', '"x"', '[1, 2]', "no es json"])
+def test_R29_lo_anadido_guardado_mal_no_corta_la_ejecucion(tmp_path, guardado):
+    from datetime import date
+    hoy = date(2026, 10, 13)
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("S1", "2026-12-01", "2026-12-04"))
+    s.cal.ev("S1", "salida")["extendedProperties"]["private"]["airbnb_titulo_mano"] = guardado
+    cal.recalcular_limpiezas(hoy, dias=None)
+    salida = s.cal.ev("S1", "salida")
+    assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 11:00"
+    assert "airbnb_titulo_mano" not in salida["extendedProperties"]["private"]
+    assert _sin_escrituras(s, cal, hoy)

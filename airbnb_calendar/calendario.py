@@ -871,9 +871,10 @@ def _escrito(ev: dict | None) -> dict:
 
 def _mano_guardada(ev: dict | None) -> Mano:
     try:
-        return Mano(*json.loads(_props(ev).get(P_MANO) or '["", ""]'))
+        mano = json.loads(_props(ev).get(P_MANO) or "[]")
     except json.JSONDecodeError:
         return Mano()
+    return Mano(*mano) if isinstance(mano, list) and len(mano) == 2 and all(isinstance(t, str) for t in mano) else Mano()
 
 
 def _mano_titulo(ev: dict | None, auto: str | None = None) -> Mano | None:
