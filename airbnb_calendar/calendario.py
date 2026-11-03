@@ -21,7 +21,9 @@ que permite borrarlos todos sin tocar otros eventos. Un evento sin parte es del 
 anterior (uno por estancia): hace de entrada y se convierte al escribirlo.
 
 Cambios a mano: el script recuerda (airbnb_escrito) lo último que escribió en cada
-campo. Si el anfitrión cambia el título, el color o la ubicación, ese campo ya no se toca.
+campo. Si el anfitrión cambia el color o la ubicación, ese campo ya no se toca. Lo que añade al título (un nombre,
+p. ej. '(Caro H)🔴 SALIDA ...') se guarda aparte (Mano) y el título automático se sigue actualizando; si cambia el
+propio título automático, el título es suyo y ya no se toca.
 La hora no: el equipo de limpieza arrastra eventos sin querer, así que un evento movido a
 mano vuelve a su hora en la siguiente pasada. Una hora acordada solo se fija escribiendo
 '#entrada HH:MM' o '#salida HH:MM' en los eventos de la reserva (en el relevo, #salida es
@@ -64,6 +66,7 @@ P_LIMPIEZA = "airbnb_limpieza"        # última evaluación de la limpieza (para
 P_ESTADO = "airbnb_estado_"           # JSON del estado en trozos: airbnb_estado_n (cuántos), airbnb_estado_0, _1, ...
 P_SALIENTE = "airbnb_saliente_"       # en el relevo, el de la reserva que sale (igual, en trozos)
 P_ESCRITO = "airbnb_escrito"          # huella de lo último que escribió el script (detecta cambios a mano)
+P_MANO = "airbnb_titulo_mano"         # lo que añadió el anfitrión al título (Mano en JSON; sin nada, no está)
 # La descripción tiene dos partes: lo que escribe el anfitrión (encima) y lo automático (debajo)
 SEPARADOR = "—— Airbnb · automático (escribe tus notas encima de esta línea) ——"
 TAM_TROZO = 900                       # los valores de una propiedad admiten hasta 1024 caracteres
@@ -128,6 +131,19 @@ PARTES = {
 }
 # Al juntar o separar un relevo, cada línea con etiqueta pasa a un evento donde sigue siendo de su reserva
 (DEL_QUE_ENTRA,), (DEL_QUE_SALE,) = PARTES["relevo"].etiquetas, PARTES["relevo"].etiquetas_sale
+
+
+@dataclass(frozen=True)
+class Mano:
+    """Lo que el anfitrión añade al título automático: el texto de delante y el de detrás."""
+    antes: str = ""
+    despues: str = ""
+
+    def __bool__(self) -> bool:
+        return bool(self.antes or self.despues)
+
+    def poner(self, titulo: str) -> str:
+        return self.antes + titulo + self.despues
 
 
 @dataclass(frozen=True)
@@ -317,10 +333,10 @@ class Calendario:
                 notas: Notas | None = None) -> dict:
         """
         Lo que hay que escribir en el evento de esa parte (para PATCH o POST). Lo que el anfitrión haya cambiado a
-        mano desde la última escritura del script (título, color, ubicación o la parte automática de la descripción)
-        NO se toca; su parte de la descripción (encima del separador) se conserva siempre, salvo los cambios de
-        `notas`. La hora siempre es la calculada (con los acuerdos #entrada / #salida), salvo en un evento pasado a
-        día completo.
+        mano desde la última escritura del script (color, ubicación, el título automático o la parte automática de la
+        descripción) NO se toca; su parte de la descripción (encima del separador) se conserva siempre, salvo los cambios de
+        `notas`, y lo que añada al título se queda alrededor del título automático. La hora siempre es la calculada
+        (con los acuerdos #entrada / #salida), salvo en un evento pasado a día completo.
         """
         p = PARTES[parte]
         limpieza = v.limpieza if p.con_limpieza else None
@@ -332,6 +348,7 @@ class Calendario:
         if actual.get("location") and "location" not in previo:
             previo["location"] = _h(None)          # antes el script no escribía la ubicación: la que haya es del anfitrión
         nuevo_manual = notas.aplicar(manual) if notas else manual
+        mano = _mano_titulo(ev)
 
         dia_completo = bool(ev and (ev.get("start") or {}).get("date"))
 
@@ -340,6 +357,8 @@ class Calendario:
                 # Pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora. Si no, la hora solo
                 # la cambia una etiqueta: un evento arrastrado sin querer vuelve a la suya
                 return dia_completo
+            if k == "summary":
+                return mano is None
             return k in previo and _h(actual.get(k)) != previo[k]     # cambiado a mano desde la última escritura
 
         inicio = datetime.fromisoformat(f"{v.e[p.fecha]}T{p.hora(v, self.cfg)}")
@@ -347,7 +366,7 @@ class Calendario:
         color = ("cancelada" if v.e["cancelada"] else
                  "alerta_limpieza" if limpieza and not limpieza["ok"] else p.color)
         alojamiento = self.cfg.alojamiento_por_nombre(v.e["alojamiento"])
-        nuevo = {"summary": p.titulo(v, self.cfg), "colorId": self.cfg.colores[color],
+        nuevo = {"summary": (mano or Mano()).poner(p.titulo(v, self.cfg)), "colorId": self.cfg.colores[color],
                  "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(fin), "auto": p.descripcion(v, self.cfg)}
         escrito, cuerpo = {}, {}
@@ -369,6 +388,9 @@ class Calendario:
             else:
                 cuerpo[k] = val
         props = self._propiedades(v, parte, limpieza, ev)
+        guardar = _mano_guardada(ev) if mano is None else mano
+        if guardar or P_MANO in _props(ev):
+            props[P_MANO] = json.dumps([guardar.antes, guardar.despues], ensure_ascii=False) if guardar else None
         props[P_ESCRITO] = json.dumps(escrito, separators=(",", ":"))
         cuerpo["extendedProperties"] = {"private": props}
         return cuerpo
@@ -827,6 +849,28 @@ def _escrito(ev: dict | None) -> dict:
         return json.loads(_props(ev).get(P_ESCRITO) or "{}")
     except json.JSONDecodeError:
         return {}
+
+
+def _mano_guardada(ev: dict | None) -> Mano:
+    try:
+        return Mano(*json.loads(_props(ev).get(P_MANO) or '["", ""]'))
+    except json.JSONDecodeError:
+        return Mano()
+
+
+def _mano_titulo(ev: dict | None) -> Mano | None:
+    """
+    Lo que el anfitrión ha añadido ahora al título automático, o None si lo ha cambiado (el título es suyo). El título
+    automático de la última escritura es el trozo del título que, con lo añadido entonces, da la huella de lo escrito:
+    no depende de config.toml ni del formato, y sirve también en los eventos de versiones que no guardaban lo añadido.
+    """
+    guardada, previo = _mano_guardada(ev), _escrito(ev).get("summary")
+    titulo = (ev or {}).get("summary") or ""
+    if previo is None or _h(titulo) == previo:
+        return guardada
+    trozos = ((i, j) for i in range(len(titulo)) for j in range(len(titulo), i, -1)
+              if not titulo[i].isspace() and not titulo[j - 1].isspace())
+    return next((Mano(titulo[:i], titulo[j:]) for i, j in trozos if _h(guardada.poner(titulo[i:j])) == previo), None)
 
 
 def _h(valor) -> str:

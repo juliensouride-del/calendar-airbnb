@@ -2071,3 +2071,37 @@ def test_R18_una_linea_con_salida_y_entrada_no_lleva_la_entrada_al_relevo_de_la_
     assert _acuerdos(cal, "B1") == (None, None), "el #entrada de A1 no pasa a ser de B1"
     assert "entra 17:00" not in s.cal.ev("B1", "relevo")["summary"]
     assert _sin_escrituras(s, cal, date(2026, 10, 13))
+
+
+# ---------------------------------------------------------------------------
+#  Lo que añade el anfitrión al título (un nombre) se conserva y pasa al relevo
+# ---------------------------------------------------------------------------
+
+
+def test_R20_el_nombre_anadido_a_la_salida_se_queda_y_el_resto_del_titulo_sigue_al_dia(tmp_path):
+    from datetime import date
+    hoy = date(2026, 10, 13)
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SOLA1", "2026-11-01", "2026-11-05"))
+    salida = s.cal.ev("SOLA1", "salida")
+    salida["summary"] = "(Caro H)" + salida["summary"]
+    salida["description"] = "#salida 12:00\n" + salida["description"]
+    cal.recalcular_limpiezas(hoy)
+    salida = s.cal.ev("SOLA1", "salida")
+    assert salida["summary"] == "(Caro H)🔴 SALIDA Lavapiés · sale 12:00 ✅"
+    assert hora(salida) == "2026-11-05 12:00"
+    assert _sin_escrituras(s, cal, hoy)
+
+    # Lo que pone detrás también se queda, y un correo del huésped no lo quita
+    salida["summary"] = "(Caro H)🔴 SALIDA Lavapiés · sale 12:00 ✅ · limpia Ana"
+    _guardar(cal, {**leer_estado(cal.buscar_eventos_reserva("SOLA1", None, None, None)), "total": 3})
+    assert s.cal.ev("SOLA1", "salida")["summary"] == "(Caro H)🔴 SALIDA Lavapiés · sale 12:00 ✅ · limpia Ana"
+
+    # El anfitrión quita el nombre: el título vuelve a ser automático y el nombre no vuelve
+    salida = s.cal.ev("SOLA1", "salida")
+    salida["summary"] = "🔴 SALIDA Lavapiés · sale 12:00 ✅"
+    salida["description"] = salida["description"].replace("#salida 12:00\n", "")
+    cal.recalcular_limpiezas(hoy)
+    assert s.cal.ev("SOLA1", "salida")["summary"] == "🔴 SALIDA Lavapiés · sale 11:00"
+    assert _sin_escrituras(s, cal, hoy)
