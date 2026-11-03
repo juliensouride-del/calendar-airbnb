@@ -357,7 +357,7 @@ class Calendario:
         propia = _mano_titulo(ev)
         if propia is None and _parte(ev) != parte:
             # Un título del anfitrión no vale para otra parte (un relevo que se junta o se separa): pasa a sus notas
-            nuevo_manual, propia = Notas(anadir=ev.get("summary") or "").aplicar(nuevo_manual), Mano()
+            nuevo_manual, propia = Notas(anadir=_linea_del_titulo(ev)).aplicar(nuevo_manual), Mano()
         mano = ((notas.titulo if notas else Mano()) + propia) if propia is not None else None
 
         dia_completo = bool(ev and (ev.get("start") or {}).get("date"))
@@ -888,7 +888,12 @@ def _mano_titulo(ev: dict | None) -> Mano | None:
 def _notas_del_titulo(ev: dict) -> Notas:
     """Lo que escribió el anfitrión en el título, para otro evento: lo añadido o, si el título es suyo, una línea de notas."""
     mano = _mano_titulo(ev)
-    return Notas(titulo=mano) if mano is not None else Notas(anadir=ev.get("summary") or "")
+    return Notas(titulo=mano) if mano is not None else Notas(anadir=_linea_del_titulo(ev))
+
+
+def _linea_del_titulo(ev: dict) -> str:
+    """Un título del anfitrión como línea de notas: sin #entrada ni #salida, que en el título nunca fueron un acuerdo."""
+    return _sin_etiquetas(_sin_etiquetas(ev.get("summary") or "", DEL_QUE_ENTRA), DEL_QUE_SALE)
 
 
 def _juntar(a: str, b: str) -> str:

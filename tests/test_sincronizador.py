@@ -2303,3 +2303,33 @@ def test_R25_juntar_o_separar_con_nombres_cortado_en_cualquier_escritura_no_pier
             if not cortado:
                 break
         assert n > 3, f"{nombre}: el corte ha probado {n - 1} escrituras"
+
+
+def test_R26_una_etiqueta_en_un_titulo_que_pasa_a_las_notas_no_es_un_acuerdo(tmp_path):
+    from datetime import date
+
+    from airbnb_calendar.calendario import SEPARADOR
+    hoy = date(2026, 10, 13)
+    for etiqueta in ("#entrada 16:00", "#salida 09:00"):
+        s = Entorno(tmp_path / etiqueta[1:3])
+        cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+        _guardar(cal, _reserva("A1", "2026-11-01", "2026-11-05"))
+        _guardar(cal, _reserva("B1", "2026-11-05", "2026-11-08"))
+        s.cal.ev("B1", "relevo")["summary"] = "Relevo Caro " + etiqueta
+        cal.recalcular_limpiezas(hoy)
+        _guardar(cal, {**leer_estado(cal.buscar_eventos_reserva("B1", None, None, None)), "cancelada": True})
+        cal.recalcular_limpiezas(hoy)
+        for ev in (s.cal.ev("A1", "salida"), s.cal.ev("B1")):
+            assert ev["description"].startswith("Relevo Caro\n\n" + SEPARADOR), etiqueta
+        assert (_acuerdos(cal, "A1"), _acuerdos(cal, "B1")) == ((None, None), (None, None)), etiqueta
+        assert (hora(s.cal.ev("A1")), hora(s.cal.ev("B1", "salida"))) == ("2026-11-01 15:00", "2026-11-08 11:00"), etiqueta
+        assert _sin_escrituras(s, cal, hoy), etiqueta
+
+    s = Entorno(tmp_path / "juntar")
+    cal = _separados(s, lambda t: "Caro limpia #entrada 16:00", lambda t: "Entra familia García #salida 09:00")
+    cal.recalcular_limpiezas(hoy)
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert relevo["description"].startswith("Caro limpia\nEntra familia García\n\n" + SEPARADOR)
+    assert (_acuerdos(cal, "SALE1"), _acuerdos(cal, "ENTRA2")) == ((None, None), (None, None))
+    assert (hora(relevo), hora(relevo, "end")) == ("2026-11-05 11:00", "2026-11-05 15:00")
+    assert _sin_escrituras(s, cal, hoy)
