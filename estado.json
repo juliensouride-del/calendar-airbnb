@@ -246,12 +246,14 @@
     "INBOX:1274556880:376724": "2026-11-08T08:08:38+00:00",
     "mid:<LFOLLLlMRaWEptgD1SeYRQ@geopod-ismtpd-47>": "2026-11-08T08:08:38+00:00",
     "INBOX:1274556880:376725": "2026-11-08T08:18:49+00:00",
-    "mid:<1u8aml9LR2aZF1-oHR3NxQ@geopod-ismtpd-91>": "2026-11-08T08:18:49+00:00"
+    "mid:<1u8aml9LR2aZF1-oHR3NxQ@geopod-ismtpd-91>": "2026-11-08T08:18:49+00:00",
+    "INBOX:1274556880:376730": "2026-11-08T09:33:12+00:00",
+    "mid:<CEGWDXsKSe61m467JwJUvw@geopod-ismtpd-71>": "2026-11-08T09:33:12+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-11-08T08:48:19.662614+00:00"
+  "ultima_ok": "2026-11-08T10:40:31.462001+00:00"
 }
