@@ -1,12 +1,6 @@
 {
   "inicio": "2026-10-10T17:29:33.325298+00:00",
   "procesados": {
-    "INBOX:1274556880:376451": "2026-10-30T20:45:26+00:00",
-    "mid:<qan7MHWiTQCOdcxzKLJgaA@geopod-ismtpd-40>": "2026-10-30T20:45:26+00:00",
-    "INBOX:1274556880:376454": "2026-10-30T22:05:02+00:00",
-    "mid:<xft0hZ3VSUGVES-ARCizqg@geopod-ismtpd-54>": "2026-10-30T22:05:02+00:00",
-    "INBOX:1274556880:376456": "2026-10-31T00:41:45+00:00",
-    "mid:<-OQZsiyvRSiRa4hhg8uZ_w@geopod-ismtpd-86>": "2026-10-31T00:41:45+00:00",
     "INBOX:1274556880:376467": "2026-10-31T11:03:13+00:00",
     "mid:<ok61EarQSAm5LyaYkp3xZA@geopod-ismtpd-32>": "2026-10-31T11:03:13+00:00",
     "INBOX:1274556880:376469": "2026-10-31T11:58:42+00:00",
@@ -200,12 +194,22 @@
     "INBOX:1274556880:376756": "2026-11-09T11:07:54+00:00",
     "mid:<ytyClodfR5iWJSDDSJVf-Q@geopod-ismtpd-16>": "2026-11-09T11:07:54+00:00",
     "INBOX:1274556880:376757": "2026-11-09T11:08:29+00:00",
-    "mid:<bKLhFpu4SxiHX6BHDxkPWg@geopod-ismtpd-69>": "2026-11-09T11:08:29+00:00"
+    "mid:<bKLhFpu4SxiHX6BHDxkPWg@geopod-ismtpd-69>": "2026-11-09T11:08:29+00:00",
+    "INBOX:1274556880:376774": "2026-11-10T09:07:17+00:00",
+    "mid:<OZVAIom_R9uaiU23BtvRRg@geopod-ismtpd-17>": "2026-11-10T09:07:17+00:00",
+    "INBOX:1274556880:376778": "2026-11-10T09:48:44+00:00",
+    "mid:<P6BT7ze7SZKQXpbW7RvwFA@geopod-ismtpd-84>": "2026-11-10T09:48:44+00:00",
+    "INBOX:1274556880:376783": "2026-11-10T11:19:22+00:00",
+    "mid:<P_BvD3QIRgG5TQJQLptvzg@geopod-ismtpd-10>": "2026-11-10T11:19:22+00:00",
+    "INBOX:1274556880:376784": "2026-11-10T11:22:22+00:00",
+    "mid:<lOSExdtsQL6B7h7Ia7G7fA@geopod-ismtpd-71>": "2026-11-10T11:22:22+00:00",
+    "INBOX:1274556880:376785": "2026-11-10T11:22:35+00:00",
+    "mid:<oIq6BIuaQkG1dwTBTdLstA@geopod-ismtpd-73>": "2026-11-10T11:22:35+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-11-10T02:38:48.881078+00:00"
+  "ultima_ok": "2026-11-10T11:36:01.172808+00:00"
 }
