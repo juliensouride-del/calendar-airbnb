@@ -12,7 +12,7 @@ Se ejecuta solo en **GitHub Actions** cada 2 horas de día (8:00–22:00 en Madr
 
 Cada reserva son **dos eventos cortos**: la entrada, el día que llega el huésped a las 15:00, y la salida, el día que se va a las 11:00. En la vista de mes se ve qué piso entra y cuál sale cada día sin abrir nada.
 
-Los eventos están siempre a la hora estándar, para que el equipo los encuentre siempre en el mismo sitio. Solo una hora acordada (`#entrada` o `#salida`, ver abajo) los mueve. La hora que dice el huésped va en el título y en la descripción.
+Los eventos están siempre a la hora estándar, para que el equipo los encuentre siempre en el mismo sitio. La hora que dice el huésped va en el título y en la descripción, y no mueve el evento. Solo lo mueven una hora acordada (`#entrada` o `#salida`, ver abajo) o el anfitrión, arrastrándolo en Calendar.
 
 ```
 🟢 ENTRADA Torrecilla · [LIMPIEZA OK] · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🍼 cuna
@@ -111,7 +111,7 @@ El horario estándar es **entrada 15:00 / salida 11:00**: si el huésped pide en
 - **Al juntarse**, las notas de la salida del que se va pasan al relevo. Si había una `#entrada` en esa salida, pasa a su entrada. Si había una `#salida` en la entrada del que llega, pasa a su salida, o al relevo en el que sale si también sale en uno. Si alguien borró la línea automática de la salida del que se va, todo su texto pasa al relevo como notas.
 - **Al separarse**, la salida del que se iba vuelve con las notas del relevo y su `#salida`. La entrada del que llega se queda con su `#entrada` y pierde la `#salida`, que no era suya. Las notas sin etiqueta quedan en los dos eventos.
 
-**Mover un evento en Calendar no cambia la hora.** Si alguien lo arrastra, aunque sea sin querer, vuelve solo a su hora en la siguiente sincronización. Para otra hora, escribe la etiqueta.
+**Un evento movido en Calendar se queda donde lo dejaron.** El script no lo devuelve a su hora, tampoco cuando llega un mensaje nuevo del huésped. Solo lo mueve si cambia su hora calculada: la reserva cambia de día, se escribe o se cambia una etiqueta `#entrada` o `#salida`, o el relevo se junta o se separa. Mover el evento no es un acuerdo. La limpieza y el título siguen la hora de la etiqueta o la estándar.
 
 La hora acordada manda sobre cualquier regla (si no deja tiempo de limpieza, la entrada sale con alerta).
 
@@ -122,7 +122,7 @@ La hora acordada manda sobre cualquier regla (si no deja tiempo de limpieza, la 
 - Si se cambia el propio título automático, el título es del anfitrión y el script ya no lo toca.
 - Si se cambia a mano el **color o la ubicación** de un evento, el script ya no toca ese campo de ese evento.
   Una ubicación puesta a mano antes de que el script escribiera la dirección también se respeta.
-- Las **horas** no: un evento movido vuelve a su hora (ver arriba). Solo se respeta un evento pasado a día completo.
+- Si se mueve un evento o se cambia su duración, se queda así hasta que cambie su hora calculada (ver arriba). Un evento pasado a día completo se queda así siempre.
 - Si se edita la parte **automática** de la descripción, la descripción pasa a ser del anfitrión y deja de actualizarse.
 
 ### Avisos por correo
@@ -227,7 +227,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 168 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 169 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 

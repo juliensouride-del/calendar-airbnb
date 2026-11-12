@@ -24,8 +24,8 @@ Cambios a mano: el script recuerda (airbnb_escrito) lo último que escribió en 
 campo. Si el anfitrión cambia el color o la ubicación, ese campo ya no se toca. Lo que añade al título (un nombre,
 p. ej. '(Caro H)🔴 SALIDA ...') se guarda aparte (Mano) y el título automático se sigue actualizando; si cambia el
 propio título automático, el título es suyo y ya no se toca.
-La hora no: el equipo de limpieza arrastra eventos sin querer, así que un evento movido a
-mano vuelve a su hora en la siguiente pasada. Una hora acordada solo se fija escribiendo
+Un evento movido a mano se queda donde lo dejaron mientras su hora calculada no cambie (otro día, una etiqueta, un
+relevo que se junta o se separa); si cambia, va a la nueva. Una hora acordada solo se fija escribiendo
 '#entrada HH:MM' o '#salida HH:MM' en los eventos de la reserva (en el relevo, #salida es
 del huésped que sale y #entrada del que entra: PARTES). La descripción tiene
 dos partes separadas por SEPARADOR: lo de encima es del anfitrión y se conserva siempre;
@@ -67,6 +67,7 @@ P_ESTADO = "airbnb_estado_"           # JSON del estado en trozos: airbnb_estado
 P_SALIENTE = "airbnb_saliente_"       # en el relevo, el de la reserva que sale (igual, en trozos)
 P_ESCRITO = "airbnb_escrito"          # huella de lo último que escribió el script (detecta cambios a mano)
 P_MANO = "airbnb_titulo_mano"         # lo que añadió el anfitrión al título (Mano en JSON; sin nada, no está)
+HORAS = ("inicio", "fin")              # campos de la hora del evento en airbnb_escrito
 # La descripción tiene dos partes: lo que escribe el anfitrión (encima) y lo automático (debajo)
 SEPARADOR = "—— Airbnb · automático (escribe tus notas encima de esta línea) ——"
 TAM_TROZO = 900                       # los valores de una propiedad admiten hasta 1024 caracteres
@@ -337,7 +338,6 @@ class Calendario:
         hueco = PARTES[parte].hueco
         ev = eventos[hueco]
         cuerpo = self._cuerpo(ev, parte, v, reservas, notas)
-        self._avisar_hora_movida(ev, parte, cuerpo)
         if ev is None:
             eventos[hueco] = self._vivo(self._pedir("POST", self.url, json=cuerpo))
             self.stats["creados"] += 1
@@ -376,10 +376,9 @@ class Calendario:
         dia_completo = bool(ev and (ev.get("start") or {}).get("date"))
 
         def respetado(k: str) -> bool:
-            if k in ("inicio", "fin"):
-                # Pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora. Si no, la hora solo
-                # la cambia una etiqueta: un evento arrastrado sin querer vuelve a la suya
-                return dia_completo
+            if k in HORAS:
+                # Pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora
+                return dia_completo or movido
             if k == "summary":
                 return mano is None
             return k in previo and _h(actual.get(k)) != previo[k]     # cambiado a mano desde la última escritura
@@ -392,6 +391,10 @@ class Calendario:
         nuevo = {"summary": (mano or Mano()).poner(auto), "colorId": self.cfg.colores[color],
                  "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(fin), "auto": p.descripcion(v, self.cfg)}
+        # Movido a mano: se queda mientras la hora calculada sea la que se escribió. Inicio y fin van juntos, para que el
+        # fin nunca quede antes del inicio
+        movido = (any(k in previo and _h(actual.get(k)) != previo[k] for k in HORAS)
+                  and all(_h(nuevo[k]) == previo.get(k) for k in HORAS))
         escrito, cuerpo = {}, {}
         for k, val in nuevo.items():
             if val is None:
@@ -417,19 +420,6 @@ class Calendario:
         props[P_ESCRITO] = json.dumps(escrito, separators=(",", ":"))
         cuerpo["extendedProperties"] = {"private": props}
         return cuerpo
-
-    def _avisar_hora_movida(self, ev: dict | None, parte: str, cuerpo: dict) -> None:
-        """Deja en el log cada evento movido a mano que se devuelve a su hora calculada."""
-        antes, escrito = _local_evento((ev or {}).get("start"), self.tz), _escrito(ev).get("inicio")
-        if not antes or not escrito or _h(antes) == escrito:
-            return
-        ahora = cuerpo["start"]["dateTime"][:16]
-        if antes == ahora:
-            return
-        desde = 11 if antes[:10] == ahora[:10] else 0       # movido a otro día: con la fecha
-        log.info("Hora movida a mano, se vuelve a la calculada (%s → %s): %s. Para pactar otra hora: #%s HH:MM",
-                 antes[desde:].replace("T", " "), ahora[desde:].replace("T", " "), ev.get("summary"),
-                 PARTES[parte].etiqueta_inicio)
 
     def _leer_evento(self, ev: dict | None) -> tuple[dict, str]:
         """(valores actuales comparables con los que escribe el script, parte manual de la descripción)."""
@@ -500,7 +490,6 @@ class Calendario:
                 continue
             if simulacion:
                 cuerpo = self._cuerpo(ev, parte, _copia(v), reservas, n)
-                self._avisar_hora_movida(ev, parte, cuerpo)
                 log.info("Se %s: %s", "crearía" if ev is None else "actualizaría",
                          cuerpo.get("summary") or ev.get("summary"))
                 self.stats["creados" if ev is None else "limpiezas_recalculadas"] += 1
@@ -648,7 +637,7 @@ class Calendario:
         """
         Pone al día los eventos de las reservas en curso y de las que entran entre hoy y dentro de `dias`
         (None = todas), sin depender de que llegue un correo (cambios de fechas o de reglas, cancelaciones,
-        eventos movidos a mano, que vuelven a su hora, eventos antiguos de toda la estancia, que pasan a
+        eventos antiguos de toda la estancia, que pasan a
         entrada + salida, salidas y entradas del mismo día, que se juntan en un relevo).
         Devuelve los estados de las reservas que entran desde hoy con alerta de limpieza.
         """
