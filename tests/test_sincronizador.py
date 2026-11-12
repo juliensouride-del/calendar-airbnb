@@ -1010,6 +1010,49 @@ def test_N2b_un_evento_movido_a_mano_va_al_dia_nuevo_si_la_reserva_cambia_de_fec
     assert (entrada["start"]["dateTime"], entrada["end"]["dateTime"]) == ("2026-11-06T15:00:00", "2026-11-06T15:30:00")
 
 
+def test_N2c_al_juntarse_o_separarse_el_relevo_un_evento_movido_va_a_su_hora(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08"))
+    entrada = s.cal.ev("ENTRA2")
+    entrada["start"]["dateTime"], entrada["end"]["dateTime"] = "2026-11-05T17:00:00+01:00", "2026-11-05T17:30:00+01:00"
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-04"))
+    salida = s.cal.ev("SALE1", "salida")
+    salida["description"] = "#salida 15:00\n" + salida["description"]
+    # Se juntan con una #salida a la misma hora que tenía la entrada: el relevo no se queda a la hora de la entrada
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05"))
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert (relevo["start"]["dateTime"], relevo["end"]["dateTime"]) == ("2026-11-05T15:00:00", "2026-11-05T15:30:00")
+    cal.recalcular_limpiezas(date(2026, 10, 13))      # la entrada de SALE1 muestra su #salida una pasada después
+    relevo["start"]["dateTime"], relevo["end"]["dateTime"] = "2026-11-05T13:00:00+01:00", "2026-11-05T13:30:00+01:00"
+    assert _sin_escrituras(s, cal, date(2026, 10, 13)), "el relevo movido también se queda"
+    _guardar(cal, _reserva("SALE1", "2026-11-01", "2026-11-05", cancelada=True))
+    entrada = s.cal.ev("ENTRA2")
+    assert s.cal.ev("ENTRA2", "relevo") is None
+    assert (entrada["start"]["dateTime"], entrada["end"]["dateTime"]) == ("2026-11-05T15:00:00", "2026-11-05T15:30:00")
+    assert _sin_escrituras(s, cal, date(2026, 10, 13))
+
+
+def test_N2d_una_etiqueta_mueve_el_evento_movido_y_al_quitarla_vuelve_a_la_estandar(tmp_path):
+    from datetime import date
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SOLO1", "2026-11-05", "2026-11-08"))
+    salida = s.cal.ev("SOLO1", "salida")
+    salida["start"]["dateTime"], salida["end"]["dateTime"] = "2026-11-08T14:00:00+01:00", "2026-11-08T14:30:00+01:00"
+    assert _sin_escrituras(s, cal, date(2026, 10, 13))
+    salida["description"] = "#salida 12:00\n" + salida["description"]
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    salida = s.cal.ev("SOLO1", "salida")
+    assert (salida["start"]["dateTime"], salida["end"]["dateTime"]) == ("2026-11-08T12:00:00", "2026-11-08T12:30:00")
+    salida["description"] = salida["description"].replace("#salida 12:00\n", "")
+    cal.recalcular_limpiezas(date(2026, 10, 13))
+    salida = s.cal.ev("SOLO1", "salida")
+    assert (salida["start"]["dateTime"], salida["end"]["dateTime"]) == ("2026-11-08T11:00:00", "2026-11-08T11:30:00")
+    assert _sin_escrituras(s, cal, date(2026, 10, 13))
+
+
 def _evento_antiguo(s, codigo, checkin, checkout, inicio, fin, notas=""):
     """Un evento de la entrada a la salida, sin airbnb_parte, como lo escribía la versión anterior.
     inicio/fin: lo que hay ahora en el evento (distinto de 15:00/11:00 si el anfitrión lo movió a mano)."""
