@@ -201,6 +201,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 | `recargar` | con `desde` (y opcionalmente `hasta`): vuelve a procesar todos los correos del tramo en orden, sin avisos al anfitrión, y al final pone al día todas las reservas futuras. Cada reserva se reconstruye desde su confirmación; los mensajes de reservas ya terminadas no se analizan con la IA. Hasta ~5,5 h por ejecución |
 | `comprobar` | verifica Yahoo, Google Calendar, Gemini y los avisos, sin escribir nada |
 | `diagnosticar` | muestra lo que se extrae de los correos de los últimos 7 días, sin tocar el calendario |
+| `listar` | con `desde` (y opcionalmente `hasta`, por defecto 31 días después): lista todos los eventos del calendario de ese tramo, también los borrados y los puestos a mano, con quién los creó y cuándo cambiaron. No escribe nada |
 | `recalcular-simulacion` / `recalcular` | aplica las reglas actuales (horario, limpieza, formato, lockers) a todas las reservas en curso y futuras, sin leer correos. Con `desde`, revisa las reservas que salen desde esa fecha, también las ya terminadas |
 | `purgar-simulacion` / `purgar` | lista / borra todos los eventos creados por el script (escribiendo `BORRAR` en `confirmar`), también los de las primeras versiones, que no llevan marca; los eventos personales no se tocan. Con `hasta`, solo los de reservas que terminaron antes de esa fecha. Una reserva que la cruza se conserva entera |
 

@@ -20,6 +20,9 @@ Airbnb (Yahoo Mail) → Google Calendar.
                                         a todas las reservas que entran desde hoy, sin leer correos.
                                         Con --desde yyyy-mm-dd, a las que salen desde ese día
                                         (también las ya terminadas)
+  python sincronizar.py --listar --desde yyyy-mm-dd [--hasta yyyy-mm-dd]
+                                        lista todos los eventos del calendario de ese tramo, también los
+                                        borrados y los puestos a mano, sin escribir nada
 
 Secretos (variables de entorno): YAHOO_USUARIO, YAHOO_CLAVE_APP, GOOGLE_SERVICE_ACCOUNT_JSON,
 CALENDAR_ID y, opcionales, GEMINI_API_KEY, ALERTA_EMAIL y ALERTA_NTFY_TOPIC (avisos técnicos
@@ -35,7 +38,7 @@ import sys
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 
-from airbnb_calendar.calendario import P_ORIGEN, Calendario, sesion_cuenta_servicio
+from airbnb_calendar.calendario import P_ORIGEN, Calendario, _hash, sesion_cuenta_servicio
 from airbnb_calendar.config import Secretos, cargar_config
 from airbnb_calendar.gemini import AnalizadorMensajes
 from airbnb_calendar.ntfy import NotificadorNtfy, Varios
@@ -60,13 +63,14 @@ def main() -> int:
     modo.add_argument("--diagnosticar", action="store_true")
     modo.add_argument("--purgar", action="store_true", help="borra los eventos creados por este script")
     modo.add_argument("--recalcular", action="store_true", help="aplica las reglas actuales a las reservas futuras")
+    modo.add_argument("--listar", action="store_true", help="lista los eventos del tramo --desde/--hasta, sin escribir")
     ap.add_argument("--dry-run", action="store_true", help="con --purgar o --recalcular: solo lista, no cambia nada")
     ap.add_argument("--si", action="store_true", help="con --purgar: no pide confirmación")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
 
     cfg = cargar_config(args.config)
-    sec = None if args.purgar or args.recalcular else Secretos.desde_entorno()
+    sec = None if args.purgar or args.recalcular or args.listar else Secretos.desde_entorno()
 
     if args.diagnosticar:
         return diagnosticar(cfg, sec)
@@ -77,6 +81,10 @@ def main() -> int:
         calendario = Calendario(cfg, sesion, creador=sesion.credentials.service_account_email)
         return purgar(calendario, simulacion=args.dry_run, confirmado=args.si,
                       hasta=date.fromisoformat(args.hasta) if args.hasta else None)
+    if args.listar:
+        desde = date.fromisoformat(args.desde)
+        return listar(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), desde,
+                      date.fromisoformat(args.hasta) if args.hasta else desde + timedelta(days=31))
     if args.recalcular:
         return recalcular(Calendario(cfg, sesion_cuenta_servicio(Secretos.google_desde_entorno())), args.dry_run,
                           desde=date.fromisoformat(args.desde) if args.desde else None)
@@ -150,6 +158,21 @@ def recalcular(calendario: Calendario, simulacion: bool, desde: date | None = No
         cambios_relevo = ""
     log.info("✔ %d reserva(s) en curso o futura(s) revisada(s) · %s · %d con alerta de limpieza%s",
              st["reservas_revisadas"], cambios, len(alertas), cambios_relevo)
+    return 0
+
+
+def listar(calendario: Calendario, desde: date, hasta: date) -> int:
+    alias = {_hash(a.nombre): a.alias or a.nombre for a in calendario.cfg.alojamientos}
+    eventos = calendario.eventos_del_tramo(desde, hasta)
+    for ev in eventos:
+        inicio, p = ev.get("start") or {}, (ev.get("extendedProperties") or {}).get("private", {})
+        dia = (inicio.get("dateTime") or inicio.get("date") or "")[:16].replace("T", " ")
+        print(f"{dia}  {ev.get('status', '?'):9}  {alias.get(p.get('airbnb_alojamiento'), '-'):10}  "
+              f"{p.get('airbnb_parte') or '-':7}  {p.get('airbnb_codigo') or '-':10}  "
+              f"{p.get('airbnb_checkin') or '-'}→{p.get('airbnb_checkout') or '-'}  "
+              f"creado {ev.get('created', '?')[:16]} por {(ev.get('creator') or {}).get('email', '?')}  "
+              f"cambiado {ev.get('updated', '?')[:16]}  id {ev['id']}\n      {ev.get('summary', '')}")
+    log.info("%d evento(s) entre el %s y el %s (sin incluirlo)", len(eventos), desde, hasta)
     return 0
 
 
