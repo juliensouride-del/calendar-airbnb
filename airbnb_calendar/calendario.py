@@ -280,9 +280,16 @@ class Calendario:
             return _props(ev).get(P_TIPO) == "reserva"          # doble comprobación antes de borrar nada
         return self.creador is not None and (ev.get("creator") or {}).get("email") == self.creador
 
-    def _listar(self, filtros: dict, **extra) -> list[dict]:
+    def eventos_del_tramo(self, desde: date, hasta: date) -> list[dict]:
+        """Todos los eventos del calendario que hay entre esos días (sin incluir `hasta`), también los borrados y los puestos a
+        mano."""
+        rango = {"timeMin": datetime.combine(desde, datetime.min.time(), self.tz).isoformat(),
+                 "timeMax": datetime.combine(hasta, datetime.min.time(), self.tz).isoformat()}
+        return sorted(self._listar({}, borrados=True, **rango), key=_inicio)
+
+    def _listar(self, filtros: dict, borrados: bool = False, **extra) -> list[dict]:
         params = [("privateExtendedProperty", f"{k}={v}") for k, v in filtros.items()]
-        params += [("singleEvents", "true"), ("showDeleted", "false"), ("maxResults", "250"), *extra.items()]
+        params += [("singleEvents", "true"), ("showDeleted", str(borrados).lower()), ("maxResults", "250"), *extra.items()]
         items, token = [], None
         while True:
             r = self._pedir("GET", self.url, params=params + ([("pageToken", token)] if token else []))

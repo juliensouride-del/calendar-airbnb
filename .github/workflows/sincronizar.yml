@@ -15,14 +15,14 @@ on:
       modo:
         description: "Qué ejecutar"
         type: choice
-        options: [sincronizar, recargar, comprobar, diagnosticar, recalcular-simulacion, recalcular, purgar-simulacion, purgar]
+        options: [sincronizar, recargar, comprobar, diagnosticar, listar, recalcular-simulacion, recalcular, purgar-simulacion, purgar]
         default: sincronizar
       desde:
-        description: "recargar: volver a procesar los correos desde esta fecha (yyyy-mm-dd) · recalcular: revisar también las reservas ya terminadas que salen desde esta fecha (vacío = desde hoy)"
+        description: "recargar: volver a procesar los correos desde esta fecha (yyyy-mm-dd) · listar: los eventos desde esta fecha · recalcular: revisar también las reservas ya terminadas que salen desde esta fecha (vacío = desde hoy)"
         type: string
         default: ""
       hasta:
-        description: "recargar: hasta esta fecha, sin incluirla (yyyy-mm-dd), vacío = hoy · purgar: borrar solo las reservas que terminaron antes de esta fecha, vacío = todas"
+        description: "recargar: hasta esta fecha, sin incluirla (yyyy-mm-dd), vacío = hoy · listar: hasta esta fecha, vacío = 31 días · purgar: borrar solo las reservas que terminaron antes de esta fecha, vacío = todas"
         type: string
         default: ""
       confirmar:
@@ -100,6 +100,11 @@ jobs:
           case "$MODO" in
             comprobar)    python sincronizar.py --comprobar ;;
             diagnosticar) python sincronizar.py --diagnosticar ;;
+            listar)
+              if [ -z "$DESDE" ]; then
+                echo "::error::Para listar indica la fecha en el campo desde (yyyy-mm-dd)."; exit 1
+              fi
+              python sincronizar.py --listar --desde "$DESDE" ${HASTA:+--hasta "$HASTA"} ;;
             purgar-simulacion) python sincronizar.py --purgar --dry-run ${HASTA:+--hasta "$HASTA"} ;;
             recalcular-simulacion) python sincronizar.py --recalcular --dry-run ${DESDE:+--desde "$DESDE"} ;;
             recalcular)   python sincronizar.py --recalcular ${DESDE:+--desde "$DESDE"} ;;
