@@ -353,8 +353,8 @@ class Calendario:
         Lo que hay que escribir en el evento de esa parte (para PATCH o POST). Lo que el anfitrión haya cambiado a
         mano desde la última escritura del script (color, ubicación, el título automático o la parte automática de la
         descripción) NO se toca; su parte de la descripción (encima del separador) se conserva siempre, salvo los cambios de
-        `notas`, y lo que añada al título se queda alrededor del título automático. La hora siempre es la calculada
-        (con los acuerdos #entrada / #salida), salvo en un evento pasado a día completo.
+        `notas`, y lo que añada al título se queda alrededor del título automático. La hora es la calculada (con los
+        acuerdos #entrada / #salida), salvo en un evento movido a mano mientras esa hora no cambie o pasado a día completo.
         """
         p = PARTES[parte]
         limpieza = v.limpieza if p.con_limpieza else None
@@ -375,14 +375,6 @@ class Calendario:
 
         dia_completo = bool(ev and (ev.get("start") or {}).get("date"))
 
-        def respetado(k: str) -> bool:
-            if k in HORAS:
-                # Pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora
-                return dia_completo or movido
-            if k == "summary":
-                return mano is None
-            return k in previo and _h(actual.get(k)) != previo[k]     # cambiado a mano desde la última escritura
-
         inicio = datetime.fromisoformat(f"{v.e[p.fecha]}T{p.hora(v, self.cfg)}")
         fin = inicio + timedelta(minutes=self.cfg.duracion_evento_min)
         color = ("cancelada" if v.e["cancelada"] else
@@ -391,10 +383,18 @@ class Calendario:
         nuevo = {"summary": (mano or Mano()).poner(auto), "colorId": self.cfg.colores[color],
                  "location": alojamiento.direccion if alojamiento and alojamiento.direccion else None,
                  "inicio": _local(inicio), "fin": _local(fin), "auto": p.descripcion(v, self.cfg)}
-        # Movido a mano: se queda mientras la hora calculada sea la que se escribió. Inicio y fin van juntos, para que el
-        # fin nunca quede antes del inicio
-        movido = (any(k in previo and _h(actual.get(k)) != previo[k] for k in HORAS)
+        # Movido a mano: se queda mientras sea la misma parte y su hora calculada sea la que se escribió. Inicio y fin van
+        # juntos, para que el fin nunca quede antes del inicio
+        movido = (_parte(ev) == parte and any(k in previo and _h(actual.get(k)) != previo[k] for k in HORAS)
                   and all(_h(nuevo[k]) == previo.get(k) for k in HORAS))
+
+        def respetado(k: str) -> bool:
+            if k in HORAS:
+                # Pasado a día completo a mano: Calendar no admite mezclar fecha con fecha y hora
+                return dia_completo or movido
+            if k == "summary":
+                return mano is None
+            return k in previo and _h(actual.get(k)) != previo[k]     # cambiado a mano desde la última escritura
         escrito, cuerpo = {}, {}
         for k, val in nuevo.items():
             if val is None:
@@ -406,7 +406,7 @@ class Calendario:
                     cuerpo["description"] = _descripcion(nuevo_manual, actual["auto"])
                 continue
             escrito[k] = _h(val)
-            if k in ("inicio", "fin"):
+            if k in HORAS:
                 d = datetime.fromisoformat(val)
                 cuerpo["start" if k == "inicio" else "end"] = {"dateTime": d.isoformat(), "timeZone": self.cfg.zona_horaria}
             elif k == "auto":

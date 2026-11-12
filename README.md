@@ -111,7 +111,7 @@ El horario estándar es **entrada 15:00 / salida 11:00**: si el huésped pide en
 - **Al juntarse**, las notas de la salida del que se va pasan al relevo. Si había una `#entrada` en esa salida, pasa a su entrada. Si había una `#salida` en la entrada del que llega, pasa a su salida, o al relevo en el que sale si también sale en uno. Si alguien borró la línea automática de la salida del que se va, todo su texto pasa al relevo como notas.
 - **Al separarse**, la salida del que se iba vuelve con las notas del relevo y su `#salida`. La entrada del que llega se queda con su `#entrada` y pierde la `#salida`, que no era suya. Las notas sin etiqueta quedan en los dos eventos.
 
-**Un evento movido en Calendar se queda donde lo dejaron.** El script no lo devuelve a su hora, tampoco cuando llega un mensaje nuevo del huésped. Solo lo mueve si cambia su hora calculada: la reserva cambia de día, se escribe o se cambia una etiqueta `#entrada` o `#salida`, o el relevo se junta o se separa. Mover el evento no es un acuerdo. La limpieza y el título siguen la hora de la etiqueta o la estándar.
+**Un evento movido en Calendar se queda donde lo dejaron.** El script no lo devuelve a su hora, tampoco cuando llega un mensaje nuevo del huésped. Solo lo mueve en estos casos: la reserva cambia de día, se escribe, se cambia o se borra una etiqueta `#entrada` o `#salida`, o el relevo se junta o se separa. Entonces va a su hora calculada. Mover el evento no es un acuerdo. La limpieza y el título siguen la hora de la etiqueta o la estándar.
 
 La hora acordada manda sobre cualquier regla (si no deja tiempo de limpieza, la entrada sale con alerta).
 
@@ -227,7 +227,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 169 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 171 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 
