@@ -1,14 +1,14 @@
 """
 Google Calendar (API REST v3) con una cuenta de servicio.
 
-Cada reserva = DOS eventos cortos con hora (PARTES): la ENTRADA, el día de llegada a la
-hora de entrada, y la SALIDA, el día de salida a la hora de salida. Así Calendar no los
+Cada reserva = DOS eventos cortos con hora (PARTES): la ENTRADA, el día de llegada, y la SALIDA,
+el día de salida, a la hora estándar o a la acordada (reglas.hora_evento). Así Calendar no los
 dibuja en la franja de todo el día, como hace con los eventos de más de 24 h. Si el
 huésped anterior del mismo alojamiento sale ese día (o el anterior), el título de la
 entrada lleva [LIMPIEZA OK] o [ALERTA LIMPIEZA / AJUSTE HORARIO].
 
 Relevo: si el huésped anterior sale el mismo día que entra este, en el mismo alojamiento, su
-salida y esta entrada son un solo evento, a la hora de salida. Es de la
+salida y esta entrada son un solo evento, a la hora estándar de salida o a su #salida. Es de la
 reserva que entra (su parte es 'relevo' y ocupa el hueco de la entrada) y lleva una copia
 del estado de la que sale (airbnb_saliente_*), que no tiene evento de salida mientras dure:
 la encuentra por alojamiento y fecha ('sale_en') y solo lo lee. Únicamente la reserva que
@@ -115,16 +115,16 @@ class Parte:
 
 
 PARTES = {
-    "entrada": Parte(hueco="entrada", fecha="checkin", hora=lambda v, cfg: reglas.hora_entrada(v.e, cfg),
+    "entrada": Parte(hueco="entrada", fecha="checkin", hora=lambda v, cfg: reglas.hora_evento(v.e, "entrada", cfg),
                      titulo=lambda v, cfg: formato.titulo_entrada(v.e, v.limpieza, cfg),
                      descripcion=lambda v, cfg: formato.descripcion_entrada(v.e, v.limpieza, cfg),
                      color="reserva", con_limpieza=True, etiquetas=("entrada", "salida")),
-    "salida": Parte(hueco="salida", fecha="checkout", hora=lambda v, cfg: reglas.hora_salida(v.e, cfg),
+    "salida": Parte(hueco="salida", fecha="checkout", hora=lambda v, cfg: reglas.hora_evento(v.e, "salida", cfg),
                     titulo=lambda v, cfg: formato.titulo_salida(v.e, cfg),
                     descripcion=lambda v, cfg: formato.descripcion_salida(v.e, cfg),
                     color="salida", con_limpieza=False, etiquetas=("salida", "entrada")),
     "relevo": Parte(hueco="entrada", fecha="checkin",
-                    hora=lambda v, cfg: reglas.hora_salida(v.sale, cfg),
+                    hora=lambda v, cfg: reglas.hora_evento(v.sale, "salida", cfg),
                     titulo=lambda v, cfg: formato.titulo_relevo(v.sale, v.e, v.limpieza, cfg),
                     descripcion=lambda v, cfg: formato.descripcion_relevo(v.sale, v.e, v.limpieza, cfg),
                     color="relevo", con_limpieza=True, etiquetas=("entrada",), etiquetas_sale=("salida",)),

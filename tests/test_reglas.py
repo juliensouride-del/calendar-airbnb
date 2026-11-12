@@ -256,7 +256,7 @@ def test_llegar_antes_o_salir_despues_del_horario_cuenta_como_peticion(r0, cfg):
     av = avisos.avisos_pendientes(e, cfg)       # [avisos] horas = false, pero esto es una petición
     assert "⏰ Pide ENTRAR ANTES de las 15:00: a las 11:00" in av
     assert "⌛ Pide SALIR DESPUÉS de las 11:00: a las 14:00" in av
-    assert reglas.hora_entrada(e, cfg) == "15:00", "sin acuerdo no se adelanta la entrada en el calendario"
+    assert reglas.hora_entrada(e, cfg) == "15:00", "sin acuerdo no se adelanta la entrada para la limpieza"
 
 
 def test_estado_antiguo_sin_campos_nuevos(r0, cfg):

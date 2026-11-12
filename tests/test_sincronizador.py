@@ -938,6 +938,32 @@ def test_N1c_el_relevo_no_se_adelanta_si_el_que_sale_se_va_temprano(tmp_path):
     assert hora(relevo) == "2026-11-12 09:30" and "sale 09:30 ✅" in relevo["summary"], "solo la etiqueta lo mueve"
 
 
+def test_N1d_los_eventos_a_la_hora_del_huesped_de_antes_vuelven_a_la_estandar_sin_aviso(tmp_path, monkeypatch, caplog):
+    import logging
+    from datetime import date
+
+    from airbnb_calendar import reglas
+    caplog.set_level(logging.INFO)
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    hora_evento = reglas.hora_evento
+    # Así los escribía la versión anterior: a la hora del huésped
+    monkeypatch.setattr(reglas, "hora_evento", lambda e, tipo, cfg: (reglas.hora_entrada if tipo == "entrada" else reglas.hora_salida)(e, cfg))
+    _guardar(cal, _reserva("SALE1", "2026-11-10", "2026-11-12", hora_llegada="18:00", hora_salida="07:00"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-12", "2026-11-16", hora_salida="09:00"))
+    assert (hora(s.cal.ev("SALE1")), hora(s.cal.ev("ENTRA2", "relevo")), hora(s.cal.ev("ENTRA2", "salida"))) == \
+        ("2026-11-10 18:00", "2026-11-12 07:00", "2026-11-16 09:00")
+
+    monkeypatch.setattr(reglas, "hora_evento", hora_evento)
+    cal.recalcular_limpiezas(date(2026, 11, 9))
+    assert (hora(s.cal.ev("SALE1")), hora(s.cal.ev("ENTRA2", "relevo")), hora(s.cal.ev("ENTRA2", "salida"))) == \
+        ("2026-11-10 15:00", "2026-11-12 11:00", "2026-11-16 11:00")
+    assert "Hora movida" not in caplog.text, "no los movió nadie a mano"
+    antes = copy.deepcopy(s.cal.eventos)
+    cal.recalcular_limpiezas(date(2026, 11, 9))
+    assert s.cal.eventos == antes, "otra pasada no cambia nada"
+
+
 def test_N2_arrastrar_la_salida_no_es_un_acuerdo_y_vuelve_a_su_hora_solo_la_etiqueta_cambia_la_limpieza(tmp_path, caplog):
     import logging
     from datetime import date

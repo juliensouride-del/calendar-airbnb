@@ -169,9 +169,18 @@ def leer_acuerdos(descripcion: str | None) -> dict:
     return r
 
 
+def hora_evento(e: dict, tipo: str, cfg: Config) -> str:
+    """
+    Hora a la que empieza su evento de entrada o salida (tipo): la acordada (#entrada / #salida) o la estándar. La que
+    dice el huésped va en el título y no lo mueve: el equipo busca cada evento a su hora, y uno que se va a las 07:00 porque
+    el huésped sale temprano parece borrado.
+    """
+    return e.get(f"acuerdo_{tipo}") or (cfg.hora_entrada_por_defecto if tipo == "entrada" else cfg.hora_salida_por_defecto)
+
+
 def hora_entrada(e: dict, cfg: Config) -> str:
     """
-    Hora de entrada en el calendario. Manda la acordada por el anfitrión (#entrada HH:MM), aunque no
+    Hora a la que entra el huésped, para la limpieza. Manda la acordada por el anfitrión (#entrada HH:MM), aunque no
     deje tiempo de limpieza. Si no la hay, el horario estándar (config.toml): si el huésped dice que
     llega más tarde se usa su hora; si pide llegar antes, no.
     """
@@ -195,7 +204,8 @@ def llegada_prevista(e: dict, cfg: Config) -> str:
 
 
 def hora_salida(e: dict, cfg: Config) -> str:
-    """Hora de salida: la acordada (#salida HH:MM); si no, la estándar, o la del huésped si sale antes."""
+    """Hora a la que sale el huésped, para el título y la limpieza: la acordada (#salida HH:MM); si no, la estándar, o la
+    del huésped si sale antes."""
     if e.get("acuerdo_salida"):
         return e["acuerdo_salida"]
     estandar = cfg.hora_salida_por_defecto
