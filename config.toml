@@ -25,13 +25,14 @@ procesar_desde = ""
 # ("Hacer cambios en eventos").
 id = "PEGA_AQUI_EL_ID_DEL_CALENDARIO"
 zona_horaria = "Europe/Madrid"
-# Cada reserva son DOS eventos cortos: la ENTRADA (el día de llegada, a la hora de entrada)
-# y la SALIDA (el día de salida, a la hora de salida). Cada uno dura duracion_evento_min.
+# Cada reserva son DOS eventos cortos: la ENTRADA (el día de llegada, a hora_entrada_por_defecto)
+# y la SALIDA (el día de salida, a hora_salida_por_defecto). Cada uno dura duracion_evento_min.
 # Si un huésped sale el día que entra el siguiente en el mismo piso, su salida y esa entrada
-# son un solo evento (relevo), a la hora de salida. Todos duran duracion_evento_min.
+# son un solo evento (relevo), a hora_salida_por_defecto. Todos duran duracion_evento_min.
 duracion_evento_min = 30
 # Horario estándar (salvo acuerdo expreso): nunca se entra antes ni se sale después.
-# Si el huésped llega más tarde o sale antes, el evento usa su hora.
+# Los eventos van siempre a estas horas o a la acordada (#entrada / #salida). Si el huésped
+# llega más tarde o sale antes, su hora va en el título, pero el evento no se mueve.
 hora_entrada_por_defecto = "15:00"
 hora_salida_por_defecto = "11:00"
 # Si llega un mensaje de una reserva que no está en el calendario (p. ej. su confirmación es

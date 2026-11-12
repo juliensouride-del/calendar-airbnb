@@ -10,7 +10,9 @@ Se ejecuta solo en **GitHub Actions** cada 2 horas de día (8:00–22:00 en Madr
 
 ## 1. Para el anfitrión: cómo leer los eventos
 
-Cada reserva son **dos eventos cortos**: la entrada, el día que llega el huésped a la hora de entrada, y la salida, el día que se va a la hora de salida. En la vista de mes se ve qué piso entra y cuál sale cada día sin abrir nada.
+Cada reserva son **dos eventos cortos**: la entrada, el día que llega el huésped a las 15:00, y la salida, el día que se va a las 11:00. En la vista de mes se ve qué piso entra y cuál sale cada día sin abrir nada.
+
+Los eventos están siempre a la hora estándar, para que el equipo los encuentre siempre en el mismo sitio. Solo una hora acordada (`#entrada` o `#salida`, ver abajo) los mueve. La hora que dice el huésped va en el título y en la descripción.
 
 ```
 🟢 ENTRADA Torrecilla · [LIMPIEZA OK] · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🍼 cuna
@@ -18,7 +20,7 @@ Cada reserva son **dos eventos cortos**: la entrada, el día que llega el huésp
 ```
 
 - La **entrada** (verde) lleva la limpieza, las personas, la hora de llegada, la petición de entrar antes, el sofá cama y la cuna.
-- La **salida** (rojo) dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`). La petición de salir más tarde va en su descripción.
+- La **salida** (rojo) dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya, pero el evento sigue a las 11:00. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`). La petición de salir más tarde va en su descripción.
 - Los dos eventos llevan la **dirección del piso** como ubicación, con el mapa en Calendar.
 
 La descripción de la salida dice la hora de salida y el locker. Si el huésped pide salir más tarde y aún no hay acuerdo, la petición va encima:
@@ -66,7 +68,7 @@ Si un huésped sale el mismo día que entra el siguiente en el mismo piso, su sa
 🔄 SALIDA Y ENTRADA Torrecilla · [LIMPIEZA OK] · sale 11:00 · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🍼 cuna
 ```
 
-- Empieza a la hora de salida del que se va y dura 30 minutos, como todos los eventos, para que el calendario no se llene de bloques largos. La hora de llegada del que entra está en el título y en la descripción.
+- Empieza a las 11:00, o a la `#salida` del que se va, y dura 30 minutos, como todos los eventos, para que el calendario no se llene de bloques largos. La hora de llegada del que entra está en el título y en la descripción.
 - Sale en azul (Pavo real), o en naranja si no cabe la limpieza.
 - Después de `sale 11:00` vienen los mismos datos que en la entrada.
 - Mientras hay relevo, el huésped que sale no tiene evento de salida. Su entrada sigue igual.
@@ -225,7 +227,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 166 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 168 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 

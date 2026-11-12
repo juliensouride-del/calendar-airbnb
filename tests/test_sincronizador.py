@@ -242,7 +242,7 @@ def test_A_confirmacion_mensaje_reejecucion_idempotente_cancelacion(tmp_path):
     assert len(s.cal.eventos) == 2, "no se duplican eventos"
     entrada = s.cal.ev("HMTEST0002")
     assert entrada["summary"] == "🟢 ENTRADA Corazón de Madrid · 2 pers · llega 18:00 · 🛋️ sofá cama"
-    assert hora(entrada) == "2026-11-26 18:00", "el evento se mueve a la hora de llegada"
+    assert hora(entrada) == "2026-11-26 15:00", "la llegada va en el título: el evento no se mueve"
     assert "Hora prevista" not in entrada["description"], "la hora ya está en el título"
     assert len(s.avisos) == 1 and "sofá cama" in s.asuntos[0]
     assert "we will need the sofa bed" in s.avisos[0][1]
@@ -285,7 +285,7 @@ def test_A2_segunda_peticion_de_entrar_antes_se_detecta_y_avisa(tmp_path):
     assert "escribe arriba: #entrada HH:MM" in entrada["description"]
     assert len(s.avisos) == 1 and "entrar antes" in s.asuntos[0], s.asuntos
     assert "⏰ Pide ENTRAR ANTES de las 15:00" in s.avisos[0][1]
-    assert hora(entrada) == "2026-11-26 17:00", "sin acuerdo, el calendario no adelanta la entrada"
+    assert hora(entrada) == "2026-11-26 15:00", "sin acuerdo, el calendario no mueve la entrada"
 
 
 def test_A3_sin_gemini_las_palabras_clave_detectan_la_entrada_anticipada(tmp_path):
@@ -450,7 +450,7 @@ def test_C_crear_desde_mensaje_ej3_y_ej2_con_horas_cuna_y_avisos(tmp_path):
     assert len(s.cal.eventos) == 4
     e3 = s.cal.ev("Antón Martín")
     assert e3["summary"] == "🟢 ENTRADA Antón Martín · 3 pers · llega 15:05 · 🍼 cuna"
-    assert hora(e3) == "2026-09-23 15:05"
+    assert hora(e3) == "2026-09-23 15:00"
     assert s.cal.ev("Antón Martín", "salida")["summary"] == "🔴 SALIDA Antón Martín · sale 11:00"
     assert "🍼 Cuna: SÍ (lo indica el huésped)" in e3["description"]
     assert "🕒 Llegada: mié 23/09 a las 15:05   ·   Salida: dom 27/09 a las 11:00" in e3["description"]
@@ -866,7 +866,7 @@ def test_L9_direccion_del_piso_como_ubicacion_y_cambiada_a_mano_se_respeta(tmp_p
     s.cal.ev("ENTRA2", "salida")["location"] = "Portal B, 2º izq."     # cambiada a mano: se respeta
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="18:00", hora_salida="10:00"))
     assert s.cal.ev("ENTRA2", "salida")["location"] == "Portal B, 2º izq."
-    assert s.cal.ev("ENTRA2", "salida")["start"]["dateTime"] == "2026-11-08T10:00:00", "el resto sigue al día"
+    assert s.cal.ev("ENTRA2", "salida")["summary"] == "🔴 SALIDA Lavapiés · sale 10:00", "el resto sigue al día"
     assert s.cal.ev("ENTRA2")["location"] == "Calle de la Torrecilla del Leal 22, Madrid"
 
 
@@ -907,7 +907,7 @@ def test_N1b_titulos_completos_de_la_entrada_y_la_salida(tmp_path):
     entrada, salida = s.cal.ev("ENTRA2"), s.cal.ev("ENTRA2", "salida")
     assert entrada["summary"] == "🟢 ENTRADA Lavapiés · [LIMPIEZA OK] · 3 pers · llega 18:30 · ⏰ pide entrar 12:00 · 🛋️ sofá cama · 🍼 cuna"
     assert salida["summary"] == "🔴 SALIDA Lavapiés · sale 10:00"
-    assert hora(entrada) == "2026-11-05 18:30" and hora(salida) == "2026-11-08 10:00"
+    assert hora(entrada) == "2026-11-05 15:00" and hora(salida) == "2026-11-08 11:00", "las horas del huésped van en el título"
     assert "🧹 Limpieza" in entrada["description"] and "Limpieza" not in salida["description"]
 
     # Si el anterior sale el mismo día, la entrada es el relevo: de su salida a la llegada de este
@@ -917,6 +917,51 @@ def test_N1b_titulos_completos_de_la_entrada_y_la_salida(tmp_path):
                                  " · ⏰ pide entrar 12:00 · 🛋️ sofá cama · 🍼 cuna")
     assert (hora(relevo), hora(relevo, "end")) == ("2026-11-05 11:00", "2026-11-05 11:30")
     assert s.cal.ev("ENTRA2", "salida")["summary"] == "🔴 SALIDA Lavapiés · sale 10:00"
+
+
+def test_N1c_el_relevo_no_se_adelanta_si_el_que_sale_se_va_temprano(tmp_path):
+    """Caso real (Buenavista 12/11): la huésped que salía dijo que se iba a las 07:00 y el relevo pasó de las 11:00 a las
+    07:00. El equipo lo buscó a las 11:00, no lo vio y lo creó a mano."""
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("SALE1", "2026-11-10", "2026-11-12"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-12", "2026-11-16", entrada_anticipada="si"))
+    _guardar(cal, _reserva("SALE1", "2026-11-10", "2026-11-12", hora_salida="07:00"))
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Lavapiés · [LIMPIEZA OK] · sale 07:00 · 2 pers · ⏰ pide entrar antes"
+    assert (hora(relevo), hora(relevo, "end")) == ("2026-11-12 11:00", "2026-11-12 11:30")
+    assert "🕒 Salida: jue 12/11 a las 07:00" in relevo["description"]
+
+    relevo["description"] = "#salida 9:30\n\n" + relevo["description"]
+    _guardar(cal, _reserva("SALE1", "2026-11-10", "2026-11-12", hora_salida="07:00"))
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert hora(relevo) == "2026-11-12 09:30" and "sale 09:30 ✅" in relevo["summary"], "solo la etiqueta lo mueve"
+
+
+def test_N1d_los_eventos_a_la_hora_del_huesped_de_antes_vuelven_a_la_estandar_sin_aviso(tmp_path, monkeypatch, caplog):
+    import logging
+    from datetime import date
+
+    from airbnb_calendar import reglas
+    caplog.set_level(logging.INFO)
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    hora_evento = reglas.hora_evento
+    # Así los escribía la versión anterior: a la hora del huésped
+    monkeypatch.setattr(reglas, "hora_evento", lambda e, tipo, cfg: (reglas.hora_entrada if tipo == "entrada" else reglas.hora_salida)(e, cfg))
+    _guardar(cal, _reserva("SALE1", "2026-11-10", "2026-11-12", hora_llegada="18:00", hora_salida="07:00"))
+    _guardar(cal, _reserva("ENTRA2", "2026-11-12", "2026-11-16", hora_salida="09:00"))
+    assert (hora(s.cal.ev("SALE1")), hora(s.cal.ev("ENTRA2", "relevo")), hora(s.cal.ev("ENTRA2", "salida"))) == \
+        ("2026-11-10 18:00", "2026-11-12 07:00", "2026-11-16 09:00")
+
+    monkeypatch.setattr(reglas, "hora_evento", hora_evento)
+    cal.recalcular_limpiezas(date(2026, 11, 9))
+    assert (hora(s.cal.ev("SALE1")), hora(s.cal.ev("ENTRA2", "relevo")), hora(s.cal.ev("ENTRA2", "salida"))) == \
+        ("2026-11-10 15:00", "2026-11-12 11:00", "2026-11-16 11:00")
+    assert "Hora movida" not in caplog.text, "no los movió nadie a mano"
+    antes = copy.deepcopy(s.cal.eventos)
+    cal.recalcular_limpiezas(date(2026, 11, 9))
+    assert s.cal.eventos == antes, "otra pasada no cambia nada"
 
 
 def test_N2_arrastrar_la_salida_no_es_un_acuerdo_y_vuelve_a_su_hora_solo_la_etiqueta_cambia_la_limpieza(tmp_path, caplog):
@@ -1096,7 +1141,7 @@ def test_L10_ubicacion_puesta_a_mano_antes_de_que_el_script_la_escribiera_se_res
     s.cfg.alojamientos[1].direccion = "Calle de la Torrecilla del Leal 22, Madrid"
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="18:00"))
     assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq."
-    assert s.cal.ev("ENTRA2")["start"]["dateTime"] == "2026-11-05T18:00:00", "el resto sigue al día"
+    assert "llega 18:00" in s.cal.ev("ENTRA2")["summary"], "el resto sigue al día"
     _guardar(cal, _reserva("ENTRA2", "2026-11-05", "2026-11-08", hora_llegada="19:00"))
     assert s.cal.ev("ENTRA2")["location"] == "Portal B, 2º izq.", "y lo sigue siendo"
 
@@ -1355,7 +1400,7 @@ def test_N9_final_alargado_a_mano_vuelve_a_la_duracion_fija(tmp_path):
     e["hora_llegada"] = "15:30"
     cal.guardar_reserva(e, eventos, None)
     entrada, salida = s.cal.ev("ENTRA2"), s.cal.ev("ENTRA2", "salida")
-    assert (entrada["start"]["dateTime"], entrada["end"]["dateTime"]) == ("2026-11-05T15:30:00", "2026-11-05T16:00:00")
+    assert (entrada["start"]["dateTime"], entrada["end"]["dateTime"]) == ("2026-11-05T15:00:00", "2026-11-05T15:30:00")
     assert (salida["start"]["dateTime"], salida["end"]["dateTime"]) == ("2026-11-08T11:00:00", "2026-11-08T11:30:00")
     antes = copy.deepcopy(s.cal.eventos)
     cal.recalcular_limpiezas(date(2026, 10, 13))
