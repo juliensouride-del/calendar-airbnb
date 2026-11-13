@@ -1,20 +1,6 @@
 {
   "inicio": "2026-10-10T17:29:33.325298+00:00",
   "procesados": {
-    "INBOX:1274556880:376554": "2026-11-02T22:44:25+00:00",
-    "mid:<RPDSVyfMRD2AgbIn9O2ILA@geopod-ismtpd-63>": "2026-11-02T22:44:25+00:00",
-    "INBOX:1274556880:376555": "2026-11-02T22:48:09+00:00",
-    "mid:<_yfcKqEbTiyw4LRnXSbuNw@geopod-ismtpd-67>": "2026-11-02T22:48:09+00:00",
-    "INBOX:1274556880:376561": "2026-11-03T09:07:02+00:00",
-    "mid:<JsnreQJjT7GX3bX_RjumMQ@geopod-ismtpd-44>": "2026-11-03T09:07:02+00:00",
-    "INBOX:1274556880:376564": "2026-11-03T09:17:44+00:00",
-    "mid:<bYST0YmQTa2LQlkEew5ybQ@geopod-ismtpd-39>": "2026-11-03T09:17:44+00:00",
-    "INBOX:1274556880:376566": "2026-11-03T10:15:51+00:00",
-    "mid:<RTymKigBSPukYNmrEzMZaw@geopod-ismtpd-72>": "2026-11-03T10:15:51+00:00",
-    "INBOX:1274556880:376570": "2026-11-03T11:21:59+00:00",
-    "mid:<kzXytCpWQ1Ch_Sn8ZL0Eyw@geopod-ismtpd-92>": "2026-11-03T11:21:59+00:00",
-    "INBOX:1274556880:376571": "2026-11-03T11:58:57+00:00",
-    "mid:<XFoDIlVPSD26h9LX3BQKBw@geopod-ismtpd-66>": "2026-11-03T11:58:57+00:00",
     "INBOX:1274556880:376582": "2026-11-03T22:58:34+00:00",
     "mid:<7PMX5XheTkqZlQWIpgvoCw@geopod-ismtpd-79>": "2026-11-03T22:58:34+00:00",
     "INBOX:1274556880:376583": "2026-11-03T23:01:33+00:00",
@@ -172,12 +158,14 @@
     "INBOX:1274556880:376878": "2026-11-13T11:58:59+00:00",
     "mid:<kkOEVDrTRlSkVcEO1Vb-Kw@geopod-ismtpd-35>": "2026-11-13T11:58:59+00:00",
     "INBOX:1274556880:376881": "2026-11-13T13:06:03+00:00",
-    "mid:<nCpHI-ASR3qHQs4ZxuM1mA@geopod-ismtpd-60>": "2026-11-13T13:06:03+00:00"
+    "mid:<nCpHI-ASR3qHQs4ZxuM1mA@geopod-ismtpd-60>": "2026-11-13T13:06:03+00:00",
+    "INBOX:1274556880:376889": "2026-11-13T17:06:41+00:00",
+    "mid:<3cvUZE6wQMGMP6AdOzdULw@geopod-ismtpd-47>": "2026-11-13T17:06:41+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-11-13T14:26:21.872010+00:00"
+  "ultima_ok": "2026-11-13T21:22:30.891114+00:00"
 }
