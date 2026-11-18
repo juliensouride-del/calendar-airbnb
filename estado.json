@@ -1,12 +1,6 @@
 {
   "inicio": "2026-10-10T17:29:33.325298+00:00",
   "procesados": {
-    "INBOX:1274556880:376711": "2026-11-07T16:47:23+00:00",
-    "mid:<8advHOInQ8iiGtAnabT8rQ@geopod-ismtpd-35>": "2026-11-07T16:47:23+00:00",
-    "INBOX:1274556880:376712": "2026-11-07T16:58:15+00:00",
-    "mid:<OnSBp0WBTG-UylJv0XCaVw@geopod-ismtpd-51>": "2026-11-07T16:58:15+00:00",
-    "INBOX:1274556880:376715": "2026-11-07T20:24:17+00:00",
-    "mid:<tBifcBhtTuKQVfYfv6lk5g@geopod-ismtpd-4>": "2026-11-07T20:24:17+00:00",
     "INBOX:1274556880:376717": "2026-11-08T04:55:48+00:00",
     "mid:<WizUMtwTRQ2dfOTLrzav7g@geopod-ismtpd-10>": "2026-11-08T04:55:48+00:00",
     "INBOX:1274556880:376718": "2026-11-08T04:58:46+00:00",
@@ -162,12 +156,24 @@
     "INBOX:1274556880:377013": "2026-11-17T18:13:02+00:00",
     "mid:<2tLGnnvWSuedy9aXr9-3yQ@geopod-ismtpd-6>": "2026-11-17T18:13:02+00:00",
     "INBOX:1274556880:377014": "2026-11-17T19:30:08+00:00",
-    "mid:<cJYPbealTfiZNdl8zWw-IQ@geopod-ismtpd-21>": "2026-11-17T19:30:08+00:00"
+    "mid:<cJYPbealTfiZNdl8zWw-IQ@geopod-ismtpd-21>": "2026-11-17T19:30:08+00:00",
+    "INBOX:1274556880:377019": "2026-11-18T09:25:17+00:00",
+    "mid:<dCFQZzIdS6qXm1Scp8W9Kg@geopod-ismtpd-151>": "2026-11-18T09:25:17+00:00",
+    "INBOX:1274556880:377022": "2026-11-18T11:27:15+00:00",
+    "mid:<nNFHHf8ES2a4GMqPPc5jKw@geopod-ismtpd-103>": "2026-11-18T11:27:15+00:00",
+    "INBOX:1274556880:377023": "2026-11-18T11:58:40+00:00",
+    "mid:<FUHpepcMQjGvJdLXg-Xu9Q@geopod-ismtpd-60>": "2026-11-18T11:58:40+00:00",
+    "INBOX:1274556880:377025": "2026-11-18T12:54:30+00:00",
+    "mid:<mSOA-bZ8RhSy2rBoiZKeEQ@geopod-ismtpd-26>": "2026-11-18T12:54:30+00:00",
+    "INBOX:1274556880:377028": "2026-11-18T13:52:18+00:00",
+    "mid:<ub9tLi1eSayVgfAAN5uA3Q@geopod-ismtpd-57>": "2026-11-18T13:52:18+00:00",
+    "INBOX:1274556880:377029": "2026-11-18T14:10:44+00:00",
+    "mid:<T87CvcFAQ4illgr_T-w6OA@geopod-ismtpd-66>": "2026-11-18T14:10:44+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-11-17T23:27:05.774284+00:00"
+  "ultima_ok": "2026-11-18T15:30:08.832289+00:00"
 }
