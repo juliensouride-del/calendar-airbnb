@@ -1,10 +1,6 @@
 {
   "inicio": "2026-10-10T17:29:33.325298+00:00",
   "procesados": {
-    "INBOX:1274556880:376739": "2026-11-08T19:39:14+00:00",
-    "mid:<kTPv0rwSRcuKUqaY1CjuXg@geopod-ismtpd-100>": "2026-11-08T19:39:14+00:00",
-    "INBOX:1274556880:376740": "2026-11-08T19:42:11+00:00",
-    "mid:<pD0wrT_xSDyc5bXj_5-vJA@geopod-ismtpd-35>": "2026-11-08T19:42:11+00:00",
     "INBOX:1274556880:376748": "2026-11-09T09:14:38+00:00",
     "mid:<HhUJGKbjTS6DQybH-WShVQ@geopod-ismtpd-106>": "2026-11-09T09:14:38+00:00",
     "INBOX:1274556880:376749": "2026-11-09T09:21:52+00:00",
@@ -162,12 +158,14 @@
     "INBOX:1274556880:377040": "2026-11-18T19:48:54+00:00",
     "mid:<rs2wZ-jDQNGt7PVWOyksjQ@geopod-ismtpd-92>": "2026-11-18T19:48:54+00:00",
     "INBOX:1274556880:377044": "2026-11-18T22:29:10+00:00",
-    "mid:<akUHqSLlTrCYotTch7jbDg@geopod-ismtpd-17>": "2026-11-18T22:29:10+00:00"
+    "mid:<akUHqSLlTrCYotTch7jbDg@geopod-ismtpd-17>": "2026-11-18T22:29:10+00:00",
+    "INBOX:1274556880:377052": "2026-11-19T10:23:35+00:00",
+    "mid:<YZeSCBczToi4_agNqj-CQg@geopod-ismtpd-64>": "2026-11-19T10:23:35+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-11-18T22:54:41.061305+00:00"
+  "ultima_ok": "2026-11-19T15:38:00.726934+00:00"
 }
