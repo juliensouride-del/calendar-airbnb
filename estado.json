@@ -164,12 +164,32 @@
     "INBOX:1274556880:377070": "2026-11-19T18:53:52+00:00",
     "mid:<zgYKerniT_2_0UQCm9HY9A@geopod-ismtpd-132>": "2026-11-19T18:53:52+00:00",
     "INBOX:1274556880:377071": "2026-11-19T19:10:53+00:00",
-    "mid:<_SHrE2M6TrKa_E0REZ-mug@geopod-ismtpd-83>": "2026-11-19T19:10:53+00:00"
+    "mid:<_SHrE2M6TrKa_E0REZ-mug@geopod-ismtpd-83>": "2026-11-19T19:10:53+00:00",
+    "INBOX:1274556880:377079": "2026-11-20T05:44:14+00:00",
+    "mid:<DArlXLWeTxKx5EoZU_zYog@geopod-ismtpd-69>": "2026-11-20T05:44:14+00:00",
+    "INBOX:1274556880:377082": "2026-11-20T07:25:19+00:00",
+    "mid:<IKDHPjcUQSW2t-5CocJxlA@geopod-ismtpd-14>": "2026-11-20T07:25:19+00:00",
+    "INBOX:1274556880:377083": "2026-11-20T08:00:56+00:00",
+    "mid:<xaeBBueQTAO98z2sqekPMg@geopod-ismtpd-105>": "2026-11-20T08:00:56+00:00",
+    "INBOX:1274556880:377085": "2026-11-20T08:27:56+00:00",
+    "mid:<809nFdEMT0GqFq1gPLioCg@geopod-ismtpd-47>": "2026-11-20T08:27:56+00:00",
+    "INBOX:1274556880:377086": "2026-11-20T08:56:24+00:00",
+    "mid:<glmllOx3ScG89sf_GYIe8Q@geopod-ismtpd-67>": "2026-11-20T08:56:24+00:00",
+    "INBOX:1274556880:377089": "2026-11-20T10:19:02+00:00",
+    "mid:<qA0pSKUbR2mKneSzm76xmw@geopod-ismtpd-108>": "2026-11-20T10:19:02+00:00",
+    "INBOX:1274556880:377092": "2026-11-20T10:34:18+00:00",
+    "mid:<aNkQr7OnSl-l9DPjtJr0Rw@geopod-ismtpd-93>": "2026-11-20T10:34:18+00:00",
+    "INBOX:1274556880:377097": "2026-11-20T12:16:18+00:00",
+    "mid:<romztwwSSUuY9TBjqNESGQ@geopod-ismtpd-59>": "2026-11-20T12:16:18+00:00",
+    "INBOX:1274556880:377105": "2026-11-20T14:33:23+00:00",
+    "mid:<mCKEpg-4Rg6HA4Uu64DYlw@geopod-ismtpd-70>": "2026-11-20T14:33:23+00:00",
+    "INBOX:1274556880:377106": "2026-11-20T14:33:49+00:00",
+    "mid:<jIpPuNtlQa-L41M33AiwHw@geopod-ismtpd-88>": "2026-11-20T14:33:49+00:00"
   },
   "fallos": {},
   "fecha_fallos": {},
   "ultimo_aviso": {
     "gemini": "2026-10-28T14:52:11.173667+00:00"
   },
-  "ultima_ok": "2026-11-19T22:59:58.428640+00:00"
+  "ultima_ok": "2026-11-20T15:18:16.779763+00:00"
 }
