@@ -2,7 +2,7 @@
 
 Lee los correos de Airbnb **directamente de Yahoo Mail** y mantiene un calendario de Google con cada reserva: alojamiento, fechas, personas, horas de llegada y salida, sofá cama, cuna, peticiones del huésped, locker y limpieza entre reservas. Cuando un huésped pide algo (entrar antes, salir más tarde, cuna, sofá cama…), el anfitrión recibe un aviso por correo.
 
-Se ejecuta solo en **GitHub Actions** cada 2 horas de día (8:00–22:00 en Madrid), sin servidores y con coste 0 €.
+Se ejecuta solo en **GitHub Actions** 10 veces al día, cada hora y media (de 7:07 a 20:37 en Madrid en invierno, una hora más tarde en verano), sin servidores y con coste 0 €.
 
 > ⚠️ **El repositorio es público.** No contiene secretos (están en los Secrets de GitHub) y los correos de `ejemplos/` están anonimizados, pero `config.toml` incluye los enlaces de los lockers y el historial de git conserva versiones anteriores de los ejemplos. Conviene hacerlo **privado** (Settings → General → Danger Zone → Change visibility): el uso de Actions (~250 min/mes) cabe en los 2 000 min gratuitos de un repositorio privado.
 
@@ -134,7 +134,7 @@ Al anfitrión solo le llegan las **peticiones de los huéspedes** (entrar antes,
 ## 2. Cómo funciona
 
 ```
-Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cada 2 h de día)
+Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, 10 veces al día)
                                    └─ airbnb_calendar/
                                       ├─ yahoo.py        lee los correos (IMAP) y envía los avisos (SMTP)
                                       ├─ parser.py       código, huésped, fechas, horas y personas de cada correo
@@ -159,7 +159,7 @@ Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cad
 
 | Pieza | Plan gratuito | Uso |
 | --- | --- | --- |
-| GitHub Actions | 2 000 min/mes en privado (ilimitado en público) | ~8 ejecuciones al día de < 1 min |
+| GitHub Actions | 2 000 min/mes en privado (ilimitado en público) | 10 ejecuciones al día de < 1 min |
 | Google Calendar API | 1 000 000 peticiones/día | unas decenas al día |
 | Gemini API | cuota diaria gratuita de AI Studio | un análisis por mensaje de huésped (no los de cortesía ni los de reservas terminadas) |
 
