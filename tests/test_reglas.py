@@ -332,9 +332,8 @@ def test_respuesta_gemini_se_valida_y_normaliza():
                  '"entrada_anticipada":"12:00","salida_tardia":"null",'
                  '"otras_peticiones":["Trona",""]}\n```'},
     ]}}]})
-    assert a == {"hora_llegada": "09:30", "hora_salida": None, "entrada_anticipada": "12:00", "salida_tardia": None,
-                 "sofa_cama": "sin_mencion", "cuna": "si", "otras_peticiones": ["Trona"]}
-    assert a.get("fecha_salida") is None
+    assert a == {"hora_llegada": "09:30", "hora_salida": None, "fecha_salida": None, "entrada_anticipada": "12:00",
+                 "salida_tardia": None, "sofa_cama": "sin_mencion", "cuna": "si", "otras_peticiones": ["Trona"]}
     fechas = [interpretar_respuesta({"candidates": [{"content": {"parts": [{"text": json.dumps({"fecha_salida": f})}]}}]})
               ["fecha_salida"] for f in ("2026-11-20", "2026-13-40", "mañana", None)]
     assert fechas == ["2026-11-20", None, None, None]

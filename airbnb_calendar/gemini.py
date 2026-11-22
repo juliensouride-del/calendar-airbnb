@@ -12,6 +12,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from datetime import date
 
 import requests
 
@@ -34,7 +35,11 @@ INSTRUCCIONES = "\n".join([
     '  Convierte aproximaciones a una hora concreta ("around 6pm" → "18:00", "not before 3pm" → "15:00").',
     '  Si es vago ("por la tarde") o solo PREGUNTA o PIDE poder llegar antes ("¿podemos llegar antes de las 15:00?"),',
     "  devuelve null: eso va en entrada_anticipada. null si no lo indica.",
-    "- hora_salida: igual, para la hora a la que prevé dejar el apartamento el día de salida.",
+    "- hora_salida: igual, para la hora a la que prevé dejar el apartamento (o a la que lo dejó: si dice que ya se ha",
+    "  ido, la hora de envío del mensaje).",
+    "- fecha_salida: el día (AAAA-MM-DD) en que deja o dejó el apartamento, si lo dice o se deduce del mensaje",
+    '  ("nos vamos esta noche", "ya nos hemos ido" → la fecha de envío; "mañana" → el día siguiente al envío).',
+    "  null si no lo indica. Puede ser antes de la fecha de salida de la reserva.",
     "- entrada_anticipada: si el huésped pide, pregunta o sugiere entrar o dejar las maletas ANTES de la hora",
     "  de check-in de la reserva (early check-in), aunque sea de forma condicional o indirecta",
     '  ("avísame cuando esté listo por si puedo entrar antes", "can we arrive before 3pm?", "¿hay check-in temprano?").',
@@ -44,6 +49,7 @@ INSTRUCCIONES = "\n".join([
     "  Cuenta también si es una petición repetida o con una hora distinta a la de antes.",
     "- salida_tardia: igual, si pide salir o dejar las maletas DESPUÉS de la hora de check-out (late check-out):",
     '  hora deseada HH:MM, "si" sin hora concreta, "no" si ya no lo necesita, o null.',
+    "  Irse un día ANTES de la fecha de salida de la reserva nunca es salida tardía, aunque sea por la tarde o la noche.",
     '- sofa_cama: "si" si indica que usarán o necesitan el sofá cama (o una cama extra para alguien);',
     '  "no" si dice que NO lo necesitan; "sin_mencion" en cualquier otro caso.',
     '- cuna: "si" si pide, necesita o confirma una cuna / cama de bebé (también si agradece que se la proporciones);',
@@ -61,15 +67,16 @@ ESQUEMA = {
     "properties": {
         "hora_llegada": {"type": "STRING", "nullable": True, "description": "HH:MM en 24 h o null"},
         "hora_salida": {"type": "STRING", "nullable": True, "description": "HH:MM en 24 h o null"},
+        "fecha_salida": {"type": "STRING", "nullable": True, "description": "AAAA-MM-DD o null"},
         "entrada_anticipada": {"type": "STRING", "nullable": True, "description": 'HH:MM en 24 h, "si", "no" o null'},
         "salida_tardia": {"type": "STRING", "nullable": True, "description": 'HH:MM en 24 h, "si", "no" o null'},
         "sofa_cama": {"type": "STRING", "enum": ["si", "no", "sin_mencion"]},
         "cuna": {"type": "STRING", "enum": ["si", "no", "sin_mencion"]},
         "otras_peticiones": {"type": "ARRAY", "items": {"type": "STRING"}},
     },
-    "required": ["hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa_cama", "cuna",
+    "required": ["hora_llegada", "hora_salida", "fecha_salida", "entrada_anticipada", "salida_tardia", "sofa_cama", "cuna",
                  "otras_peticiones"],
-    "propertyOrdering": ["hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa_cama", "cuna",
+    "propertyOrdering": ["hora_llegada", "hora_salida", "fecha_salida", "entrada_anticipada", "salida_tardia", "sofa_cama", "cuna",
                          "otras_peticiones"],
 }
 
@@ -186,6 +193,7 @@ def interpretar_respuesta(resp: dict) -> dict:
     return {
         "hora_llegada": _normalizar_hora(o.get("hora_llegada")),
         "hora_salida": _normalizar_hora(o.get("hora_salida")),
+        "fecha_salida": _normalizar_fecha(o.get("fecha_salida")),
         "entrada_anticipada": _solicitud(o.get("entrada_anticipada")),
         "salida_tardia": _solicitud(o.get("salida_tardia")),
         "sofa_cama": tri(o.get("sofa_cama")),
@@ -201,6 +209,15 @@ def _solicitud(v) -> str | None:
     if v.strip().lower() == "no":
         return "no"
     return _normalizar_hora(v) or "si"
+
+
+def _normalizar_fecha(f) -> str | None:
+    if not isinstance(f, str):
+        return None
+    try:
+        return date.fromisoformat(f.strip()).isoformat()
+    except ValueError:
+        return None
 
 
 def _normalizar_hora(h) -> str | None:
@@ -271,6 +288,7 @@ def analisis_por_palabras_clave(texto: str) -> dict:
     return {
         "hora_llegada": None,
         "hora_salida": None,
+        "fecha_salida": None,
         "entrada_anticipada": "si" if PALABRAS_ENTRADA.search(t) else None,
         "salida_tardia": "si" if PALABRAS_SALIDA.search(t) else None,
         "sofa_cama": "si" if PALABRAS_SOFA.search(t) else "sin_mencion",

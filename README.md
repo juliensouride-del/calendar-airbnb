@@ -20,7 +20,7 @@ Los eventos están siempre a la hora estándar, para que el equipo los encuentre
 ```
 
 - La **entrada** (verde) lleva la limpieza, las personas, la hora de llegada, la petición de entrar antes, el sofá cama y la cuna.
-- La **salida** (rojo) dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya, pero el evento sigue a las 11:00. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`). La petición de salir más tarde va en su descripción.
+- La **salida** (rojo) dice a qué hora sale el huésped. Sin acuerdo con el anfitrión, nunca después de las 11:00, aunque el huésped diga que se va más tarde. Si sale antes, la suya, pero el evento sigue a las 11:00. Si se va un día antes («nos vamos esta noche al aeropuerto», «ya nos hemos ido»), el día y la hora: `sale 20/11 20:00`, y eso no es pedir salir más tarde. Si hay acuerdo, la acordada con ✅ (`sale 13:00 ✅`). La petición de salir más tarde va en su descripción.
 - Los dos eventos llevan la **dirección del piso** como ubicación, con el mapa en Calendar.
 
 La descripción de la salida dice la hora de salida y el locker. Si el huésped pide salir más tarde y aún no hay acuerdo, la petición va encima:
@@ -227,7 +227,7 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 171 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # 174 pruebas, sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 
