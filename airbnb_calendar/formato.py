@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date
 
 from .config import Config
-from .reglas import es_hora_valida, hora_salida, llegada_prevista, personas_que_duermen
+from .reglas import es_hora_valida, hora_salida, llegada_prevista, personas_que_duermen, sale_antes
 
 DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
@@ -23,10 +23,12 @@ def lineas_limpieza(l: dict | None, cfg: Config) -> list[str]:
     """Ventana para limpiar entre la salida del huésped anterior y la entrada de este (o el aviso si no cabe)."""
     if not l:
         return []
-    cuando = "ese día" if l["mismo_dia"] else "el día anterior"
+    cuando = ("ese día" if l["mismo_dia"] else f"el {fecha_corta_es(l['dia_salida'])}" if l.get("dia_salida")
+              else "el día anterior")
+    a_las = f" a las {l['salida']}" if l["salida"] != "00:00" or l["mismo_dia"] else ""
     if l["ok"]:
         return [f"🧹 Limpieza: {fecha_corta_es(l['dia'])} de {l['desde']} a {l['hasta']}"
-                f" (el huésped anterior sale {cuando} a las {l['salida']})"]
+                f" (el huésped anterior sale {cuando}{a_las})"]
     return [f"⚠️ LIMPIEZA: no caben {cfg.limpieza_duracion_min // 60} h entre las {cfg.limpieza_inicio} y las"
             f" {cfg.limpieza_fin} ({l['motivo']}). Pide al huésped anterior que salga antes o a este que"
             " llegue más tarde."]
@@ -70,7 +72,18 @@ def _detalles_entrada(e: dict, cfg: Config) -> list[str]:
 
 
 def _sale(e: dict, cfg: Config) -> str:
+    """'sale 11:00', 'sale 13:00 ✅' (acordada) o 'sale 20/11 20:00' (se va un día antes)."""
+    if sale_antes(e):
+        return " ".join(x for x in ("sale", fecha_corta_es(e["dia_salida"]), hora_salida(e, cfg)) if x)
     return "sale " + hora_salida(e, cfg) + (" ✅" if e.get("acuerdo_salida") else "")
+
+
+def _cuando_sale(e: dict, cfg: Config) -> str:
+    """'jue 26/11 a las 11:00', o 'mar 01/12 a las 20:00 (se va antes: la reserva acaba el mié 02/12)'."""
+    if not sale_antes(e):
+        return f"{fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}"
+    hora = f" a las {hora_salida(e, cfg)}" if hora_salida(e, cfg) else ""
+    return f"{fecha_dia_es(e['dia_salida'])}{hora} (se va antes: la reserva acaba el {fecha_dia_es(e['checkout'])})"
 
 
 def _nombre(e: dict) -> str:
@@ -173,12 +186,12 @@ def _aviso_sin_analizar(*estados: dict) -> str | None:
 
 def _linea_salida(e: dict, cfg: Config) -> str:
     acordada = " (acordada)" if e.get("acuerdo_salida") else ""
-    return f"🕒 Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}{acordada}"
+    return f"🕒 Salida: {_cuando_sale(e, cfg)}{acordada}"
 
 
 def _datos_entrada(e: dict, cfg: Config) -> list[str]:
     return [f"🕒 Llegada: {fecha_dia_es(e['checkin'])} a las {llegada_prevista(e, cfg)}   ·   "
-            f"Salida: {fecha_dia_es(e['checkout'])} a las {hora_salida(e, cfg)}",
+            f"Salida: {_cuando_sale(e, cfg)}",
             "🛋️ Sofá cama: " + _texto_marca(e, "sofa"),
             "🍼 Cuna: " + _texto_marca(e, "cuna")]
 

@@ -138,6 +138,11 @@ class GeminiFalso:
         if re.search(r"check-in early", huesped, re.I): r["entrada_anticipada"] = "si"
         if re.search(r"arrive at 12", huesped, re.I): r["hora_llegada"] = "12:00"
         if re.search(r"leave at 1pm", huesped, re.I): r["hora_salida"] = "13:00"
+        dia = re.search(r"Mensaje enviado el: (\d{4}-\d{2}-\d{2})", txt)
+        if re.search(r"leave the apartment around 8 pm", huesped, re.I):      # se va la víspera de la salida
+            r.update(hora_salida="20:00", fecha_salida=dia.group(1), salida_tardia="20:00")   # el modelo se lía
+        if re.search(r"we have left the apartment", huesped, re.I) and enviado:
+            r.update(hora_salida=f"{enviado.group(1)}:{enviado.group(2)}", fecha_salida=dia.group(1))
         return Respuesta(200, {"candidates": [{"content": {"parts": [{"text": __import__("json").dumps(r)}]}}]})
 
 
@@ -1659,6 +1664,30 @@ def test_R2_el_que_sale_pide_salir_mas_tarde_y_se_ve_en_el_relevo(tmp_path):
     assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Corazón de Madrid · [LIMPIEZA OK] · sale 11:00 · 2 pers"
     assert (hora(relevo), hora(relevo, "end")) == ("2026-12-02 11:00", "2026-12-02 11:30"), "pedirlo no es un acuerdo"
     assert s.asuntos == ["🔔 Airbnb · Corazón de Madrid · 26/11–02/12 · salir después"]
+
+
+def test_R2b_el_que_sale_se_va_la_vispera_no_pide_salir_mas_tarde(tmp_path):
+    """Caso real (Torrecilla 20/11): «nos vamos hacia las 20:00 al aeropuerto», el día antes de la salida, se tomó como
+    pedir salir a las 20:00 el día de salida (aviso falso y relevo a las 11:00); y «ya nos hemos ido» no cambió nada."""
+    s = Entorno(tmp_path)
+    cal = Calendario(s.cfg, s.cal, dormir=lambda _: None)
+    _guardar(cal, _reserva("ENTRA2", "2026-12-02", "2026-12-05", alojamiento=s.cfg.alojamientos[0].nombre))
+    s.buzon.recibir(CONF_LUCIA)                                       # Lucía sale el 02/12, el día que entra ENTRA2
+    s.buzon.recibir(_mensaje_lucia("We will leave the apartment around 8 pm for the airport.", "2026-12-01 11:34"))
+    s.ejecutar()
+    assert s.asuntos == [], "irse la víspera no es pedir salir más tarde"
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert relevo["summary"] == "🔄 SALIDA Y ENTRADA Corazón de Madrid · [LIMPIEZA OK] · sale 01/12 20:00 · 2 pers"
+    assert "⌛" not in relevo["description"]
+    assert "🕒 Salida: mar 01/12 a las 20:00 (se va antes: la reserva acaba el mié 02/12)" in relevo["description"]
+    assert "(el huésped anterior sale el día anterior a las 20:00)" in relevo["description"]
+    assert (hora(relevo), hora(relevo, "end")) == ("2026-12-02 11:00", "2026-12-02 11:30"), "el evento no se mueve"
+
+    s.buzon.recibir(_mensaje_lucia("We have left the apartment, the key is on the table.", "2026-12-01 19:52"))
+    s.ejecutar()
+    relevo = s.cal.ev("ENTRA2", "relevo")
+    assert "sale 01/12 19:52" in relevo["summary"]
+    assert s.asuntos == []
 
 
 def test_R3_salida_acordada_en_el_relevo(tmp_path):

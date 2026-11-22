@@ -11,7 +11,7 @@ Funciones puras.
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from .config import Alojamiento, Config
 from .parser import DatosCorreo, clave_normalizada, normalizar_hora
@@ -28,6 +28,7 @@ def crear_estado(datos: DatosCorreo | None = None) -> dict:
         "hora_checkin": None, "hora_checkout": None,        # horas oficiales del anuncio
         "adultos": None, "ninos": None, "bebes": None, "mascotas": None, "total": None,
         "hora_llegada": None, "hora_salida": None,          # lo que dice el huésped
+        "dia_salida": None,                                  # el día que se va, si es antes del de salida
         "entrada_anticipada": None, "salida_tardia": None,  # lo que PIDE: 'HH:MM' o 'si' (sin hora concreta)
         "acuerdo_entrada": None, "acuerdo_salida": None,    # lo acordado por el anfitrión (#entrada / #salida)
         "sofa": None, "cuna": None,                          # {"v": bool, "f": "huesped"|"palabras"|"regla"}
@@ -65,7 +66,8 @@ def actualizar_con_datos(e: dict, d: DatosCorreo) -> dict:
 def fusionar_analisis(e: dict, a: dict | None, fuente: str, cfg: Config | None = None) -> dict:
     """
     Fusiona el análisis de un mensaje. Los mensajes se procesan en orden: lo último que dice el huésped manda.
-    a: {hora_llegada, hora_salida, entrada_anticipada, salida_tardia, sofa_cama, cuna, otras_peticiones}
+    a: {hora_llegada, hora_salida, fecha_salida, entrada_anticipada, salida_tardia, sofa_cama, cuna, otras_peticiones}
+       Si se va (o se ha ido) un día antes de la salida, se guarda ese día, y su hora no es pedir salir más tarde.
     fuente: 'huesped' (Gemini) | 'palabras' (respaldo por palabras clave)
     cfg: con él, una hora de llegada (salida) anterior (posterior) al horario estándar cuenta como
          petición de entrar antes (salir después), y una posterior (anterior) la anula.
@@ -74,12 +76,19 @@ def fusionar_analisis(e: dict, a: dict | None, fuente: str, cfg: Config | None =
         return e
     if es_hora_valida(a.get("hora_llegada")):
         e["hora_llegada"] = a["hora_llegada"]
-    if es_hora_valida(a.get("hora_salida")):
-        e["hora_salida"] = a["hora_salida"]
+    fecha = a.get("fecha_salida")
+    antes_de_la_salida = bool(fecha and e.get("checkout") and fecha < e["checkout"])
+    if es_hora_valida(a.get("hora_salida")) or antes_de_la_salida:
+        e["hora_salida"] = a["hora_salida"] if es_hora_valida(a.get("hora_salida")) else None
+        e["dia_salida"] = fecha if antes_de_la_salida else None
+    elif fecha:
+        e["dia_salida"] = None
     estandar = (cfg.hora_entrada_por_defecto, cfg.hora_salida_por_defecto) if cfg else (None, None)
     for k, hora, std, antes in (("entrada_anticipada", a.get("hora_llegada"), estandar[0], True),
                                 ("salida_tardia", a.get("hora_salida"), estandar[1], False)):
         e[k] = _fusionar_solicitud(e.get(k), a.get(k), hora, std, antes)
+    if e.get("dia_salida"):
+        e["salida_tardia"] = None          # se va antes del día de salida: no necesita salir más tarde
     e["sofa"] = _fusionar_marca(e["sofa"], a.get("sofa_cama"), fuente)
     e["cuna"] = _fusionar_marca(e["cuna"], a.get("cuna"), fuente)
 
@@ -120,7 +129,7 @@ def resetear_mensajes(e: dict) -> dict:
     """
     vacio = crear_estado()
     e.pop("notas", None)                          # campo de versiones anteriores
-    for k in ("hora_llegada", "hora_salida", "entrada_anticipada", "salida_tardia", "sofa", "cuna", "peticiones",
+    for k in ("hora_llegada", "hora_salida", "dia_salida", "entrada_anticipada", "salida_tardia", "sofa", "cuna", "peticiones",
               "sin_analizar"):
         e[k] = vacio[k]
     return e
@@ -203,11 +212,18 @@ def llegada_prevista(e: dict, cfg: Config) -> str:
     return llegada if llegada and not MADRUGADA <= llegada < estandar else estandar
 
 
+def sale_antes(e: dict) -> str | None:
+    """El día en que se va el huésped, si es antes de la fecha de salida y no hay hora acordada; si no, None."""
+    return None if e.get("acuerdo_salida") else e.get("dia_salida")
+
+
 def hora_salida(e: dict, cfg: Config) -> str:
     """Hora a la que sale el huésped, para el título y la limpieza: la acordada (#salida HH:MM); si no, la estándar, o la
-    del huésped si sale antes."""
+    del huésped si sale antes. Si se va un día antes, la que dice (puede ser por la noche), o '' si no la dice."""
     if e.get("acuerdo_salida"):
         return e["acuerdo_salida"]
+    if sale_antes(e):
+        return normalizar_hora(e["hora_salida"]) or ""
     estandar = cfg.hora_salida_por_defecto
     salida = normalizar_hora(e["hora_salida"])
     return min(salida, estandar) if salida else estandar
@@ -247,15 +263,20 @@ def evaluar_limpieza(anterior: dict | None, e: dict, cfg: Config) -> dict | None
     dias = (date.fromisoformat(e["checkin"]) - date.fromisoformat(anterior["checkout"])).days
     if dias not in (0, 1):
         return None
-    sale, entra = _min(hora_salida(anterior, cfg)), _min(hora_entrada(e, cfg))
+    sale, entra = _min(hora_salida(anterior, cfg) or "00:00"), _min(hora_entrada(e, cfg))
+    if sale_antes(anterior):        # se fue antes del día de salida: el piso está libre desde entonces
+        dias = (date.fromisoformat(e["checkin"]) - date.fromisoformat(anterior["dia_salida"])).days
+        sale = sale if dias == 1 else 0
     ini_j, fin_j, dur = _min(cfg.limpieza_inicio), _min(cfg.limpieza_fin), cfg.limpieza_duracion_min
     if dias == 0:      # mismo día: entre la salida y la entrada, dentro de la jornada
         opciones = [(e["checkin"], max(sale, ini_j), min(entra, fin_j))]
     else:              # salida ayer: la tarde de ayer (hasta el fin de jornada) o la mañana de hoy
-        opciones = [(anterior["checkout"], max(sale, ini_j), fin_j), (e["checkin"], ini_j, min(entra, fin_j))]
+        opciones = [((date.fromisoformat(e["checkin"]) - timedelta(days=1)).isoformat(), max(sale, ini_j), fin_j),
+                    (e["checkin"], ini_j, min(entra, fin_j))]
     dia, desde, hasta = max(opciones, key=lambda o: o[2] - o[1])
     ok = hasta - desde >= dur
-    r = {"ok": ok, "mismo_dia": dias == 0, "dia": dia, "salida": _hhmm(sale), "entrada": _hhmm(entra),
+    r = {"ok": ok, "mismo_dia": dias == 0, "dia_salida": anterior.get("dia_salida") if dias > 1 else None,
+         "dia": dia, "salida": _hhmm(sale), "entrada": _hhmm(entra),
          "desde": _hhmm(desde), "hasta": _hhmm(max(hasta, desde)), "margen_min": hasta - desde}
     if not ok:
         motivos = []

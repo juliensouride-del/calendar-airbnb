@@ -1,4 +1,6 @@
 """Reglas (estado, horario, limpieza), formato de los eventos, avisos y análisis de mensajes (Gemini y sin IA)."""
+import json
+
 import pytest
 
 from airbnb_calendar import avisos, formato, gemini, reglas
@@ -249,6 +251,43 @@ def test_lo_ultimo_que_dice_el_huesped_manda(r0, cfg):
     assert e["acuerdo_entrada"] == "13:00" and e["codigo"] == "HMTEST0002"
 
 
+def test_irse_la_vispera_no_es_pedir_salir_despues(r0, cfg):
+    e = reglas.crear_estado(r0)                                    # Lucía: 26/11 → mié 02/12
+    reglas.fusionar_analisis(e, analisis(hora_salida="13:00"), "huesped", cfg=cfg)
+    assert e["salida_tardia"] == "13:00"
+    reglas.fusionar_analisis(e, analisis(hora_salida="20:00", fecha_salida="2026-12-01", salida_tardia="20:00"),
+                             "huesped", cfg=cfg)
+    assert e["dia_salida"] == "2026-12-01" and e["salida_tardia"] is None, "se va el día antes: no pide nada"
+    assert avisos.avisos_pendientes(e, cfg) == []
+    assert formato.titulo_salida(e, cfg) == "🔴 SALIDA Corazón de Madrid · sale 01/12 20:00"
+    assert "🕒 Salida: mar 01/12 a las 20:00 (se va antes: la reserva acaba el mié 02/12)" in formato.descripcion_salida(e, cfg)
+    assert "Salida: mar 01/12 a las 20:00" in formato.descripcion_entrada(e, None, cfg)
+
+    # Lo último manda: dice otra hora para el día de salida
+    reglas.fusionar_analisis(e, analisis(hora_salida="10:00", fecha_salida="2026-12-02"), "huesped", cfg=cfg)
+    assert e["dia_salida"] is None and formato.titulo_salida(e, cfg) == "🔴 SALIDA Corazón de Madrid · sale 10:00"
+    reglas.fusionar_analisis(e, analisis(hora_salida="20:00", fecha_salida="2026-12-01"), "huesped", cfg=cfg)
+    reglas.fusionar_analisis(e, analisis(hora_salida="09:30"), "huesped", cfg=cfg)
+    assert e["dia_salida"] is None, "una hora sin día es la del día de salida"
+
+    # La hora acordada manda
+    reglas.fusionar_analisis(e, analisis(hora_salida="20:00", fecha_salida="2026-12-01"), "huesped", cfg=cfg)
+    e["acuerdo_salida"] = "12:00"
+    assert formato.titulo_salida(e, cfg) == "🔴 SALIDA Corazón de Madrid · sale 12:00 ✅"
+
+    reglas.resetear_mensajes(e)
+    assert e["dia_salida"] is None
+
+
+def test_limpieza_si_el_anterior_se_fue_la_vispera(cfg):
+    sale = reglas.crear_estado()
+    sale.update(alojamiento="X", checkin="2026-11-17", checkout="2026-11-21", hora_salida="20:00", dia_salida="2026-11-20")
+    entra = reglas.crear_estado()
+    entra.update(alojamiento="X", checkin="2026-11-21", checkout="2026-11-24", acuerdo_entrada="10:30")
+    l = reglas.evaluar_limpieza(sale, entra, cfg)
+    assert l["ok"] and not l["mismo_dia"] and (l["dia"], l["desde"], l["hasta"]) == ("2026-11-21", "08:00", "10:30")
+
+
 def test_llegar_antes_o_salir_despues_del_horario_cuenta_como_peticion(r0, cfg):
     e = reglas.crear_estado(r0)
     reglas.fusionar_analisis(e, analisis(hora_llegada="11:00", hora_salida="14:00"), "huesped", cfg=cfg)
@@ -281,6 +320,7 @@ def test_peticion_gemini_incluye_contexto_esquema_y_texto():
     assert "We will be there in one hour" in txt
     assert p["generationConfig"]["responseMimeType"] == "application/json"
     assert p["generationConfig"]["responseSchema"]["properties"]["cuna"]["enum"] == ["si", "no", "sin_mencion"]
+    assert "fecha_salida" in p["generationConfig"]["responseSchema"]["required"]
     assert p["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
     assert "thinkingConfig" not in construir_peticion("x", {}, "gemini-2.5-flash", "low")["generationConfig"]
 
@@ -292,8 +332,11 @@ def test_respuesta_gemini_se_valida_y_normaliza():
                  '"entrada_anticipada":"12:00","salida_tardia":"null",'
                  '"otras_peticiones":["Trona",""]}\n```'},
     ]}}]})
-    assert a == {"hora_llegada": "09:30", "hora_salida": None, "entrada_anticipada": "12:00", "salida_tardia": None,
-                 "sofa_cama": "sin_mencion", "cuna": "si", "otras_peticiones": ["Trona"]}
+    assert a == {"hora_llegada": "09:30", "hora_salida": None, "fecha_salida": None, "entrada_anticipada": "12:00",
+                 "salida_tardia": None, "sofa_cama": "sin_mencion", "cuna": "si", "otras_peticiones": ["Trona"]}
+    fechas = [interpretar_respuesta({"candidates": [{"content": {"parts": [{"text": json.dumps({"fecha_salida": f})}]}}]})
+              ["fecha_salida"] for f in ("2026-11-20", "2026-13-40", "mañana", None)]
+    assert fechas == ["2026-11-20", None, None, None]
     sin_campos = interpretar_respuesta({"candidates": [{"content": {"parts": [{"text": '{"entrada_anticipada":"si"}'}]}}]})
     assert sin_campos["entrada_anticipada"] == "si" and sin_campos["salida_tardia"] is None
     with pytest.raises(RuntimeError, match="SAFETY"):
