@@ -2,12 +2,9 @@ name: Airbnb → Calendar
 
 on:
   schedule:
-    # 10 veces al día, cada hora y media: 06:07, 07:37, 09:07 … 19:37 UTC
-    # = 07:07–20:37 en Madrid en invierno (08:07–21:37 en verano). ≈300 min/mes.
-    # Dos líneas con paso (/3): con "7 6-20/2" GitHub lanzaba las 8 de cada día; con una cada hora
-    # ("7 6-20", del 10/11 al 22/11) solo lanzaba unas 2 al día. Minutos 7 y 37: lejos de las horas en punto.
-    - cron: "7 6-18/3 * * *"
-    - cron: "37 7-19/3 * * *"
+    # Cada hora, todo el día (24 al día, ≈720 min/mes). Sin franja horaria: GitHub retrasa o se salta
+    # ejecuciones programadas, y una que llega tarde por la noche sigue sirviendo. Minuto 7: lejos de las horas en punto.
+    - cron: "7 * * * *"
   workflow_dispatch:
     inputs:
       entorno:

@@ -6,7 +6,7 @@
 
 [yahoo]
 # Carpetas IMAP que se revisan. "INBOX" = Bandeja de entrada; "Archive" = Archivo (si Julien
-# archiva un correo antes de que pase el script, cada hora y media de día, no se pierde; un correo
+# archiva un correo antes de que pase el script, cada hora, no se pierde; un correo
 # que ya se procesó en INBOX y se archiva después no se repite). Si algún correo de Airbnb
 # cae en Spam añade "Bulk". Una carpeta que no existe se omite (aviso en el log).
 carpetas = ["INBOX", "Archive"]
