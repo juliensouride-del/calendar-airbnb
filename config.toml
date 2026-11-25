@@ -142,5 +142,8 @@ modelo = "gemini-3.8-flash"
 # Todos: "pedir_hora_llegada", "dia_antes_llegada", "bienvenida", "pedir_hora_salida", "mitad_estancia",
 #        "dia_antes_salida", "despedida"
 momentos = ["mitad_estancia"]
+# Idioma de los borradores. "es" = siempre en español: Airbnb traduce el mensaje al idioma del huésped.
+# "" = en el idioma en que escribe el huésped.
+idioma = "es"
 # Mensajes recibidos hace más de estas horas no generan borrador (p. ej. si la automatización estuvo caída).
 antiguedad_max_horas = 48

@@ -282,6 +282,9 @@ Huésped · 25/11 17:30
   desde la cuenta que recibió el aviso, así que el bot solo envía un hilo desde esa misma cuenta; si no la tiene, ese
   borrador pasa a copiar y pegar. Si una reserva aún no tiene hilo (el huésped no ha escrito), también.
 
+**Idioma.** Los borradores se escriben siempre en **español** (`[respuestas] idioma = "es"` en `config.toml`): Airbnb
+traduce el mensaje al idioma del huésped. Con `idioma = ""`, se escriben en el idioma en que escribe el huésped.
+
 **Agenda.** Además de las respuestas, se proponen los mensajes de cada momento de la estancia (`[[momentos]]` de la base:
 bienvenida, día antes de salir, despedida…), el día y a partir de la hora que indica cada uno, una sola vez por reserva.
 En `config.toml`, `[respuestas] momentos` dice cuáles: quita los que el anfitrión ya envía con los mensajes programados de

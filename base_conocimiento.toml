@@ -8,7 +8,8 @@
 #     crea base_privada.toml con ese formato (está en .gitignore y no se sube).
 #
 #  Reglas para quien edite este archivo:
-#   - Los textos son la referencia. La IA los adapta al idioma del huésped y a su pregunta,
+#   - Los textos son la referencia. La IA los adapta a la pregunta del huésped y los escribe en el idioma
+#     de [respuestas] idioma en config.toml (español: Airbnb los traduce al huésped),
 #     pero no puede añadir datos que no estén aquí.
 #   - "PRIVADO" = dato que está en BASE_PRIVADA; si ese secreto falta, se trata como PENDIENTE.
 #   - "PENDIENTE" = dato que falta. Mientras falte, el borrador lo marca para que lo
@@ -21,7 +22,7 @@
 version = 1
 
 [general]
-idioma_original = "en"          # casi todo está en inglés; el borrador contesta en el idioma del huésped
+idioma_original = "en"          # casi todo está en inglés; el borrador va en el idioma de config.toml (español)
 hora_entrada = "15:00"          # = config.toml
 hora_salida = "11:00"
 firma = ""                      # sin firma, por ahora

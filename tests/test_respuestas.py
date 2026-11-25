@@ -52,13 +52,14 @@ class GeminiConRedaccion(GeminiFalso):
 
     def __init__(self, *a, borrador=None, falla_redaccion=False, **kw):
         super().__init__(*a, **kw)
-        self.prompts, self.borrador, self.falla_redaccion = [], borrador, falla_redaccion
+        self.prompts, self.cuerpos, self.borrador, self.falla_redaccion = [], [], borrador, falla_redaccion
 
     def post(self, url, json=None, headers=None, timeout=None):
         txt = json["contents"][0]["parts"][0]["text"]
         if "# BASE DE CONOCIMIENTO" not in txt:
             return super().post(url, json, headers, timeout)
         self.prompts.append(txt)
+        self.cuerpos.append(json)
         if self.falla_redaccion:
             return Respuesta(503, texto='{"error":"overloaded"}')
         r = self.borrador or {"idioma": "en", "borrador": "Hi Lucia! See you soon.", "notas_para_ti": ["Usado: acceso"],
@@ -144,7 +145,7 @@ def test_mensaje_del_huesped_genera_un_borrador_con_su_hilo_y_sin_repetirse(tmp_
     s.ejecutar()
     [b] = s.bandeja.lista
     assert b["tipo"] == "respuesta" and b["responder_a"] == HILO and b["piso"] == "Corazón de Madrid"
-    assert b["texto"] == "Hi Lucia! See you soon." and b["idioma"] == "en" and b["codigo"] == "HMTEST0002"
+    assert b["texto"] == "Hi Lucia! See you soon." and b["idioma"] == "es" and b["codigo"] == "HMTEST0002"
     assert "wifi password" in b["mensaje_huesped"] and b["asunto"].startswith("RE: Reservation for")
     assert b["pruebas"] is False and re.fullmatch(r"[0-9a-f]{16}", b["id"])
     prompt = s.gemini.prompts[0]
@@ -386,3 +387,29 @@ def test_el_borrador_lleva_la_cuenta_que_recibio_el_hilo(tmp_path):
     s.ejecutar()
     [b] = s.bandeja.lista
     assert b["responder_a"] == HILO and "cuenta" in b
+
+
+def test_los_borradores_van_en_espanol_aunque_el_huesped_escriba_en_ingles(tmp_path):
+    s = Entorno(tmp_path, _utc("2026-10-03 10:30"), respuestas_momentos=[])
+    s.recibir(CONF_LUCIA)
+    s.recibir(_mensaje("Hi! Is there an elevator?", "2026-10-03 10:00"), responder_a=HILO)
+    s.ejecutar()
+    [b] = s.bandeja.lista
+    assert b["idioma"] == "es", "el idioma lo fija config.toml, no lo que diga la IA"
+    sistema = s.gemini.cuerpos[-1]["systemInstruction"]["parts"][0]["text"]
+    assert "SIEMPRE en español" in sistema and "el del ÚLTIMO mensaje" not in sistema
+
+
+def test_con_idioma_vacio_se_contesta_en_el_del_huesped(tmp_path):
+    s = Entorno(tmp_path, _utc("2026-10-03 10:30"), respuestas_momentos=[], respuestas_idioma="")
+    s.recibir(CONF_LUCIA)
+    s.recibir(_mensaje("Hi! Is there an elevator?", "2026-10-03 10:00"), responder_a=HILO)
+    s.ejecutar()
+    [b] = s.bandeja.lista
+    assert b["idioma"] == "en"
+    assert "el del ÚLTIMO mensaje" in s.gemini.cuerpos[-1]["systemInstruction"]["parts"][0]["text"]
+
+
+def test_config_real_pide_espanol():
+    with open(RAIZ / "config.toml", "rb") as f:
+        assert tomllib.load(f)["respuestas"]["idioma"] == "es"
