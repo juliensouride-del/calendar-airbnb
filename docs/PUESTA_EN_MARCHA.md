@@ -22,7 +22,7 @@ solo, mira el final.
 
 ## 3. Vercel
 
-- [ ] Proyecto con el contenido de la carpeta `bot/` (`bot/vercel.json` ya fija la región `fra1`).
+- [ ] Proyecto con el contenido de la carpeta `bot/` (Vercel lo detecta como app Flask; `bot/vercel.json` fija la región `fra1`).
 - [ ] *Storage → Create → Upstash for Redis* (gratis, región UE) → *Connect* al proyecto
       (crea solas `KV_REST_API_URL` y `KV_REST_API_TOKEN`).
 - [ ] *Settings → Environment Variables* (Production):
