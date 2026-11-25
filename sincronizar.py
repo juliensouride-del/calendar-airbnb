@@ -152,10 +152,10 @@ def borrador_de_demostracion() -> dict:
             "codigo": "HMDEMO0000", "piso": "Torrecilla", "huesped": "Huésped de prueba", "checkin": ahora.date().isoformat(),
             "checkout": (ahora.date() + timedelta(days=3)).isoformat(), "personas": "2 adultos", "recibido": ahora.isoformat(),
             "mensaje_huesped": "Hi! Is there an elevator? And can we check in at 12?", "asunto": "RE: Reservation (demo)",
-            "responder_a": "demo@reply.airbnb.com", "idioma": "en", "confianza": "media", "faltan": [],
-            "texto": "Hi! In order to get to the apartment, it is not necessary to use any stairs.\n\n"
-                     "We always try to be flexible with check-in and check-out when conditions allow it. "
-                     "It will depend on previous/next guests' time and cleaning team availability. I will let you know what's possible.",
+            "responder_a": "demo@reply.airbnb.com", "idioma": "es", "confianza": "media", "faltan": [],
+            "texto": "¡Hola! Para llegar al apartamento no hace falta subir escaleras.\n\n"
+                     "Siempre intentamos ser flexibles con la hora de entrada y de salida cuando es posible. "
+                     "Dependerá de la hora de los huéspedes anteriores y de cuándo termine el equipo de limpieza. Te digo algo en cuanto lo sepa.",
             "notas": ["🧪 Esto es una demostración: prueba ✏️ Editar y ✅ Enviar. No se envía nada a nadie."],
             "necesita_respuesta": True, "reemplaza": [], "pruebas": True}
 

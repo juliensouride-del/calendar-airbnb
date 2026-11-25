@@ -63,6 +63,7 @@ class Config:
     respuestas_modelo: str = ""         # '' = el de [gemini]
     respuestas_momentos: list[str] = field(default_factory=list)   # mensajes de la agenda que se proponen
     respuestas_antiguedad_max_horas: int = 48   # mensajes más antiguos no generan borrador (p. ej. tras días caído)
+    respuestas_idioma: str = "es"       # idioma de los borradores ('' = el del huésped); Airbnb traduce al huésped
 
     def alojamiento_por_nombre(self, nombre: str | None) -> Alojamiento | None:
         """Por el nombre del anuncio (u otros_nombres) o por el alias."""
@@ -134,6 +135,7 @@ def cargar_config(ruta: str | Path = "config.toml") -> Config:
         respuestas_modelo=t.get("respuestas", {}).get("modelo", ""),
         respuestas_momentos=t.get("respuestas", {}).get("momentos", []),
         respuestas_antiguedad_max_horas=t.get("respuestas", {}).get("antiguedad_max_horas", 48),
+        respuestas_idioma=t.get("respuestas", {}).get("idioma", "es").strip().lower(),
     )
     from .parser import normalizar_hora
     for campo in ("hora_entrada_por_defecto", "hora_salida_por_defecto"):
