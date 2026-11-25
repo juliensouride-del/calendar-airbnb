@@ -2,10 +2,14 @@
 
 Lee los correos de Airbnb **directamente de Yahoo Mail** y mantiene un calendario de Google con cada reserva: alojamiento, fechas, personas, horas de llegada y salida, sofá cama, cuna, peticiones del huésped, locker y limpieza entre reservas. Cuando un huésped pide algo (entrar antes, salir más tarde, cuna, sofá cama…), el anfitrión recibe un aviso por correo.
 
-Se ejecuta solo en **GitHub Actions** cada hora, todo el día, sin servidores y con coste 0 €.
+Se ejecuta solo en **GitHub Actions** (cada 20 minutos de día y cada hora de noche), con coste 0 €. Además prepara
+**borradores de respuesta a los huéspedes** que apruebas en Telegram antes de que se envíen (ver la sección 6).
 
-> ⚠️ **El repositorio es público.** No contiene secretos (están en los Secrets de GitHub) y los correos de `ejemplos/` están anonimizados, pero `config.toml` incluye los enlaces de los lockers y el historial de git conserva versiones anteriores de los ejemplos. Conviene hacerlo **privado** (Settings → General → Danger Zone → Change visibility): el uso de Actions (~720 min/mes) cabe en los 2 000 min gratuitos de un repositorio privado.
-
+> ⚠️ **Mejor un repositorio privado** (*Settings → General → Danger Zone → Change visibility*, solo lo puede hacer el
+> propietario). Mientras sea público: las contraseñas del wifi **no** están en el repositorio (van en el secreto
+> `BASE_PRIVADA`) y lo privado del registro va cifrado, pero `config.toml` lleva los enlaces de los lockers y **los
+> registros de cada ejecución de Actions son visibles para cualquiera** (nombres de huéspedes y asuntos de los correos).
+> En privado, el uso de Actions (~1 750 min/mes) cabe en los 2 000 min gratuitos.
 ---
 
 ## 1. Para el anfitrión: cómo leer los eventos
@@ -134,7 +138,7 @@ Al anfitrión solo le llegan las **peticiones de los huéspedes** (entrar antes,
 ## 2. Cómo funciona
 
 ```
-Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cada hora)
+Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cada 20 min de día)
                                    └─ airbnb_calendar/
                                       ├─ yahoo.py        lee los correos (IMAP) y envía los avisos (SMTP)
                                       ├─ parser.py       código, huésped, fechas, horas y personas de cada correo
@@ -159,7 +163,7 @@ Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cad
 
 | Pieza | Plan gratuito | Uso |
 | --- | --- | --- |
-| GitHub Actions | 2 000 min/mes en privado (ilimitado en público) | 24 ejecuciones al día de < 1 min (≈720 min/mes) |
+| GitHub Actions | 2 000 min/mes en privado (ilimitado en público) | ≈58 ejecuciones al día de < 1 min (≈1 750 min/mes) |
 | Google Calendar API | 1 000 000 peticiones/día | unas decenas al día |
 | Gemini API | cuota diaria gratuita de AI Studio | un análisis por mensaje de huésped (no los de cortesía ni los de reservas terminadas) |
 
@@ -188,6 +192,8 @@ Yahoo Mail ──IMAP, solo lectura──▶ sincronizar.py (GitHub Actions, cad
 | `ALERTA_NTFY_TOPIC` | (opcional) tema de ntfy.sh para notificaciones push de fallos: un nombre largo y aleatorio |
 | `CALENDAR_ID_PRUEBAS` | (opcional) ID del calendario de pruebas |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS` | (opcional) `.json` de la cuenta de servicio con acceso al calendario de pruebas |
+| `BANDEJA_URL`, `BANDEJA_SECRETO` | (respuestas) dirección del bot en Vercel y el secreto compartido con él (sección 6) |
+| `BASE_PRIVADA` | (respuestas) datos privados de la base de conocimiento: contraseñas de wifi (sección 6) |
 
 6. **Puesta en marcha** (*Actions → Airbnb → Calendar → Run workflow*): `comprobar` (verifica Yahoo, Calendar y Gemini sin escribir nada) y después `recargar` con `desde` = la fecha desde la que cargar reservas. A partir de ahí sigue sola.
 
@@ -227,10 +233,108 @@ Todo se lanza desde *Actions → Airbnb → Calendar → Run workflow*:
 
 ```powershell
 py -m venv .venv; .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q      # 174 pruebas, sin red
+.venv\Scripts\python -m pytest -q      # pruebas del script y del bot (bot/tests), sin red
 .venv\Scripts\ruff check .             # estilo del código
 ```
 
 Las pruebas usan los correos (anonimizados) de `ejemplos/` e incluyen un servidor IMAP falso, una imitación de la API de Google Calendar y de Gemini, y la simulación completa de varias ejecuciones seguidas con el registro persistente. En cada push, GitHub Actions ejecuta `ruff` y las pruebas (`.github/workflows/pruebas.yml`).
 
 Para ejecutarlo contra los servicios reales, define las mismas variables de entorno que los secretos y lanza `python sincronizar.py --comprobar`.
+
+---
+
+## 6. Respuestas a los huéspedes (Telegram)
+
+Cuando un huésped escribe, el script prepara un **borrador** de respuesta con la base de conocimiento
+(`base_conocimiento.toml`) y los datos de la reserva, y lo manda a **Telegram**. Ahí decides tú:
+
+```
+🏠 Torrecilla · Laura Garcia · 05/12 → 08/12 · 2 adultos
+Huésped · 25/11 17:30
+│ Hi! Can we check in at 12?
+🔎 Para ti
+• 🧹 Entrada antes: el huésped anterior sale ese mismo día a las 11:00; la limpieza puede ir de 11:00 a 15:00 (cabe). El piso estaría listo hacia las 13:00.
+✍️ Borrador (EN · confianza media)
+  Hi Laura! We always try to be flexible…
+[✅ Enviar] [✏️ Editar]
+[❌ Descartar]
+```
+
+- **✅ Enviar** → **✅ Sí, enviar**: se publica en el hilo de Airbnb y la tarjeta pasa a «✅ Enviado».
+- **✏️ Editar**: abre una pantalla dentro de Telegram con el texto editable; «Enviar al huésped» (con confirmación)
+  o «Guardar sin enviar». También vale **responder a la tarjeta** con el texto nuevo.
+- **❌ Descartar**: no se envía nada (contestas tú en Airbnb si hace falta).
+- `/pendientes` vuelve a mostrar los borradores sin decidir.
+
+**Nada se envía al huésped sin tu confirmación.** Además:
+- solo se escribe a la dirección de respuesta del hilo de Airbnb (`…@reply.airbnb.com`), nunca a otra;
+- un borrador se envía como mucho una vez;
+- con huecos `[[COMPLETAR: …]]` (datos que no están en la base) no se puede enviar hasta rellenarlos;
+- la IA solo puede usar datos de la base: si pone un enlace que no está en la base, la tarjeta lo avisa;
+- los borradores del entorno de **pruebas** van marcados 🧪 y «enviar» solo lo simula.
+
+**Cómo se contesta.** Hay dos formas, según tenga o no el bot una cuenta de correo en Vercel:
+
+- **Copiar y pegar** (sin cuenta de correo en Vercel): la tarjeta trae el texto listo. Lo copias (toca el texto),
+  «🔗 Abrir Airbnb», lo pegas en la conversación y tocas «✅ Ya lo pegué». No hace falta ninguna contraseña de correo.
+- **Envío desde el bot** (con `YAHOO_USUARIO` / `YAHOO_CLAVE_APP` del anfitrión en Vercel): cada aviso de Airbnb lleva un
+  `Reply-To` (`…@reply.airbnb.com`) y responder a esa dirección publica el mensaje en la conversación. Airbnb solo la acepta
+  desde la cuenta que recibió el aviso, así que el bot solo envía un hilo desde esa misma cuenta; si no la tiene, ese
+  borrador pasa a copiar y pegar. Si una reserva aún no tiene hilo (el huésped no ha escrito), también.
+
+**Agenda.** Además de las respuestas, se proponen los mensajes de cada momento de la estancia (`[[momentos]]` de la base:
+bienvenida, día antes de salir, despedida…), el día y a partir de la hora que indica cada uno, una sola vez por reserva.
+En `config.toml`, `[respuestas] momentos` dice cuáles: quita los que el anfitrión ya envía con los mensajes programados de
+Airbnb. Un mensaje con el texto `PENDIENTE` en la base no se propone.
+
+**La base de conocimiento** (`base_conocimiento.toml`) es la única fuente de datos de los borradores. `PENDIENTE` = dato que
+falta: el borrador lo marca para que lo completes y nunca lo inventa. Para cambiar una respuesta, edita la base (los pisos
+se llaman como los `alias` de `config.toml`).
+
+**El repositorio es público**, así que en él no va nada confidencial:
+- Las contraseñas del wifi van en la base como `PRIVADO`, y su valor real en el secreto **`BASE_PRIVADA`** (un TOML con
+  las mismas secciones; formato en `base_privada.ejemplo.toml`). Sin ese secreto, el wifi se trata como `PENDIENTE`.
+  Para probar en local, crea `base_privada.toml` (está en `.gitignore`).
+- En la rama `estado` solo van identificadores y fechas. Los borradores que esperan a que Vercel responda y las
+  direcciones de respuesta van **cifrados** con una clave derivada de `BANDEJA_SECRETO`.
+
+```
+Yahoo ──▶ sincronizar.py (Actions, cada 20 min de día) ──▶ Gemini (borrador) ──▶ bot/ en Vercel ──▶ Telegram
+                                                                                  │  tú apruebas
+                                        conversación de Airbnb ◀── copiar y pegar ┤
+                                                                ◀── SMTP de Yahoo ┘ (opcional)
+```
+- `airbnb_calendar/base.py` base de conocimiento · `redactor.py` borradores con Gemini · `respuestas.py` cuándo y qué
+  se propone · `bandeja.py` cliente del bot.
+- `bot/` (Vercel, Python/Flask): webhook de Telegram, pantalla de edición (Mini App), envío por SMTP (opcional).
+  Guarda los borradores en Upstash Redis (90 días).
+
+### Puesta en marcha (una vez)
+
+La lista paso a paso está en [`docs/PUESTA_EN_MARCHA.md`](docs/PUESTA_EN_MARCHA.md). En resumen: bot de Telegram
+(@BotFather) → proyecto de Vercel con carpeta `bot/` y Upstash Redis → secretos de GitHub `BANDEJA_URL`, `BANDEJA_SECRETO`
+y `BASE_PRIVADA` → *Actions → Run workflow → `comprobar`* → `/start` en el bot → `APROBADORES` en Vercel → `comprobar`
+otra vez (llega un borrador de demostración 🧪).
+
+### Apagarlo o quitarlo
+
+Los borradores son una capa aparte: **nunca cambian el calendario**, y un fallo suyo no para la sincronización.
+- **Pausar sin tocar código:** borra el secreto `BANDEJA_URL` en GitHub. El calendario sigue igual y no se preparan borradores.
+- **Desactivarlo:** `[respuestas] activar = false` en `config.toml`.
+- **Que el bot envíe solo** (en vez de copiar y pegar): pon `YAHOO_USUARIO` y `YAHOO_CLAVE_APP` del anfitrión en Vercel
+  (los mismos valores que en GitHub) y *Redeploy*.
+- **Quitarlo del todo:** borra `bot/`, `base_conocimiento.toml`, `base_privada.ejemplo.toml`, los módulos `base.py`,
+  `redactor.py`, `respuestas.py` y `bandeja.py`, la sección `[respuestas]` y los secretos `BANDEJA_*` y `BASE_PRIVADA`;
+  y el proyecto de Vercel.
+
+### Qué hacer si…
+- **La tarjeta dice «No se pudo enviar»:** mira en Airbnb que no haya llegado y toca 🔁 Reintentar, o pégalo a mano y toca
+  «✅ Ya lo pegué». Si es la contraseña de aplicación, actualiza `YAHOO_CLAVE_APP` en Vercel.
+- **El primer envío real:** comprueba en Airbnb que aparece en la conversación. Si Airbnb lo rechazara, llegará un correo de
+  rebote a la cuenta que envía: hasta resolverlo, copia el texto de la tarjeta, pégalo en Airbnb y descarta el borrador.
+- **No llegan borradores:** `comprobar` dice qué falta. Los mensajes de cortesía («Thanks!») y los de más de 48 h no generan
+  borrador; tampoco las recargas.
+- **Vercel o Upstash caídos:** los borradores se guardan (cifrados) en el registro y se reintentan en cada ejecución; el
+  desarrollador recibe un aviso.
+- **Cuenta de Vercel:** el plan Hobby es para uso personal. Para dejarlo funcionando para un cliente, pasa el proyecto a su
+  cuenta (plan Pro) o despliega `bot/` en otro servicio (es una app Flask normal).

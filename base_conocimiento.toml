@@ -1,0 +1,271 @@
+# ============================================================================
+#  Base de conocimiento para responder a los huéspedes
+#  Fuente: "KB - Aptos Operations - Guests Interactions" (PDF del cliente).
+#
+#  🔒 El repositorio es PÚBLICO: aquí no va ningún dato confidencial. Lo privado
+#     (red y contraseña del wifi) va como "PRIVADO" y su valor real en el secreto de
+#     GitHub BASE_PRIVADA (formato: base_privada.ejemplo.toml). Para probar en local,
+#     crea base_privada.toml con ese formato (está en .gitignore y no se sube).
+#
+#  Reglas para quien edite este archivo:
+#   - Los textos son la referencia. La IA los adapta al idioma del huésped y a su pregunta,
+#     pero no puede añadir datos que no estén aquí.
+#   - "PRIVADO" = dato que está en BASE_PRIVADA; si ese secreto falta, se trata como PENDIENTE.
+#   - "PENDIENTE" = dato que falta. Mientras falte, el borrador lo marca para que lo
+#     completes tú y nunca lo rellena.
+#   - Erratas evidentes del original corregidas (chek → check, Liddl → Lidl…); el
+#     contenido no se ha cambiado.
+#   - Marcadores: {nombre} = nombre del huésped, {dia_salida} = día de salida.
+# ============================================================================
+
+version = 1
+
+[general]
+idioma_original = "en"          # casi todo está en inglés; el borrador contesta en el idioma del huésped
+hora_entrada = "15:00"          # = config.toml
+hora_salida = "11:00"
+firma = ""                      # sin firma, por ahora
+
+# ----------------------------------------------------------------------------
+#  Pisos. La clave es el alias de config.toml.
+# ----------------------------------------------------------------------------
+
+[pisos.Tirso]
+como_llegar = """
+You can use this address as reference: La Panatteria de Tirso https://maps.app.goo.gl/2oU187r2bKymvh588?g_st=ic
+Then take the elevator to the 4th floor :)
+The apartment is the 4C."""
+foto_portal = "Foto del portal en el PDF (pág. 1): puerta marcada en verde junto al restaurante Apolo"
+acceso = "There is an elevator to access the apartment."
+camas = """
+Bed: Queen Size
+Other: possibility to use the sofa for a 3rd person."""
+wifi = "The wifi details are on the bottom of the black device next to the desk. You can scan the QR code with your phone, or use the red buttons to connect any other device."
+supermercado = "For groceries, you can find a Lidl and a 24-hour Carrefour just 20 meters away from the building on your right."
+transporte = "You can find a subway station across the street (L1) which connects with other lines and the whole city. Everything is very close on foot. You are truly in the heart of Madrid."
+electricidad = "Please make sure to avoid having too many appliances working at the same time (AC, hair dryer, oven...) because buildings in the center are somewhat old. That way we can avoid inconveniences such as the whole electrical system turning off."
+consigna_cercana = "Calle Atocha, 7"    # consigna de equipaje (Locker in the City); distinta de la de los otros pisos
+locker_llaves = "Calle Atocha 7"
+anuncio_reciente = false
+
+[pisos.Buenavista]
+como_llegar = """
+This is the exact address of the apartment (please don't use the one provided on the platform, which is partial only): https://maps.app.goo.gl/tmMamrJBi65WALno9
+When entering the building, keep walking until you find the stairs on your left. Then go up one floor. You will find your place behind the first door on your right."""
+foto_portal = "Foto del portal en el PDF (pág. 1): puerta nº 14"
+acceso = "In order to access the apartment, it is necessary to use the stairs. The flat is located on the first floor."
+camas = """
+Bed: King Size (160 cm)
+Sofa: convertible (140 x 190 cm)"""
+wifi = "PRIVADO"   # nombre y contraseña: en el secreto BASE_PRIVADA (formato: base_privada.ejemplo.toml)
+foto_wifi = "Foto del router en el PDF (pág. 2)"
+supermercado = "You can find a 24-hour grocery store a few blocks away: https://maps.app.goo.gl/WAgN5zf86peNgZJeA?g_st=ic"
+transporte = ""
+electricidad = ""
+consigna_cercana = "Calle Atocha, 86"
+locker_llaves = "Calle Atocha 86"
+anuncio_reciente = true
+
+[pisos.Torrecilla]
+como_llegar = """
+This is the exact address of the apartment (please don't use the one provided on the platform, which is partial only): https://maps.app.goo.gl/rbdZovNrXXvb69Yb8?g_st=ic
+The place will be the first one you will find on your left. The flat number is "BA"."""
+foto_portal = "Foto del portal en el PDF (pág. 1): puerta nº 22, C. de la Torrecilla del Leal"
+acceso = "The apartment is on the ground floor, with no stairs to climb: there are just a few steps at the building entrance, and then it is the first door on your left."
+camas = """
+Bed 1: Queen Size
+Bed 2: Single (90 x 190 cm)"""
+wifi = "PRIVADO"   # nombre y contraseña: en el secreto BASE_PRIVADA (formato: base_privada.ejemplo.toml)
+supermercado = "You can find a 24-hour grocery store a few blocks away: https://maps.app.goo.gl/WAgN5zf86peNgZJeA?g_st=ic"
+transporte = ""
+electricidad = ""
+consigna_cercana = "Calle Atocha, 86"
+locker_llaves = "Calle Atocha 86"
+anuncio_reciente = true
+
+# ----------------------------------------------------------------------------
+#  Textos comunes a los tres pisos
+# ----------------------------------------------------------------------------
+
+[comun]
+normas = "To keep the space comfortable for everyone, please remember that discretion is mandatory after 11PM and smoking is not permitted. Also please avoid staying in the building's common areas. We appreciate your understanding and cooperation!"
+# En Tirso la base no incluye la frase de las zonas comunes: confirmar si aplica también
+normas_tirso = "To keep the space comfortable for everyone, please remember that discretion is mandatory after 11PM and smoking is not permitted. We appreciate your understanding and cooperation!"
+actividades = "In terms of activities, you can go to El Retiro park, Plaza Mayor, and the Reina Sofía / Thyssen / El Prado museums."
+restaurantes = """
+Lastly, let me share some restaurant recommendations around:
+For typical food: https://goo.gl/maps/NWK7o4tC1aiekhpCA
+and this one in La Latina: https://goo.gl/maps/pmivkfzhaYfuuenc8
+For a great culinary experience: https://maps.app.goo.gl/kJGF3kmrLkv5BST77?g_st=iw
+This one is Northern Spain food, one of my favorites: https://maps.app.goo.gl/GgbVvEyLPE7kDTq27"""
+anuncio_reciente = "The apartment is quite recent on the platform. If you miss anything, please let me know via here. I'll be happy to help you :)"
+aeropuerto = """
+Few options to get there from the airport:
+• taxi - 33€ approx - 20 min
+• Uber X - 20€ approx - 20 min
+• subway - 7€ approx / person - 1 hour approx"""
+flexibilidad_horario = "We always try to be flexible with check-in and check-out when conditions allow it. It will depend on previous/next guests' time and cleaning team availability. I will let you know what's possible."
+consigna = "Otherwise I would recommend you to check Locker in the City on the internet, which allows you to drop luggage: https://lockerinthecity.com/en. The closest option to your place is {consigna_cercana}."
+# Mensaje de check-in que envía Julien (24/11/2026). El ENLACE con los códigos lo envía él: nunca lo incluyas.
+checkin = """
+Here is how check-in works, so you have it clear from the start:
+✅ Standard check-in is by picking up the keys beforehand from a locker available 24 hours a day, so you can arrive with full flexibility whatever your arrival time.
+📍 The locker is just a few steps from the apartment, at {locker_llaves}, so you can plan your arrival comfortably.
+When your arrival gets closer, we will send you a link with your access codes for the locker. It will be updated as soon as the cleaning team has finished preparing your place.
+If you haven't told us yet, or if anything changes, let me know what time you plan to arrive 🙂"""
+llegada_tarde = "In order to guarantee you can arrive with all the flexibility, we will leave your keys in a 24/7 locker, with all the instructions to pick them up. The locker is located a few blocks away from your place."
+parking = """
+Regarding parking, the city center is a restricted area, for which you will need to pre-book a parking spot nearby. The closest option to the place is "parking calle doctor cortezo", which you will be able to find in Google and choose among whichever parking reseller."""
+instrucciones_salida = "When you leave, you can leave the keys inside, on the table: the door locks by itself when you close it. Please also turn off the appliances, especially the air conditioning."
+
+# ----------------------------------------------------------------------------
+#  Preguntas del huésped: qué piezas usar para responder
+# ----------------------------------------------------------------------------
+
+[[preguntas]]
+id = "planta_acceso"
+ejemplos = ["What floor?", "Stairs?", "Elevator?", "¿Hay ascensor?"]
+usar = ["pisos.acceso"]
+
+[[preguntas]]
+id = "camas"
+ejemplos = ["Bed size?", "Sleeping accommodation?", "¿Cuántas camas hay?"]
+usar = ["pisos.camas"]
+
+[[preguntas]]
+id = "entrar_antes"
+ejemplos = ["Can we check in early (before 15:00)?", "Can we leave our luggage?"]
+usar = ["comun.flexibilidad_horario", "comun.consigna"]
+# El borrador añade, solo para ti, si la limpieza lo permite (datos del calendario). La decisión es tuya.
+decide_anfitrion = true
+
+[[preguntas]]
+id = "salir_despues"
+ejemplos = ["Can we check out late (after 11:00)?"]
+usar = ["comun.flexibilidad_horario", "comun.consigna"]
+decide_anfitrion = true
+
+[[preguntas]]
+id = "llegada_tarde"
+ejemplos = ["Can we check in late (after 19:00)?", "We arrive at midnight"]
+usar = ["comun.checkin"]
+
+[[preguntas]]
+id = "llaves_checkin"
+ejemplos = ["How do we get the keys?", "How does check-in work?", "Will someone meet us?"]
+usar = ["comun.checkin"]
+
+[[preguntas]]
+id = "salida"
+ejemplos = ["What do we do with the keys when we leave?", "How does check-out work?"]
+usar = ["comun.instrucciones_salida"]
+
+[[preguntas]]
+id = "aeropuerto"
+ejemplos = ["How do I get there from the airport?"]
+usar = ["comun.aeropuerto"]
+
+[[preguntas]]
+id = "parking"
+ejemplos = ["Is there parking available?", "Free parking nearby?"]
+usar = ["comun.parking"]
+
+[[preguntas]]
+id = "como_llegar"
+ejemplos = ["What is the exact address?", "I can't find the place"]
+usar = ["pisos.como_llegar"]
+
+[[preguntas]]
+id = "wifi"
+ejemplos = ["What is the wifi password?"]
+usar = ["pisos.wifi"]
+
+[[preguntas]]
+id = "incidencia"
+ejemplos = ["Something is broken", "There is no hot water"]
+# La base solo da el esqueleto: siempre necesita que completes tú la solución.
+plantilla = """
+Thanks for flagging this issue. I am sorry about this inconvenience...
+Let me check with ... and get back to you ...
+You can find a ... in the ...."""
+decide_anfitrion = true
+
+# ----------------------------------------------------------------------------
+#  Momentos de la estancia: mensajes que propone la agenda
+#   dia:  checkin, checkin-1, checkout, checkout-1, mitad (o "confirmacion" / "con_bienvenida")
+#   hora: hora de Madrid a partir de la que se propone (solo ese día)
+#   Cuáles se proponen lo dice config.toml → [respuestas] momentos. Hoy solo mitad_estancia: el resto
+#   ya lo envían los mensajes programados de Airbnb del cliente.
+# ----------------------------------------------------------------------------
+
+[[momentos]]
+id = "pedir_hora_llegada"
+cuando = "al confirmarse la reserva"
+dia = "confirmacion"     # se propone al llegar la confirmación, no en la agenda
+idioma = "es"     # el original está en español; se traduce al idioma del huésped
+texto = """
+Hola {nombre},
+¡Gracias por tu reserva!
+Nos contactaremos contigo vía WhatsApp un día antes de tu llegada para proveerte detalles sobre el check-in. Con el fin de agilizar tu check-in, indícanos por favor tu hora de llegada o número de vuelo.
+A la espera de conocerte en Madrid.
+Un saludo,"""
+
+[[momentos]]
+id = "dia_antes_llegada"
+cuando = "un día antes de la llegada"
+dia = "checkin-1"
+hora = "10:00"
+texto = ""            # no lo enviamos nosotros (mensajes programados de Airbnb / WhatsApp del cliente)
+
+[[momentos]]
+id = "bienvenida"
+cuando = "el día de llegada, cuando el huésped ya está en el piso"
+dia = "checkin"
+hora = "12:00"            # se propone a esta hora; tú lo envías cuando haya llegado
+# Orden: saludo, supermercado, transporte (Tirso), normas, electricidad (Tirso), actividades,
+# wifi (Buenavista y Torrecilla), restaurantes, anuncio reciente (Buenavista y Torrecilla).
+piezas = ["Welcome to my place {nombre}!", "pisos.supermercado", "pisos.transporte", "comun.normas",
+          "pisos.electricidad", "comun.actividades", "pisos.wifi", "comun.restaurantes", "comun.anuncio_reciente"]
+
+[[momentos]]
+id = "pedir_hora_salida"
+cuando = "a la llegada, si no sabemos a qué hora se van"
+dia = "con_bienvenida"    # se añade al final de la bienvenida si no sabemos la hora de salida
+texto = "Ah, and if you know already, can you please let us know the time you will leave the place on {dia_salida}? That would be super helpful in order to schedule the cleaning for the following guests :)"
+
+[[momentos]]
+id = "mitad_estancia"
+cuando = "a mitad de estancia, si el huésped no ha escrito"
+dia = "mitad"
+noches_minimas = 4        # en estancias más cortas no se manda
+hora = "11:00"
+nota = "Personalízalo con lo que sepas de esta estancia, o descártalo si no hace falta."
+# Redactado a partir del original incompleto ("Hi [Name], How are you? Wanted ... to check with you that all is ok at the place")
+texto = """
+Hi {nombre}! How are you?
+I just wanted to check with you that everything is OK at the place. If you need anything at all, let me know :)"""
+respuesta_si_todo_bien = "Great to know! Let me know if you need anything :)"
+
+[[momentos]]
+id = "dia_antes_salida"
+cuando = "el día antes de la salida"
+dia = "checkout-1"
+hora = "10:00"
+texto = """
+Hello {nombre}! 😊
+We hope you are enjoying Madrid and the apartment!
+A quick reminder for tomorrow's check-out (before 11:00):
+• You can leave the keys inside, on the table: the door locks by itself when you close it.
+• Please turn off the appliances before leaving, especially the air conditioning.
+If you enjoyed your stay, we would be really grateful for a review on Airbnb: it helps us a lot.
+Have a safe trip, and let us know if you have any questions in the meantime!"""
+
+[[momentos]]
+id = "despedida"
+cuando = "tras la salida"
+dia = "checkout"
+hora = "12:00"
+texto = """
+Thank you so much for choosing us for your stay in Madrid, {nombre}! 🙏
+We hope you had a wonderful time. If you enjoyed it, we would be really grateful if you could leave a review on Airbnb: positive reviews help us a lot.
+Have a safe trip home! 😊"""

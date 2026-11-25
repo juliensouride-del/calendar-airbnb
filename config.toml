@@ -1,7 +1,8 @@
 # ============================================================================
 #  Configuración (sin secretos: van en los Secrets del repositorio de GitHub)
 #    YAHOO_USUARIO, YAHOO_CLAVE_APP, GOOGLE_SERVICE_ACCOUNT_JSON, CALENDAR_ID, GEMINI_API_KEY,
-#    ALERTA_EMAIL, ALERTA_NTFY_TOPIC (y *_PRUEBAS para el entorno de pruebas). Ver README.
+#    ALERTA_EMAIL, ALERTA_NTFY_TOPIC (y *_PRUEBAS para el entorno de pruebas); para las respuestas,
+#    BANDEJA_URL, BANDEJA_SECRETO y BASE_PRIVADA. Ver README.
 # ============================================================================
 
 [yahoo]
@@ -123,3 +124,23 @@ otros_nombres = ["Apartamentos de Julian, Anton Martin - Apartament."]
 direccion = "Calle de Buenavista 14, Madrid"
 capacidad_sin_sofa = 2
 locker = "https://access.keynest.com/02AB83A59B49935C9BB1F5F643C249ED"
+
+[respuestas]
+# Borradores de respuesta a los huéspedes, que se aprueban en Telegram (bot/ en Vercel).
+# NADA se envía al huésped sin que lo apruebes allí. Ver README → "Respuestas a los huéspedes".
+# Secretos: BANDEJA_URL y BANDEJA_SECRETO (sin ellos no se preparan borradores: borrar BANDEJA_URL lo pausa),
+# y BASE_PRIVADA (contraseñas de wifi).
+activar = true
+# Base de conocimiento. Sin datos confidenciales: lo marcado "PRIVADO" llega en el secreto BASE_PRIVADA.
+base = "base_conocimiento.toml"
+# Modelo para redactar ("" = el de [gemini]). Redactar pide más que analizar: mejor el modelo grande.
+modelo = "gemini-3.8-flash"
+# Mensajes de la agenda que se proponen (ids de [[momentos]] en la base). Quita los que el anfitrión ya
+# envía con los mensajes programados de Airbnb, para no duplicarlos.
+# Hoy el cliente ya tiene programados en Airbnb: confirmación, antes de la llegada, bienvenida, recordatorio de salida y
+# despedida. Por eso solo se propone el de mitad de estancia. Los demás (en la base) sirven para responder preguntas.
+# Todos: "pedir_hora_llegada", "dia_antes_llegada", "bienvenida", "pedir_hora_salida", "mitad_estancia",
+#        "dia_antes_salida", "despedida"
+momentos = ["mitad_estancia"]
+# Mensajes recibidos hace más de estas horas no generan borrador (p. ej. si la automatización estuvo caída).
+antiguedad_max_horas = 48

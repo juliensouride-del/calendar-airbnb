@@ -57,6 +57,12 @@ class Config:
     gemini_modelos_respaldo: list[str] = field(default_factory=list)
     gemini_nivel_razonamiento: str = "low"
     gemini_timeout_s: int = 30
+    # Borradores de respuesta (bot de Telegram): nada se envía al huésped sin aprobación
+    respuestas_activar: bool = False
+    respuestas_base: str = "base_conocimiento.toml"
+    respuestas_modelo: str = ""         # '' = el de [gemini]
+    respuestas_momentos: list[str] = field(default_factory=list)   # mensajes de la agenda que se proponen
+    respuestas_antiguedad_max_horas: int = 48   # mensajes más antiguos no generan borrador (p. ej. tras días caído)
 
     def alojamiento_por_nombre(self, nombre: str | None) -> Alojamiento | None:
         """Por el nombre del anuncio (u otros_nombres) o por el alias."""
@@ -123,6 +129,11 @@ def cargar_config(ruta: str | Path = "config.toml") -> Config:
         gemini_modelos_respaldo=g.get("modelos_respaldo", []),
         gemini_nivel_razonamiento=g.get("nivel_razonamiento", "low"),
         gemini_timeout_s=g.get("timeout_s", 30),
+        respuestas_activar=t.get("respuestas", {}).get("activar", False),
+        respuestas_base=t.get("respuestas", {}).get("base", "base_conocimiento.toml"),
+        respuestas_modelo=t.get("respuestas", {}).get("modelo", ""),
+        respuestas_momentos=t.get("respuestas", {}).get("momentos", []),
+        respuestas_antiguedad_max_horas=t.get("respuestas", {}).get("antiguedad_max_horas", 48),
     )
     from .parser import normalizar_hora
     for campo in ("hora_entrada_por_defecto", "hora_salida_por_defecto"):

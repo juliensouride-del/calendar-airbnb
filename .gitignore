@@ -6,3 +6,5 @@ estado/
 .env
 *.json.key
 service-account*.json
+base_privada.toml
+.ruff_cache/

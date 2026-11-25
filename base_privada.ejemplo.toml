@@ -1,0 +1,15 @@
+# Formato del secreto BASE_PRIVADA: los datos de la base que no pueden ir en un repositorio público.
+# Mismas secciones que base_conocimiento.toml; cada valor sustituye al "PRIVADO" de la base.
+# Para probar en local: copia este archivo a base_privada.toml (no se sube) y pon los datos reales.
+
+[pisos.Buenavista]
+wifi = """
+Wifi network: NOMBRE_DE_LA_RED
+Password: CONTRASEÑA
+You can find it directly under the black device in the corner of the living room."""
+
+[pisos.Torrecilla]
+wifi = """
+Wifi network: NOMBRE_DE_LA_RED
+Password: CONTRASEÑA
+If the network is low in the bedroom, you can connect to the other one with the same network name + "_EXT", with the same password."""
