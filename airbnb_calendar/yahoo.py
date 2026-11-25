@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from email import policy
 from email.message import EmailMessage
+from email.parser import BytesHeaderParser
 from email.utils import formataddr, parseaddr
 
 from .parser import html_a_texto
@@ -37,6 +38,7 @@ class Correo:
     asunto: str
     texto: str
     id_mensaje: str = ""     # "mid:<Message-ID>": el mismo en cualquier carpeta ("" si no lo trae)
+    responder_a: str = ""    # Reply-To de Airbnb (…@reply.airbnb.com): responder a esa dirección publica en el hilo
 
 
 class BuzonYahoo:
@@ -95,7 +97,7 @@ class BuzonYahoo:
             for i in range(0, len(nuevos), 20):
                 for uid, fecha, crudo in self._fetch(nuevos[i:i + 20], "(UID INTERNALDATE BODY.PEEK[])"):
                     remitente, asunto, texto = leer_eml(crudo)
-                    res.append(Correo(ids[uid], fecha, remitente, asunto, texto, msgids.get(uid, "")))
+                    res.append(Correo(ids[uid], fecha, remitente, asunto, texto, msgids.get(uid, ""), direccion_respuesta(crudo)))
         if carpetas and not abiertas:
             raise RuntimeError(f"No se puede abrir ninguna carpeta de Yahoo ({', '.join(carpetas)})")
         return sorted(res, key=lambda c: c.fecha)
@@ -165,6 +167,13 @@ def leer_eml(crudo: bytes) -> tuple[str, str, str]:
         if texto.strip():
             break
     return str(msg.get("From", "")), str(msg.get("Subject", "")), texto
+
+
+def direccion_respuesta(crudo: bytes) -> str:
+    """Reply-To del correo si es una dirección de respuesta de Airbnb (…@reply.airbnb.com); si no, ''."""
+    msg = BytesHeaderParser(policy=policy.default).parsebytes(crudo)
+    direccion = parseaddr(str(msg.get("Reply-To", "")))[1].lower()
+    return direccion if direccion.endswith("@reply.airbnb.com") else ""
 
 
 def clave_message_id(cabecera: bytes | None) -> str:

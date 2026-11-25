@@ -2,9 +2,12 @@ name: Airbnb → Calendar
 
 on:
   schedule:
-    # Cada hora, todo el día (24 al día, ≈720 min/mes). Sin franja horaria: GitHub retrasa o se salta
-    # ejecuciones programadas, y una que llega tarde por la noche sigue sirviendo. Minuto 7: lejos de las horas en punto.
-    - cron: "7 * * * *"
+    # De día cada 20 min (para contestar rápido a los huéspedes) y de noche cada hora; ≈58 ejecuciones al día
+    # (≈1 750 min/mes: gratis sin límite en un repositorio público; en uno privado caben en los 2 000 gratis).
+    # Horas en UTC: 6–22 UTC ≈ 7–23 h en Madrid en invierno (8–24 h en verano). GitHub retrasa o se salta a veces
+    # ejecuciones programadas. Si faltan minutos de Actions, pasa la primera línea a "7,37 6-22 * * *" (cada 30 min).
+    - cron: "7,27,47 6-22 * * *"
+    - cron: "7 0-5,23 * * *"
   workflow_dispatch:
     inputs:
       entorno:
@@ -81,6 +84,9 @@ jobs:
           CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
           ALERTA_NTFY_TOPIC: ${{ secrets.ALERTA_NTFY_TOPIC }}
           ALERTA_EMAIL: ${{ secrets.ALERTA_EMAIL }}   # avisos de errores al desarrollador (no al anfitrión)
+          BANDEJA_URL: ${{ secrets.BANDEJA_URL }}           # bot de Telegram en Vercel (borradores de respuesta)
+          BANDEJA_SECRETO: ${{ secrets.BANDEJA_SECRETO }}         # también cifra lo privado del registro (rama estado)
+          BASE_PRIVADA: ${{ secrets.BASE_PRIVADA }}               # contraseñas de wifi (no van en el repositorio público)
           CALENDAR_ID_PRUEBAS: ${{ secrets.CALENDAR_ID_PRUEBAS }}
           GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_PRUEBAS }}
           CONFIRMAR: ${{ inputs.confirmar }}

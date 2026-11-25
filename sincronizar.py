@@ -26,23 +26,29 @@ Airbnb (Yahoo Mail) → Google Calendar.
 
 Secretos (variables de entorno): YAHOO_USUARIO, YAHOO_CLAVE_APP, GOOGLE_SERVICE_ACCOUNT_JSON,
 CALENDAR_ID y, opcionales, GEMINI_API_KEY, ALERTA_EMAIL y ALERTA_NTFY_TOPIC (avisos técnicos
-solo al desarrollador). Con PRUEBAS=1 los avisos de peticiones van solo a ALERTA_EMAIL. En GitHub Actions se escribe un resumen
+solo al desarrollador), BANDEJA_URL y BANDEJA_SECRETO (borradores de respuesta en Telegram), BASE_PRIVADA
+(datos privados de la base de conocimiento).
+Con PRUEBAS=1 los avisos de peticiones van solo a ALERTA_EMAIL. En GitHub Actions se escribe un resumen
 de cada ejecución en GITHUB_STEP_SUMMARY.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import os
 import sys
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 
+from airbnb_calendar.bandeja import Bandeja, BandejaDesactivada
+from airbnb_calendar.base import BaseConocimiento
 from airbnb_calendar.calendario import P_ORIGEN, Calendario, _hash, sesion_cuenta_servicio
 from airbnb_calendar.config import Secretos, cargar_config
 from airbnb_calendar.gemini import AnalizadorMensajes
 from airbnb_calendar.ntfy import NotificadorNtfy, Varios
 from airbnb_calendar.parser import parsear_correo
+from airbnb_calendar.redactor import Redactor
 from airbnb_calendar.registro import Registro
 from airbnb_calendar.sincronizador import Sincronizador
 from airbnb_calendar.yahoo import BuzonYahoo, NotificadorYahoo, es_remitente
@@ -92,10 +98,11 @@ def main() -> int:
     calendario = Calendario(cfg, sesion_cuenta_servicio(sec.google_service_account_json))
     # Carga manual (--desde): Gemini espera al límite de peticiones y, si aun así falla, la carga se detiene
     analizador = AnalizadorMensajes(cfg, sec.gemini_api_key, paciente=bool(args.desde))
+    redactor, bandeja = preparar_respuestas(cfg, sec)
     if args.comprobar:
-        return comprobar(cfg, sec, calendario, analizador)
+        return comprobar(cfg, sec, calendario, analizador, redactor, bandeja)
 
-    registro = Registro(args.estado)
+    registro = Registro(args.estado, secreto=os.environ.get("BANDEJA_SECRETO", "").strip())
     notificador = NotificadorYahoo(sec.yahoo_usuario, sec.yahoo_clave_app, cfg.email_avisos)
     if os.environ.get("PRUEBAS"):
         # Entorno de pruebas: los avisos de peticiones nunca llegan al anfitrión, solo al desarrollador
@@ -109,7 +116,9 @@ def main() -> int:
                 notificador = NotificadorSilencioso()   # carga manual: no avisar de correos antiguos
             sincro = Sincronizador(cfg, buzon, calendario, analizador, notificador, registro,
                                    desde=fecha(args.desde), hasta=fecha(args.hasta),
-                                   notificador_tecnico=notificador_tecnico(sec))
+                                   notificador_tecnico=notificador_tecnico(sec),
+                                   redactor=redactor, bandeja=bandeja, pruebas=bool(os.environ.get("PRUEBAS")),
+                                   cuenta_respuesta=sec.yahoo_usuario)
             sincro.ejecutar()
             if args.desde:
                 # Recarga: además de los próximos 30 días, todas las reservas futuras con las reglas actuales
@@ -118,6 +127,37 @@ def main() -> int:
     finally:
         registro.guardar()      # lo procesado hasta un posible fallo queda registrado
     return 0
+
+
+def preparar_respuestas(cfg, sec):
+    """(redactor, bandeja) de los borradores de respuesta, o (None, None) si no están activados o configurados."""
+    if not cfg.respuestas_activar:
+        return None, None
+    url, secreto = os.environ.get("BANDEJA_URL", "").strip(), os.environ.get("BANDEJA_SECRETO", "").strip()
+    if not url or not secreto:
+        log.warning("⚠ [respuestas] activar = true, pero faltan los secretos BANDEJA_URL / BANDEJA_SECRETO: sin borradores")
+        return None, BandejaDesactivada()
+    if not os.path.exists(cfg.respuestas_base):
+        log.warning("⚠ No existe la base de conocimiento %s: sin borradores", cfg.respuestas_base)
+        return None, BandejaDesactivada()
+    base = BaseConocimiento.cargar(cfg.respuestas_base)
+    return Redactor(cfg, base, sec.gemini_api_key), Bandeja(url, secreto)
+
+
+def borrador_de_demostracion() -> dict:
+    """Un borrador de prueba para probar los botones y la edición en Telegram. Va marcado como PRUEBAS: enviarlo solo
+    lo simula (el bot nunca escribe a nadie con un borrador de pruebas)."""
+    ahora = datetime.now(UTC)
+    return {"id": hashlib.sha256(f"demo|{ahora.isoformat()}".encode()).hexdigest()[:16], "tipo": "respuesta",
+            "codigo": "HMDEMO0000", "piso": "Torrecilla", "huesped": "Huésped de prueba", "checkin": ahora.date().isoformat(),
+            "checkout": (ahora.date() + timedelta(days=3)).isoformat(), "personas": "2 adultos", "recibido": ahora.isoformat(),
+            "mensaje_huesped": "Hi! Is there an elevator? And can we check in at 12?", "asunto": "RE: Reservation (demo)",
+            "responder_a": "demo@reply.airbnb.com", "idioma": "en", "confianza": "media", "faltan": [],
+            "texto": "Hi! In order to get to the apartment, it is not necessary to use any stairs.\n\n"
+                     "We always try to be flexible with check-in and check-out when conditions allow it. "
+                     "It will depend on previous/next guests' time and cleaning team availability. I will let you know what's possible.",
+            "notas": ["🧪 Esto es una demostración: prueba ✏️ Editar y ✅ Enviar. No se envía nada a nadie."],
+            "necesita_respuesta": True, "reemplaza": [], "pruebas": True}
 
 
 def notificador_tecnico(sec):
@@ -133,6 +173,7 @@ def escribir_resumen(resumen: dict, stats: dict) -> None:
          f"- Correos procesados: **{resumen['correos']}**",
          f"- Eventos creados: {stats['creados']} · actualizados: {stats['actualizados']}"
          f" · limpiezas recalculadas: {stats['limpiezas_recalculadas']}",
+         f"- Borradores para Telegram: {resumen.get('borradores', 0)}",
          f"- Errores: **{len(resumen['errores'])}**"]
     l += [f"  - {e}" for e in resumen["errores"]]
     l.append(f"- Alertas de limpieza (próximos 30 días): **{len(resumen['alertas_limpieza'])}**")
@@ -213,7 +254,7 @@ def purgar(calendario: Calendario, simulacion: bool, confirmado: bool, hasta: da
     return 0
 
 
-def comprobar(cfg, sec, calendario, analizador) -> int:
+def comprobar(cfg, sec, calendario, analizador, redactor=None, bandeja=None) -> int:
     with BuzonYahoo(sec.yahoo_usuario, sec.yahoo_clave_app) as buzon:
         correos = buzon.correos_desde(datetime.now(UTC) - timedelta(days=7), cfg.carpetas, cfg.remitentes)
     log.info("✔ Yahoo Mail: %d correo(s) de Airbnb en los últimos 7 días", len(correos))
@@ -227,6 +268,21 @@ def comprobar(cfg, sec, calendario, analizador) -> int:
         log.info("✔ Gemini (%s): %s", cfg.gemini_modelo, r.analisis)
     else:
         log.warning("⚠ Gemini desactivado o sin GEMINI_API_KEY: se usarán palabras clave")
+    if cfg.respuestas_activar:
+        if not redactor:
+            log.error("✘ Respuestas: %s", (bandeja or BandejaDesactivada()).comprobar().get("motivo", "sin configurar"))
+            return 1
+        r = bandeja.comprobar()          # también configura el webhook de Telegram
+        if not r.get("ok"):
+            log.error("✘ Bandeja de Telegram: %s", r)
+            return 1
+        log.info("✔ Bandeja de Telegram: %d aprobador(es), webhook %s · %s", r["aprobadores"], r["webhook"],
+                 "envía por correo" if r.get("correo") else "sin cuenta de correo en Vercel: los borradores se copian y se pegan")
+        bandeja.publicar(borrador_de_demostracion())
+        log.info("✔ Borrador de DEMOSTRACIÓN enviado a Telegram: pruébalo (enviar solo lo simula, no llega a nadie)")
+        pend = [p for alias in redactor.base.pisos for p in redactor.base.pendientes(alias)]
+        if pend:
+            log.warning("⚠ Datos PENDIENTES en la base de conocimiento: %s", "; ".join(sorted(set(pend))))
     if os.environ.get("ALERTA_NTFY_TOPIC"):
         log.info("✔ ALERTA_NTFY_TOPIC configurado: los fallos se avisan al desarrollador")
     else:

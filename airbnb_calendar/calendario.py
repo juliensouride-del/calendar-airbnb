@@ -631,6 +631,41 @@ class Calendario:
                 self._poner_al_dia(eventos, self._vista(otra))
                 self._actualizar_siguientes(otra)
 
+    # ------------------------------------------------------------ respuestas
+
+    def reservas_en_curso(self, hoy: date, dias_atras: int = 60) -> list[dict]:
+        """
+        Estados de las reservas no canceladas que están en curso hoy o entran mañana (para la agenda de mensajes).
+        Solo lee: cada evento guarda el estado completo de su reserva (y el relevo, también el de la que sale).
+        """
+        rango = {"timeMin": f"{hoy - timedelta(days=dias_atras)}T00:00:00Z", "timeMax": f"{hoy + timedelta(days=3)}T00:00:00Z"}
+        vistas: dict = {}
+        for ev in self._listar({P_TIPO: "reserva"}, **rango):
+            for e in (_estado_guardado(ev), _estado_guardado(ev, P_SALIENTE)):
+                if not e or not e.get("checkin") or not e.get("checkout") or e.get("cancelada"):
+                    continue
+                clave = e.get("codigo") or (e.get("alojamiento"), e["checkin"])
+                if e["checkin"] <= (hoy + timedelta(days=1)).isoformat() and e["checkout"] >= hoy.isoformat():
+                    vistas.setdefault(clave, e)
+        return sorted(vistas.values(), key=lambda e: (e["checkin"], e.get("alias") or ""))
+
+    def vecinos(self, estado: dict) -> dict:
+        """
+        Lo que hace falta para decidir sobre entrar antes o salir más tarde (solo lectura):
+          limpieza_entrada: la limpieza entre el huésped anterior y este (reglas.evaluar_limpieza) o None,
+          siguiente: estado de la reserva que entra en el piso el día de salida de esta (o None).
+        """
+        if not estado.get("alojamiento") or not estado.get("checkin"):
+            return {"limpieza_entrada": None, "siguiente": None}
+        limpieza = self._vista(estado).limpieza
+        siguiente = None
+        if estado.get("checkout"):
+            for _, sig in self._reservas(estado["alojamiento"], "checkin", date.fromisoformat(estado["checkout"])):
+                if not reglas.misma_reserva(sig, estado) and not sig.get("cancelada"):
+                    siguiente = sig
+                    break
+        return {"limpieza_entrada": limpieza, "siguiente": siguiente}
+
     # ------------------------------------------------------- tareas periódicas
 
     def recalcular_limpiezas(self, hoy: date, dias: int | None = 30, simulacion: bool = False) -> list[dict]:

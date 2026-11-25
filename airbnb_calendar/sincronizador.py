@@ -10,7 +10,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from . import avisos, formato, reglas
+from . import avisos, formato, reglas, respuestas
+from .bandeja import ErrorBandeja
 from .calendario import CalendarioInaccesible, en_calendario, leer_estado
 from .config import Config
 from .gemini import GeminiAgotado, cuota_diaria_agotada, es_mensaje_de_cortesia
@@ -28,7 +29,8 @@ class ErrorDefinitivo(Exception):
 class Sincronizador:
     def __init__(self, cfg: Config, buzon, calendario, analizador, notificador, registro: Registro,
                  ahora: datetime | None = None, desde: datetime | None = None,
-                 hasta: datetime | None = None, notificador_tecnico=None):
+                 hasta: datetime | None = None, notificador_tecnico=None, redactor=None, bandeja=None, pruebas: bool = False,
+                 cuenta_respuesta: str = ""):
         self.cfg = cfg
         self.buzon = buzon
         self.cal = calendario
@@ -41,6 +43,12 @@ class Sincronizador:
         self.desde = desde      # carga manual: ignora la ventana y el inicio del registro
         self.hasta = hasta
         self.tz = ZoneInfo(cfg.zona_horaria)
+        # Borradores de respuesta (bot de Telegram). Nunca en una recarga: serían de mensajes antiguos
+        self.redactor, self.bandeja, self.pruebas = redactor, bandeja, pruebas
+        # La dirección de respuesta (Reply-To) es de la cuenta de Yahoo que recibió el aviso: Airbnb solo la acepta desde
+        # esa cuenta. El bot la compara con la suya y, si no es la misma (o no tiene), el borrador se copia y se pega.
+        self.cuenta_respuesta = cuenta_respuesta
+        self.resumen["borradores"] = 0
 
     def ejecutar(self) -> int:
         """Procesa los correos pendientes. Devuelve cuántos ha procesado."""
@@ -58,6 +66,7 @@ class Sincronizador:
         correos = (self.buzon.correos_desde(desde, self.cfg.carpetas, self.cfg.remitentes, excluir, hasta=self.hasta)
                    if self.hasta else self.buzon.correos_desde(desde, self.cfg.carpetas, self.cfg.remitentes, excluir))
         log.info("%d correo(s) nuevo(s) desde %s", len(correos), desde.isoformat(timespec="minutes"))
+        self._reintentar_borradores()
         for i, c in enumerate(correos, 1):
             self.procesar_correo(c)
             if i % 20 == 0:
@@ -69,6 +78,7 @@ class Sincronizador:
         # Limpiezas de los próximos días, aunque no haya llegado ningún correo (cambios de fechas, migración…)
         self.resumen["alertas_limpieza"] = self.cal.recalcular_limpiezas(self.ahora.astimezone(self.tz).date())
         self.resumen["correos"] = len(correos)
+        self._agenda()
         if not self.desde:
             self.registro.ultima_ok = self.ahora.isoformat()
         return len(correos)
@@ -85,6 +95,8 @@ class Sincronizador:
             "fecha_hora": local.strftime("%Y-%m-%d %H:%M"),
             "fecha_corta": local.strftime("%d/%m"),
             "ref": f"«{c.asunto or 'sin asunto'}» · recibido el {local:%d/%m/%Y %H:%M} · https://mail.yahoo.com",
+            "fecha": c.fecha, "asunto": c.asunto or "", "responder_a": getattr(c, "responder_a", ""),
+            "origen": getattr(c, "id_mensaje", "") or c.id,
         }
         try:
             datos = parsear_correo(c.asunto, c.texto, local.date().isoformat(), self.cfg.alojamientos)
@@ -170,7 +182,12 @@ class Sincronizador:
                 fallo_aviso = err
         if not fallo_aviso:
             avisos.marcar_avisado(estado)
+        if ctx.get("responder_a"):
+            estado["responder_a"] = ctx["responder_a"]     # el hilo de Airbnb de esta reserva (para la agenda)
+        borrador = None if repetida else self._preparar_borrador(estado, d, ctx)
         self.cal.guardar_reserva(estado, eventos, alojamiento)
+        if borrador:
+            self._publicar(borrador)
         if fallo_aviso:
             raise fallo_aviso
 
@@ -260,6 +277,140 @@ class Sincronizador:
             l += ["", "—— Mensaje del huésped ——", texto[:2000]]
         l += ["", "Correo en Yahoo Mail: " + ctx["ref"]]
         self.notificador.enviar(asunto, "\n".join(l))
+
+
+    # ------------------------------------------------------------ borradores
+
+    def _respuestas_activas(self) -> bool:
+        return bool(self.cfg.respuestas_activar and self.redactor and self.bandeja and not self.desde)
+
+    def _preparar_borrador(self, estado: dict, d: DatosCorreo, ctx: dict) -> dict | None:
+        """
+        Borrador para la bandeja (sin publicarlo todavía), o None si no toca. Nunca hace fallar el correo: un borrador
+        que no se puede preparar se avisa al desarrollador y el calendario sigue su curso.
+        """
+        if not self._respuestas_activas() or not ctx.get("fecha"):
+            return None
+        try:
+            return self._borrador(estado, d, ctx)
+        except Exception as err:                         # noqa: BLE001 — el calendario no debe depender de los borradores
+            log.exception("  No se pudo preparar el borrador")
+            if self.registro.puede_avisar("borrador", self.ahora, timedelta(hours=6)):
+                self.tecnico.enviar("⚠️ Airbnb → Telegram: no se pudo preparar un borrador",
+                                    f"Correo: {ctx.get('ref')}\n\nError: {err}\n\nContesta a ese huésped a mano.")
+            return None
+
+    def _borrador(self, estado: dict, d: DatosCorreo, ctx: dict) -> dict | None:
+        base = self.redactor.base
+        texto = _texto_huesped(d)
+        if (not base.tiene_piso(estado.get("alias")) or not respuestas.es_reciente(ctx["fecha"], self.ahora, self.cfg)
+                or not respuestas.reserva_viva(estado, self.ahora.astimezone(self.tz))):
+            return None
+        if d.tipo == "confirmacion":
+            if "pedir_hora_llegada" not in self.cfg.respuestas_momentos:
+                return None
+            return self._borrador_momento(estado, "pedir_hora_llegada", [texto] if texto else [], ctx["fecha"], ctx)
+        if d.tipo != "mensaje" or not texto or es_mensaje_de_cortesia(texto):
+            return None
+        id_ = self._id_borrador(estado, f"mensaje:{ctx['origen']}")
+        if id_ in self.registro.borradores:
+            return None
+        # Lo que el huésped escribió antes y aún no se ha contestado: un solo borrador para todo
+        previos = []
+        if estado.get("codigo"):
+            try:
+                previos = [b for b in self.bandeja.pendientes(estado["codigo"]) if b.get("tipo") == "respuesta" and b.get("id") != id_]
+            except ErrorBandeja as err:
+                log.warning("  No se pudieron leer los borradores pendientes: %s", err)
+        mensajes = [b["mensaje_huesped"] for b in previos if b.get("mensaje_huesped")] + [texto]
+        local = self.ahora.astimezone(self.tz)
+        vecinos = self.cal.vecinos(estado)
+        b = self.redactor.responder(estado["alias"], respuestas.describir_reserva(estado, vecinos, self.cfg, local), mensajes)
+        if b.idioma:
+            estado["idioma"] = b.idioma
+        return respuestas.cuerpo_borrador(
+            id_=id_, tipo="respuesta", e=estado, b=b, recibido=ctx["fecha"].astimezone(self.tz), mensajes=mensajes,
+            responder_a=self._hilo(estado, ctx), cuenta=self.cuenta_respuesta, asunto=ctx.get("asunto", ""),
+            notas_extra=respuestas.notas_horario(estado, vecinos, self.cfg), reemplaza=[b["id"] for b in previos],
+            pruebas=self.pruebas)
+
+    def _borrador_momento(self, estado: dict, mid: str, mensajes: list[str], recibido: datetime, ctx: dict | None = None) -> dict | None:
+        id_ = self._id_borrador(estado, f"momento:{mid}")
+        if id_ in self.registro.borradores:
+            return None
+        base = self.redactor.base
+        plantilla, faltan = respuestas.plantilla_momento(mid, estado, base, self.cfg.respuestas_momentos)
+        if not plantilla:
+            log.info("  Mensaje «%s» sin texto en la base (PENDIENTE): no se propone", mid)
+            return None
+        local = self.ahora.astimezone(self.tz)
+        vecinos = self.cal.vecinos(estado)
+        b = self.redactor.momento(estado["alias"], respuestas.describir_reserva(estado, vecinos, self.cfg, local), mid, plantilla, mensajes)
+        b.faltan = [*faltan, *b.faltan]
+        if b.idioma and mensajes:
+            estado["idioma"] = b.idioma
+        m = base.momentos.get(mid)
+        return respuestas.cuerpo_borrador(
+            id_=id_, tipo="momento", momento=mid, cuando=m.cuando if m else "", e=estado, b=b, recibido=recibido.astimezone(self.tz),
+            mensajes=mensajes, responder_a=self._hilo(estado, ctx), cuenta=self.cuenta_respuesta,
+            asunto=(ctx or {}).get("asunto", ""), notas_extra=[m.nota] if m and m.nota else [], pruebas=self.pruebas)
+
+    @staticmethod
+    def _hilo(estado: dict, ctx: dict | None) -> str:
+        """Dirección …@reply.airbnb.com del hilo ('' = copiar y pegar en Airbnb): la del correo o la última de la reserva."""
+        return (ctx or {}).get("responder_a") or estado.get("responder_a", "")
+
+    def _id_borrador(self, estado: dict, origen: str) -> str:
+        # Las pruebas leen el mismo buzón: sus borradores no pueden ocupar el id de los de producción
+        return respuestas.id_borrador(estado.get("codigo"), origen + ("|pruebas" if self.pruebas else ""))
+
+    def _publicar(self, cuerpo: dict) -> None:
+        try:
+            self.bandeja.publicar(cuerpo)
+            self.registro.borrador_publicado(cuerpo["id"], self.ahora)
+            self.resumen["borradores"] += 1
+        except Exception as err:                         # noqa: BLE001 — el borrador se guarda y se reintenta
+            log.error("  La bandeja no aceptó el borrador %s: %s (se reintentará)", cuerpo["id"], err)
+            if cuerpo["id"] not in {b["id"] for b in self.registro.por_publicar}:
+                self.registro.por_publicar.append(cuerpo)
+            if self.registro.puede_avisar("bandeja", self.ahora, timedelta(hours=6)):
+                self.tecnico.enviar("⚠️ Airbnb → Telegram: la bandeja no responde",
+                                    f"Error: {err}\n\nLos borradores se guardan y se reintentan en cada ejecución. "
+                                    "Revisa el proyecto de Vercel (BANDEJA_URL / BANDEJA_SECRETO).")
+
+    def _reintentar_borradores(self) -> None:
+        if not self._respuestas_activas() or not self.registro.por_publicar:
+            return
+        pendientes, self.registro.por_publicar = self.registro.por_publicar, []
+        for cuerpo in pendientes:
+            recibido = datetime.fromisoformat(cuerpo["recibido"])
+            if respuestas.es_reciente(recibido, self.ahora, self.cfg):
+                self._publicar(cuerpo)
+            else:
+                log.warning("  Borrador %s descartado: lleva demasiado tiempo sin poder publicarse", cuerpo["id"])
+
+    def _agenda(self, max_por_ejecucion: int = 8) -> None:
+        """Mensajes de la agenda que tocan ya (bienvenida, día antes de salir...), una sola vez por reserva."""
+        if not self._respuestas_activas() or not self.cfg.respuestas_momentos:
+            return
+        local = self.ahora.astimezone(self.tz)
+        base, hechos = self.redactor.base, 0
+        for e in self.cal.reservas_en_curso(local.date()):
+            if not base.tiene_piso(e.get("alias")):
+                continue
+            for mid in respuestas.momentos_de_hoy(e, base, self.cfg.respuestas_momentos, local):
+                if hechos >= max_por_ejecucion:
+                    log.info("  Agenda: límite de %d borradores por ejecución; el resto, en la siguiente", max_por_ejecucion)
+                    return
+                try:
+                    cuerpo = self._borrador_momento(e, mid, [], self.ahora)
+                except Exception as err:                 # noqa: BLE001 — una reserva no para la agenda
+                    log.exception("  Agenda: no se pudo preparar «%s» de %s", mid, e.get("codigo"))
+                    self.resumen["errores"].append(f"Agenda {mid} {e.get('codigo')}: {err}")
+                    continue
+                if cuerpo:
+                    self._publicar(cuerpo)
+                    hechos += 1
 
 
 class _SoloLog:
